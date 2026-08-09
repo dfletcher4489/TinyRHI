@@ -799,13 +799,23 @@ void RenderInstance::CreateRenderInstance(RenderInstanceCreateInfo* info, Alloca
 	
 	vkInstance = (VKInstance*)AllocateFromStorageAllocator(sizeof(VKInstance), alignof(VKInstance));
 
+	internalRendererLogger = (Logger*)AllocateFromStorageAllocator(sizeof(Logger), alignof(Logger));
+	internalRendererLogger->InitLogger((char*)AllocateFromStorageAllocator(info->internalLoggerRingSize, 64), info->internalLoggerRingSize);
+	internalRendererLogger->fileHandle = info->internalRendererHandle;
+
 	updateCommandsCache = (RingAllocator*)AllocateFromStorageAllocator(sizeof(RingAllocator), alignof(RingAllocator));
-	std::construct_at(updateCommandsCache, AllocateFromStorageAllocator(info->commandsCacheSize, 64), info->commandsCacheSize);
+
+	StringView commandCacheName = STRING_VIEW_FROM_LITERAL("Commands Cache Allocator");
+
+	std::construct_at(updateCommandsCache, AllocateFromStorageAllocator(info->commandsCacheSize, 64), info->commandsCacheSize, commandCacheName, internalRendererLogger);
 
 	for (uint32_t i = 0; i < 2; i++)
 	{
 		updateCommandBuffers[i] = (SlabAllocator*)AllocateFromStorageAllocator(sizeof(SlabAllocator));
-		std::construct_at(updateCommandBuffers[i], AllocateFromStorageAllocator(info->commandBuffersSize, 32), info->commandBuffersSize);
+
+		StringView updateName = STRING_VIEW_FROM_LITERAL("Commands Cache Allocator");
+
+		std::construct_at(updateCommandBuffers[i], AllocateFromStorageAllocator(info->commandBuffersSize, 32), info->commandBuffersSize, updateName, internalRendererLogger);
 	}
 
 	int driverHostLinkedSize = driverHostMemoryUpdater.GetSize(info->numberOfDriverHostAllocations);
@@ -820,52 +830,49 @@ void RenderInstance::CreateRenderInstance(RenderInstanceCreateInfo* info, Alloca
 	imageMemoryUpdateManager.AllocateList(AllocateFromStorageAllocator(imageMemoryLinkedSize, alignof(uintptr_t)), imageMemoryLinkedSize);
 	descriptorUpdatePool.AllocateList(AllocateFromStorageAllocator(resourceUpdateLinkedSize, alignof(uintptr_t)), resourceUpdateLinkedSize);
 
-	attachmentGraphsInstances.Create(storageAllocator, info->maxAttachmentGraphInstances);
-	attachmentGraphs.Create(storageAllocator, info->maxAttachmentGraphTemplates);
+	attachmentGraphsInstances.Create(storageAllocator, info->maxAttachmentGraphInstances, STRING_VIEW_FROM_LITERAL("Attachment Graph Instances Allocator"), internalRendererLogger);
 	
-	internalRendererLogger = (Logger*)AllocateFromStorageAllocator(sizeof(Logger), alignof(Logger));
-	internalRendererLogger->InitLogger((char*)AllocateFromStorageAllocator(info->internalLoggerRingSize, 64), info->internalLoggerRingSize);
-	internalRendererLogger->fileHandle = info->internalRendererHandle;
+	attachmentGraphs.Create(storageAllocator, info->maxAttachmentGraphTemplates, STRING_VIEW_FROM_LITERAL("Attachment Graph Templates Allocator"), internalRendererLogger);
 
-	bufferHandles.Create(storageAllocator, info->maxBufferPoolsCount);
+	bufferHandles.Create(storageAllocator, info->maxBufferPoolsCount, STRING_VIEW_FROM_LITERAL("Buffer Handles Allocator"), internalRendererLogger);
 
-	imagePools.Create(storageAllocator, info->maxImagePoolsCount);
+	imagePools.Create(storageAllocator, info->maxImagePoolsCount, STRING_VIEW_FROM_LITERAL("Image Pools Allocator"), internalRendererLogger);
 
-	pipelineInstancesIdentifier.Create(storageAllocator, info->maxPipelineInstances);
+	pipelineInstancesIdentifier.Create(storageAllocator, info->maxPipelineInstances, STRING_VIEW_FROM_LITERAL("Pipeline Instances Identifier Allocator"), internalRendererLogger);
 
-	pipelineHandles.Create(storageAllocator, info->maxPipelineHandles);
+	pipelineHandles.Create(storageAllocator, info->maxPipelineHandles, STRING_VIEW_FROM_LITERAL("Pipeline Handles Allocator"), internalRendererLogger);
 
-	gpuCommandStreams.Create(storageAllocator, info->maxGPUCommandsStreams);
+	gpuCommandStreams.Create(storageAllocator, info->maxGPUCommandsStreams, STRING_VIEW_FROM_LITERAL("GPU Command Streams Allocator"), internalRendererLogger);
 
-	renderTargetQueues.Create(storageAllocator, info->maxRenderQueues);
+	renderTargetQueues.Create(storageAllocator, info->maxRenderQueues, STRING_VIEW_FROM_LITERAL("Render Target Queues Allocator"), internalRendererLogger);
 
-	computeQueues.Create(storageAllocator, info->maxComputeQueues);
+	computeQueues.Create(storageAllocator, info->maxComputeQueues, STRING_VIEW_FROM_LITERAL("Compute Queues Allocator"), internalRendererLogger);
 
-	samplerResourceHandles.Create(storageAllocator, info->maxSamplerHandles);
+	samplerResourceHandles.Create(storageAllocator, info->maxSamplerHandles, STRING_VIEW_FROM_LITERAL("Sampler Resource Handles Allocator"), internalRendererLogger);
 
-	textureResourceHandles.Create(storageAllocator, info->maxTextureHandles);
+	textureResourceHandles.Create(storageAllocator, info->maxTextureHandles, STRING_VIEW_FROM_LITERAL("Texture Resource Handles Allocator"), internalRendererLogger);
 
-	textureViewsResourceHandles.Create(storageAllocator, info->maxTextureHandles);
+	textureViewsResourceHandles.Create(storageAllocator, info->maxTextureHandles, STRING_VIEW_FROM_LITERAL("Texture Views Resource Handles Allocator"), internalRendererLogger);
 
-	resourceStatuses.Create(storageAllocator, info->maxResourceStatuses);
+	resourceStatuses.Create(storageAllocator, info->maxResourceStatuses, STRING_VIEW_FROM_LITERAL("Resource Statuses Allocator"), internalRendererLogger);
 
-	pipelineInfos.Create(storageAllocator, info->maxPipelineTemplates);
+	pipelineInfos.Create(storageAllocator, info->maxPipelineTemplates, STRING_VIEW_FROM_LITERAL("Pipeline Infos Allocator"), internalRendererLogger);
 
-	mainRenderTargets.Create(storageAllocator, info->maxRenderTargets);
+	mainRenderTargets.Create(storageAllocator, info->maxRenderTargets, STRING_VIEW_FROM_LITERAL("Main Render Targets Allocator"), internalRendererLogger);
 
-	renderPasses.Create(storageAllocator, info->maxRenderTargets);
+	renderPasses.Create(storageAllocator, info->maxRenderTargets, STRING_VIEW_FROM_LITERAL("Render Passes Allocator"), internalRendererLogger);
 
-	shaderResourceTemplates.Create(storageAllocator, info->maxShaderResourceTemplates);
+	shaderResourceTemplates.Create(storageAllocator, info->maxShaderResourceTemplates, STRING_VIEW_FROM_LITERAL("Shader Resource Templates Allocator"), internalRendererLogger);
 
-	allocations.Create(storageAllocator, info->maxAllocations + info->maxSubAllocations);
+	allocations.Create(storageAllocator, info->maxAllocations + info->maxSubAllocations, STRING_VIEW_FROM_LITERAL("Allocations Allocator"), internalRendererLogger);
 
-	descriptorManagers.Create(storageAllocator, info->maxDescriptorManagers);
+	descriptorManagers.Create(storageAllocator, info->maxDescriptorManagers, STRING_VIEW_FROM_LITERAL("Descriptor Managers Allocator"), internalRendererLogger);
 
-	shaderGraphs.Create(storageAllocator, info->maxShaderGraphs, info->maxShaderHandles);
+	shaderGraphs.Create(storageAllocator, info->maxShaderGraphs, info->maxShaderHandles, STRING_VIEW_FROM_LITERAL("Shader Graphs Allocator"), STRING_VIEW_FROM_LITERAL("Shader Handles Allocator"), internalRendererLogger);
 
-	windowsSurfaces.Create(storageAllocator, info->maxWindows);
+	windowsSurfaces.Create(storageAllocator, info->maxWindows, STRING_VIEW_FROM_LITERAL("Windows Surfaces Allocator"), internalRendererLogger);
 
-	swapChains.Create(storageAllocator, info->maxSwapChains);
+	swapChains.Create(storageAllocator, info->maxSwapChains, STRING_VIEW_FROM_LITERAL("Swap Chains Allocator"), internalRendererLogger);
 
 	physicalDeviceIndices = (RenderPhysicalDeviceContainer*)AllocateFromStorageAllocator(sizeof(RenderPhysicalDeviceContainer) * info->maxGPUS, alignof(RenderPhysicalDeviceContainer));
 
@@ -906,9 +913,13 @@ void RenderInstance::CreateDriverSpecificBarrierArenas(BarrierAccumulator* barri
 	barrierAccumulator->intraPassCount = 0;
 	barrierAccumulator->intraPassTop = 0;
 
-	std::construct_at(barrierAccumulator->accumulators[IMAGE_BARRIER_ACCUMULATOR].allocator, AllocateFromStorageAllocator(imageSize, alignof(VkImageMemoryBarrier)), imageSize);
-	std::construct_at(barrierAccumulator->accumulators[BUFFER_BARRIER_ACCUMULATOR].allocator, AllocateFromStorageAllocator(bufferSize, alignof(VkBufferMemoryBarrier)), bufferSize);
-	std::construct_at(&barrierAccumulator->intraPassBarrierAllocator, AllocateFromStorageAllocator(12 * KiB, alignof(VkBufferMemoryBarrier)), 12 * KiB);
+	StringView imgBarrierName = STRING_VIEW_FROM_LITERAL("Image Barrier Allocator");
+	StringView bufBarrierName = STRING_VIEW_FROM_LITERAL("Buffer Barrier Allocator");
+	StringView intraBarrierName = STRING_VIEW_FROM_LITERAL("Intra Pass Barrier Allocator");
+
+	std::construct_at(barrierAccumulator->accumulators[IMAGE_BARRIER_ACCUMULATOR].allocator, AllocateFromStorageAllocator(imageSize, alignof(VkImageMemoryBarrier)), imageSize, imgBarrierName, internalRendererLogger);
+	std::construct_at(barrierAccumulator->accumulators[BUFFER_BARRIER_ACCUMULATOR].allocator, AllocateFromStorageAllocator(bufferSize, alignof(VkBufferMemoryBarrier)), bufferSize, bufBarrierName, internalRendererLogger);
+	std::construct_at(&barrierAccumulator->intraPassBarrierAllocator, AllocateFromStorageAllocator(12 * KiB, alignof(VkBufferMemoryBarrier)), 12 * KiB, intraBarrierName, internalRendererLogger);
 
 	for (int i = 0; i < MAX_INTRA_PASS_BARRIERS; i++)
 	{
@@ -1016,12 +1027,12 @@ void RenderInstance::DestroySwapChainAttachments(int deviceSelection, EntryHandl
 					{
 						RenderImageViewDescription* imageViewDesc = textureViewsResourceHandles.Get(texDesc->viewIndex[viewIndex]);
 						
-						dev->DestroyImageView(imageViewDesc->viewIndex);
+						DestroyDriverImageView(logicalDeviceIndices, imageViewDesc->viewIndex);
 						
 						textureViewsResourceHandles.Free(texDesc->viewIndex[viewIndex]);
 					}
 
-					dev->DestroyImage(texDesc->textureIndex);
+					DestroyDriverImage(logicalDeviceIndices, texDesc->textureIndex);
 					
 					resourceStatuses.Free(texDesc->resourceStatusIndex);
 
@@ -1085,17 +1096,16 @@ int RenderInstance::CreateAttachmentGraphInstance(int deviceSelection, Attachmen
 {
 	RHIDevice* rhiDevice = GetDeviceHandle(deviceSelection);
 
-	int attachmentInstanceIndex = attachmentGraphsInstances.Allocate();
+	AttachmentRenderPassInstance* passes = (AttachmentRenderPassInstance*)AllocateFromStorageAllocator(sizeof(AttachmentRenderPassInstance) * graph->passesCount);
 
-	AttachmentGraphInstance* graphInstance = attachmentGraphsInstances.Get(attachmentInstanceIndex);
+	AttachmentResourceInstance* resourceInstances = (AttachmentResourceInstance*)AllocateFromStorageAllocator(sizeof(AttachmentResourceInstance) * graph->resourceCount);
 
-	graphInstance->graphLayout = graph;
+	if (!passes || !resourceInstances)
+	{
+		return -1;
+	}
 
-	AttachmentResource* resources = graph->resources;
-
-	graphInstance->passes = (AttachmentRenderPassInstance*)AllocateFromStorageAllocator(sizeof(AttachmentRenderPassInstance) * graph->passesCount);
-
-	graphInstance->resources = (AttachmentResourceInstance*)AllocateFromStorageAllocator(sizeof(AttachmentResourceInstance) * graph->resourceCount);
+	int totalAttachmentCount = 0;
 
 	int totalRenderTargetsCreated = 0;
 
@@ -1105,15 +1115,76 @@ int RenderInstance::CreateAttachmentGraphInstance(int deviceSelection, Attachmen
 
 		int attachmentCount = currentPassDesc->attachmentCount;
 
+		totalAttachmentCount += attachmentCount;
+
+		int sampHi = 1;
+
+		for (int c = 0; c < attachmentCount; c++)
+		{
+			AttachmentDescription* desc = &currentPassDesc->descs[c];
+
+			AttachmentResource* resDesc = &graph->resources[desc->resourceIndex];
+
+			int sampleCountHi = (resDesc->msaa ? (1 << (rhiDevice->container.relatedPhysDeviceInfo->maxMSAALevels)) : 1);
+
+			sampHi = RENDER_MAX(sampleCountHi, sampHi);
+		}
+
+		int renderPassSampleCount = RENDER_MAX(findMSB(sampHi), 1);
+
+		totalRenderTargetsCreated += renderPassSampleCount;
+	}
+
+	int renderTargetBaseAddress = mainRenderTargets.Allocate(totalRenderTargetsCreated);
+
+	if (renderTargetBaseAddress < 0)
+	{
+		return renderTargetBaseAddress;
+	}
+
+	AttachmentInstance* passesInstances = (AttachmentInstance*)AllocateFromStorageAllocator(sizeof(AttachmentInstance) * totalAttachmentCount);
+
+	if (!passesInstances)
+	{
+		return -1;
+	}
+
+	int attachmentInstanceIndex = attachmentGraphsInstances.Allocate();
+
+	if (attachmentInstanceIndex < 0)
+	{
+		return attachmentInstanceIndex;
+	}
+
+	AttachmentGraphInstance* graphInstance = attachmentGraphsInstances.Get(attachmentInstanceIndex);
+
+	graphInstance->graphLayout = graph;
+
+	graphInstance->passes = passes;
+
+	graphInstance->resources = resourceInstances;
+
+	totalRenderTargetsCreated = 0;
+
+	totalAttachmentCount = 0;
+
+	for (int b = 0; b < graph->passesCount; b++)
+	{
+		AttachmentRenderPass* currentPassDesc = &graph->holders[b];
+
+		int attachmentCount = currentPassDesc->attachmentCount;
+
 		AttachmentRenderPassInstance* rpInst = &graphInstance->passes[b];
 
-		AttachmentInstance* currentPassInstance = rpInst->attachInst = (AttachmentInstance*)AllocateFromStorageAllocator(sizeof(AttachmentInstance) * attachmentCount);
+		rpInst->attachInst = &passesInstances[totalAttachmentCount];
 
 		rpInst->attachInstCount = attachmentCount;
 
 		rpInst->currentSampleCount = 0;
 
 		rpInst->graphicsOTQIndex = -1;
+
+		totalAttachmentCount += attachmentCount;
 
 		int sampLo = 1, sampHi = 1;
 
@@ -1132,31 +1203,20 @@ int RenderInstance::CreateAttachmentGraphInstance(int deviceSelection, Attachmen
 			sampHi = RENDER_MAX(sampleCountHi, sampHi);
 
 			currResource->textureIds = nullptr;
-
-			switch (desc->attachType)
-			{
-			case AttachmentDescriptionType::COLORATTACH:
-				currResource->usage = AttachmentResourceInstanceUsage::COLOR_ATTACHMENT_USAGE;
-				break;
-			case AttachmentDescriptionType::RESOLVEATTACH:
-				currResource->usage = AttachmentResourceInstanceUsage::RESOLVE_ATTACHMENT_USAGE;
-				break;
-			case AttachmentDescriptionType::DEPTHATTACH:
-				currResource->usage = AttachmentResourceInstanceUsage::DEPTH_ATTACHMENT_USAGE;
-				break;
-			case AttachmentDescriptionType::DEPTHSTENCILATTACH:
-				currResource->usage = AttachmentResourceInstanceUsage::DEPTH_STENCIL_ATTACHMENT_USAGE;			
-				break;
-			case AttachmentDescriptionType::STENCILATTACH:
-				currResource->usage = AttachmentResourceInstanceUsage::STENCIL_ATTACHMENT_USAGE;
-				break;
-			}
-
+			currResource->usage = desc->attachType;
 			currResource->sampLo = sampleCountLo;
 			currResource->sampHi = sampleCountHi;
+
+			if (desc->dstLayout == ImageLayout::SHADERREADABLE)
+			{
+				currResource->usage |= ImageUsageFlagBits::SAMPLED;
+			}
+			else
+			{
+				currResource->usage |= ImageUsageFlagBits::TRANSIENT_ATTACHMENT;
+			}
 		}
 
-	
 		int renderPassSampleCount = RENDER_MAX(findMSB(sampHi), 1);
 
 		rpInst->maxSampleCount = renderPassSampleCount;
@@ -1165,8 +1225,6 @@ int RenderInstance::CreateAttachmentGraphInstance(int deviceSelection, Attachmen
 
 		totalRenderTargetsCreated += renderPassSampleCount;
 	}
-
-	graphInstance->consecutiveRenderTargetsBase = mainRenderTargets.Allocate(totalRenderTargetsCreated);
 
 	return attachmentInstanceIndex;
 }
@@ -1187,21 +1245,31 @@ int RenderInstance::CreateRenderPass(int deviceSelection, AttachmentGraphInstanc
 
 	for (int b = 0; b < graph->passesCount; b++)
 	{
+		AttachmentRenderPassInstance* rpInst = &graphInstance->passes[b];
+
+		int sampleCount = rpInst->maxSampleCount;
+
+		totalRenderPassesCreated += sampleCount;
+	}
+
+	int headRenderPassIndex = renderPasses.Allocate(totalRenderPassesCreated);
+
+	if (headRenderPassIndex < 0)
+	{
+		return -1;
+	}
+
+	totalRenderPassesCreated = 0;
+
+	for (int b = 0; b < graph->passesCount; b++)
+	{
 		AttachmentRenderPass* currentPassDesc = &graph->holders[b];
 
 		int attachmentCount = currentPassDesc->attachmentCount;
 
 		VKRenderPassBuilder rpb = dev->CreateRenderPassBuilder(attachmentCount, 1, 1);
 
-		uint32_t currDepthStencil = 0;
-
-		uint32_t currResolve = 0;
-
-		uint32_t currPreserve = 0;
-
-		uint32_t currInput = 0;
-
-		uint32_t currColor = 0;
+		uint32_t currResolve = 0, currColor = 0, currDepthStencil = 0;
 
 		AttachmentRenderPassInstance* rpInst = &graphInstance->passes[b];
 
@@ -1209,69 +1277,48 @@ int RenderInstance::CreateRenderPass(int deviceSelection, AttachmentGraphInstanc
 
 		int sampLo = 1;
 
+		uint32_t* remappedIndices = (uint32_t*)cacheAllocator->CAllocate(sizeof(uint32_t) * attachmentCount);
+
 		for (int c = 0; c < attachmentCount; c++)
 		{
-			VkImageLayout referenceLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-
 			AttachmentDescription* desc = &currentPassDesc->descs[c];
 
 			AttachmentResource* resDesc = &graph->resources[desc->resourceIndex];
 
 			VkFormat attachFormat = API::ConvertImageFormatToVulkanFormat(resources[desc->resourceIndex].format);
 
-			VkAttachmentLoadOp stencilLoad = VK_ATTACHMENT_LOAD_OP_DONT_CARE, dsvrtvLoad = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-
-			VkAttachmentStoreOp stencilStore = VK_ATTACHMENT_STORE_OP_DONT_CARE, dsvrtvStore = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-
 			VkSampleCountFlags vkSampleCountLo = (resDesc->msaa ? VK_SAMPLE_COUNT_2_BIT : VK_SAMPLE_COUNT_1_BIT);
 
 			sampLo = RENDER_MAX((int)vkSampleCountLo, sampLo);
 
-			uint32_t vkRenderPassMappedIdx = 0;
-
 			AttachmentResourceInstance* currResource = &graphInstance->resources[desc->resourceIndex];
 
-			currResource->textureIds = nullptr;
+			VkImageLayout referenceLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
 			switch (desc->attachType)
 			{
-			case AttachmentDescriptionType::COLORATTACH:
+			case ImageUsageFlagBits::COLOR_ATTACHMENT:
+				remappedIndices[c] = currColor++;
 				referenceLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-				currResource->usage = AttachmentResourceInstanceUsage::COLOR_ATTACHMENT_USAGE;
-				dsvrtvLoad = API::ConvertAttachLoadOpToVulkanLoadOp(desc->loadOp);
-				dsvrtvStore = API::ConvertAttachStoreOpToVulkanStoreOp(desc->storeOp);
-				vkRenderPassMappedIdx = currColor++;
 				break;
-			case AttachmentDescriptionType::RESOLVEATTACH:
+			case ImageUsageFlagBits::RESOLVE_ATTACHMENT:
+				remappedIndices[c] = (currentPassDesc->colorCount + currentPassDesc->depthStencilCount) + currResolve++;
 				referenceLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-				currResource->usage = AttachmentResourceInstanceUsage::RESOLVE_ATTACHMENT_USAGE;
-				dsvrtvLoad = API::ConvertAttachLoadOpToVulkanLoadOp(desc->loadOp);
-				dsvrtvStore = API::ConvertAttachStoreOpToVulkanStoreOp(desc->storeOp);
-				vkRenderPassMappedIdx = (currentPassDesc->colorCount + currentPassDesc->depthStencilCount) + currResolve++;
 				break;
-			case AttachmentDescriptionType::DEPTHATTACH:
+			case ImageUsageFlagBits::DEPTH_ATTACHMENT:
+			case ImageUsageFlagBits::STENCIL_ATTACHMENT:
+			case ImageUsageFlagBits::DEPTH_ATTACHMENT | ImageUsageFlagBits::STENCIL_ATTACHMENT:
+				remappedIndices[c] = (currentPassDesc->colorCount) + currDepthStencil++;
 				referenceLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-				currResource->usage = AttachmentResourceInstanceUsage::DEPTH_ATTACHMENT_USAGE;
-				dsvrtvLoad = API::ConvertAttachLoadOpToVulkanLoadOp(desc->loadOp);
-				dsvrtvStore = API::ConvertAttachStoreOpToVulkanStoreOp(desc->storeOp);
-				vkRenderPassMappedIdx = (currentPassDesc->colorCount) + currDepthStencil++;
-				break;
-			case AttachmentDescriptionType::DEPTHSTENCILATTACH:
-				referenceLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-				currResource->usage = AttachmentResourceInstanceUsage::DEPTH_STENCIL_ATTACHMENT_USAGE;
-				stencilLoad = dsvrtvLoad = API::ConvertAttachLoadOpToVulkanLoadOp(desc->loadOp);
-				stencilStore = dsvrtvStore = API::ConvertAttachStoreOpToVulkanStoreOp(desc->storeOp);
-				vkRenderPassMappedIdx = (currentPassDesc->colorCount) + currDepthStencil++;
-				break;
-			case AttachmentDescriptionType::STENCILATTACH:
-				referenceLayout = VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL;
-				currResource->usage = AttachmentResourceInstanceUsage::STENCIL_ATTACHMENT_USAGE;
-				stencilLoad = API::ConvertAttachLoadOpToVulkanLoadOp(desc->loadOp);
-				stencilStore = API::ConvertAttachStoreOpToVulkanStoreOp(desc->storeOp);
-				vkRenderPassMappedIdx = (currentPassDesc->colorCount) + currDepthStencil++;
 				break;
 			}
 
+			VkAttachmentLoadOp dsvrtvLoad = API::ConvertAttachLoadOpToVulkanLoadOp(desc->loadOp);
+			VkAttachmentLoadOp stencilLoad = dsvrtvLoad;
+
+			VkAttachmentStoreOp dsvrtvStore = API::ConvertAttachStoreOpToVulkanStoreOp(desc->storeOp);
+			VkAttachmentStoreOp stencilStore = dsvrtvStore;
+			
 			VkImageLayout srcLayout = API::ConvertImageLayoutToVulkanImageLayout(desc->srcLayout),
 				dstLayout = API::ConvertImageLayoutToVulkanImageLayout(desc->dstLayout);
 
@@ -1280,11 +1327,11 @@ int RenderInstance::CreateRenderPass(int deviceSelection, AttachmentGraphInstanc
 				attachFormat, (VkSampleCountFlagBits)vkSampleCountLo,
 				dsvrtvLoad, dsvrtvStore,
 				stencilLoad, stencilStore,
-				srcLayout, dstLayout, vkRenderPassMappedIdx, vkRenderPassMappedIdx
+				srcLayout, dstLayout, remappedIndices[c], remappedIndices[c]
 			);
 
-			currentPassInstance[vkRenderPassMappedIdx].descLayout = desc;
-			currentPassInstance[vkRenderPassMappedIdx].attachmentResource = desc->resourceIndex;
+			currentPassInstance[remappedIndices[c]].descLayout = desc;
+			currentPassInstance[remappedIndices[c]].attachmentResource = desc->resourceIndex;
 		}
 
 		rpb.CreateSubPassDescription(VK_PIPELINE_BIND_POINT_GRAPHICS, currentPassDesc->colorCount, currentPassDesc->resolveCount, currentPassDesc->depthStencilCount);
@@ -1302,24 +1349,14 @@ int RenderInstance::CreateRenderPass(int deviceSelection, AttachmentGraphInstanc
 
 		while (sampleCount--)
 		{
-			int index = renderPasses.Allocate();
-
-			renderPasses.pool[index] = dev->CreateRenderPasses(rpb);
+			renderPasses.pool[headRenderPassIndex] = dev->CreateRenderPasses(rpb);
 
 			if (graphInstance->consecutiveRenderPassBase < 0)
-				graphInstance->consecutiveRenderPassBase = index;
+				graphInstance->consecutiveRenderPassBase = headRenderPassIndex;
+
+			headRenderPassIndex++;
 
 			sampLo <<= 1;
-
-			currDepthStencil = 0;
-
-			currResolve = 0;
-
-			currPreserve = 0;
-
-			currInput = 0;
-
-			currColor = 0;
 
 			for (int c = 0; c < attachmentCount; c++)
 			{
@@ -1333,29 +1370,8 @@ int RenderInstance::CreateRenderPass(int deviceSelection, AttachmentGraphInstanc
 				{
 					sampleCount = sampLo;
 				}
-
-				uint32_t vkRenderPassMappedIdx = 0;
-
-				switch (desc->attachType)
-				{
-				case AttachmentDescriptionType::COLORATTACH:
-					vkRenderPassMappedIdx = currColor++;
-					break;
-				case AttachmentDescriptionType::RESOLVEATTACH:	
-					vkRenderPassMappedIdx = (currentPassDesc->colorCount + currentPassDesc->depthStencilCount) + currResolve++;
-					break;
-				case AttachmentDescriptionType::DEPTHATTACH:
-					vkRenderPassMappedIdx = (currentPassDesc->colorCount) + currDepthStencil++;
-					break;
-				case AttachmentDescriptionType::DEPTHSTENCILATTACH:
-					vkRenderPassMappedIdx = (currentPassDesc->colorCount) + currDepthStencil++;
-					break;
-				case AttachmentDescriptionType::STENCILATTACH:
-					vkRenderPassMappedIdx = (currentPassDesc->colorCount) + currDepthStencil++;
-					break;
-				}
 				
-				rpb.SetSampleCount(vkRenderPassMappedIdx, (VkSampleCountFlagBits)sampleCount);
+				rpb.SetSampleCount(remappedIndices[c], (VkSampleCountFlagBits)sampleCount);
 
 			}
 
@@ -1427,7 +1443,10 @@ int RenderInstance::SubmitFrame(int deviceSelection, int swapChainIndex, uint32_
 		rhiDevice->container.deviceTimelineSyncObject.currentValue++;
 	}
 
-	if (res) return -1;
+	if (res)
+	{
+		return res;
+	}
 
 	if (rhiDevice->container.presentQueue != rhiDevice->container.graphicsComputeTransfer)
 	{
@@ -1441,10 +1460,9 @@ int RenderInstance::SubmitFrame(int deviceSelection, int swapChainIndex, uint32_
 	if (res) 
 	{
 		dev->CommandBufferWaitOn(UINT64_MAX, rhiDevice->container.currentCommandBufferIndex[currentFrame]);
-		return res;
 	}
 
-	return 0;
+	return res;
 }
 
 void RenderInstance::WaitOnRender(int deviceSelection)
@@ -1481,6 +1499,10 @@ int RenderInstance::CreateResourceStatusActions(ResourceStatus* status, int numb
 	status->currAction = (BarrierAction*)AllocateFromStorageAllocator(sizeof(BarrierAction) * numberOfCurrentActions);
 	status->currStage = (BarrierStage*)AllocateFromStorageAllocator(sizeof(BarrierStage) * numberOfCurrentStages);
 	status->currentLayout = (ImageLayout*)AllocateFromStorageAllocator(sizeof(ImageLayout) * numberOfCurrentLayouts);
+
+	if (!status->currAction || !status->currStage || !status->currentLayout)
+		return -1;
+
 	return 0;
 }
 
@@ -1496,7 +1518,8 @@ void RenderInstance::InitializeResourceStatus(ResourceStatus* status, int number
 		status->currentLayout[i] = imageLayout;
 }
 
-int RenderInstance::CreateAttachmentImage(
+int RenderInstance::CreateAttachmentImage
+(
 	uint32_t width, uint32_t height, 
 	uint32_t arrayLayers, uint32_t mipCount,
 	ImageType imageType, int sampleCount, 
@@ -1504,6 +1527,13 @@ int RenderInstance::CreateAttachmentImage(
 	DeviceSlabAllocator* attachmentAllocator, ImageLayout initialLayout,
 	VKDevice* dev, int imageMemoryPoolIndex, ResourceStatusType resourceType)
 {
+
+	int textureIndex = textureResourceHandles.Allocate();
+
+	if (textureIndex < 0)
+	{
+		return textureIndex;
+	}
 
 	VkFormat vkAttachmentFormat = API::ConvertImageFormatToVulkanFormat(format);
 
@@ -1523,7 +1553,21 @@ int RenderInstance::CreateAttachmentImage(
 		VK_IMAGE_TILING_OPTIMAL, 0,
 		vkImageType, &actualImageSize, &actualImageAlignment);
 
+	if (!actualImageSize || !actualImageAlignment)
+	{
+		int errorLength = 0;
+		char* errorString = dev->PopErrorOffQueue(&errorLength);
+		internalRendererLogger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("CreateAttachmentImage: GetImageMemorySizeAndAlignment failed"));
+		internalRendererLogger->AddLogMessage(LOGERROR, errorString, errorLength);
+		return -1;
+	}
+
 	size_t actualMemAddr = attachmentAllocator->Allocate(actualImageSize, actualImageAlignment);
+
+	if (actualMemAddr < 0)
+	{
+		return -1;
+	}
 
 	EntryHandle imageHandle = dev->CreateImage(
 		width, height,
@@ -1534,8 +1578,6 @@ int RenderInstance::CreateAttachmentImage(
 		VK_IMAGE_TILING_OPTIMAL, 0,
 		vkImageType, imagePools[imageMemoryPoolIndex].imagePoolHandle
 	);
-
-	int textureIndex = textureResourceHandles.Allocate();
 
 	RenderTextureDescription* desc = textureResourceHandles.Get(textureIndex);
 
@@ -1700,89 +1742,52 @@ int RenderInstance::CreateAttachmentResources(
 
 			resourceInst->imageCount = imageCount;
 
-			switch (resourceInst->usage)
+			ImageUsageFlags usage = resourceInst->usage;
+
+			int poolIndex = usage & (ImageUsageFlagBits::COLOR_ATTACHMENT | ImageUsageFlagBits::RESOLVE_ATTACHMENT) ? rtvPoolIndex : dsvPoolIndex;
+
+			DeviceSlabAllocator* allocator = usage & (ImageUsageFlagBits::COLOR_ATTACHMENT | ImageUsageFlagBits::RESOLVE_ATTACHMENT) ? rtvAllocator : dsvAllocator;
+
+			ImageViewAspectMask mask = 0;
+
+			ImageLayout imageViewLayout = ImageLayout::UNDEFINED;
+
+			if (usage & (ImageUsageFlagBits::DEPTH_ATTACHMENT | ImageUsageFlagBits::STENCIL_ATTACHMENT))
 			{
-
-			case AttachmentResourceInstanceUsage::COLOR_ATTACHMENT_USAGE:
-
-				for (int v = 0; v < sampleCount; v++)
+				if (usage & ImageUsageFlagBits::DEPTH_ATTACHMENT)
 				{
-					for (int g = 0; g < imageCount; g++)
-					{
-						int textureIndex = resourceInst->textureIds[v][g] = CreateAttachmentImage(imageWidth, imageHeight, 1, 1,
-							ImageType::IMAGE_2D, sampLo, resourceTempl->format,
-							ImageUsageFlagBits::COLOR_ATTACHMENT | ImageUsageFlagBits::SAMPLED, rtvAllocator, ImageLayout::UNDEFINED, dev, rtvPoolIndex, MANAGED_IMAGE_RESOURCE);
-
-						CreateAttachmentImageView(textureIndex, 0, 1, 0, 1, COLOR_IMAGE_ASPECT, ImageLayout::COLORATTACHMENT, dev);
-					}
-
-					sampLo <<= 1;
+					mask |= DEPTH_IMAGE_ASPECT;
+					imageViewLayout = ImageLayout::DEPTHATTACHMENT;
 				}
-				break;
-			case AttachmentResourceInstanceUsage::DEPTH_STENCIL_ATTACHMENT_USAGE:
-				for (int v = 0; v < sampleCount; v++)
+
+				if (usage & ImageUsageFlagBits::STENCIL_ATTACHMENT)
 				{
-					for (int g = 0; g < imageCount; g++)
-					{
-						int textureIndex = resourceInst->textureIds[v][g] = CreateAttachmentImage(imageWidth, imageHeight, 1, 1,
-							ImageType::IMAGE_2D, sampLo, resourceTempl->format,
-							ImageUsageFlagBits::DEPTH_ATTACHMENT | ImageUsageFlagBits::STENCIL_ATTACHMENT, dsvAllocator, ImageLayout::UNDEFINED, dev, dsvPoolIndex, MANAGED_IMAGE_RESOURCE);
-
-						CreateAttachmentImageView(textureIndex, 0, 1, 0, 1, DEPTH_IMAGE_ASPECT | STENCIL_IMAGE_ASPECT, ImageLayout::DEPTHSTENCILATTACHMENT, dev);
-					}
-
-					sampLo <<= 1;
+					mask |= STENCIL_IMAGE_ASPECT;
+					imageViewLayout = ImageLayout::STENCILATTACHMENT;
 				}
-				break;
-			case AttachmentResourceInstanceUsage::DEPTH_ATTACHMENT_USAGE:
-				for (int v = 0; v < sampleCount; v++)
+
+				if ((usage & (ImageUsageFlagBits::DEPTH_ATTACHMENT | ImageUsageFlagBits::STENCIL_ATTACHMENT)) == (ImageUsageFlagBits::DEPTH_ATTACHMENT | ImageUsageFlagBits::STENCIL_ATTACHMENT))
 				{
-					for (int g = 0; g < imageCount; g++)
-					{
-						int textureIndex = resourceInst->textureIds[v][g] = CreateAttachmentImage(imageWidth, imageHeight, 1, 1,
-							ImageType::IMAGE_2D, sampLo, resourceTempl->format,
-							ImageUsageFlagBits::DEPTH_ATTACHMENT | ImageUsageFlagBits::SAMPLED, dsvAllocator, ImageLayout::UNDEFINED, dev, dsvPoolIndex, MANAGED_IMAGE_RESOURCE);
-
-						CreateAttachmentImageView(textureIndex, 0, 1, 0, 1, DEPTH_IMAGE_ASPECT, ImageLayout::DEPTHATTACHMENT, dev);
-					}
-					sampLo <<= 1;
+					imageViewLayout = ImageLayout::DEPTHSTENCILATTACHMENT;
 				}
-				break;
+			}
+			else
+			{
+				mask = COLOR_IMAGE_ASPECT;
+			}
 
-			case AttachmentResourceInstanceUsage::STENCIL_ATTACHMENT_USAGE:
-				for (int v = 0; v < sampleCount; v++)
-				{
-					for (int g = 0; g < imageCount; g++)
-					{
-						int textureIndex = resourceInst->textureIds[v][g] = CreateAttachmentImage(imageWidth, imageHeight, 1, 1,
-							ImageType::IMAGE_2D, sampLo, resourceTempl->format,
-							ImageUsageFlagBits::STENCIL_ATTACHMENT, dsvAllocator, ImageLayout::UNDEFINED, dev, dsvPoolIndex, MANAGED_IMAGE_RESOURCE);
-
-						CreateAttachmentImageView(textureIndex, 0, 1, 0, 1, STENCIL_IMAGE_ASPECT, ImageLayout::STENCILATTACHMENT, dev);
-					}
-					sampLo <<= 1;
-
-				}
-				break;
-
-			case AttachmentResourceInstanceUsage::RESOLVE_ATTACHMENT_USAGE:
+			for (int v = 0; v < sampleCount; v++)
+			{
 				for (int g = 0; g < imageCount; g++)
 				{
-					int textureIndex = resourceInst->textureIds[0][g] = CreateAttachmentImage(imageWidth, imageHeight, 1, 1,
+					int textureIndex = resourceInst->textureIds[v][g] = CreateAttachmentImage(imageWidth, imageHeight, 1, 1,
 						ImageType::IMAGE_2D, sampLo, resourceTempl->format,
-						ImageUsageFlagBits::COLOR_ATTACHMENT | ImageUsageFlagBits::SAMPLED, rtvAllocator, ImageLayout::UNDEFINED, dev, rtvPoolIndex, MANAGED_IMAGE_RESOURCE);
+						usage, allocator, ImageLayout::UNDEFINED, dev, poolIndex, MANAGED_IMAGE_RESOURCE);
 
-					CreateAttachmentImageView(textureIndex, 0, 1, 0, 1, COLOR_IMAGE_ASPECT, ImageLayout::COLORATTACHMENT, dev);
+					CreateAttachmentImageView(textureIndex, 0, 1, 0, 1, mask, imageViewLayout, dev);
 				}
-				break;
 
-			case AttachmentResourceInstanceUsage::PRESERVE_ATTACHMENT_USAGE:
-				//flags = 0; // no direct Vulkan usage flag
-				break;
-
-			case AttachmentResourceInstanceUsage::INPUT_ATTACHMENT_USAGE:
-				//flags = VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
-				break;
+				sampLo <<= 1;
 			}
 		}
 	}
@@ -5005,7 +5010,7 @@ int RenderInstance::CreateDescriptorHeap(int deviceSelection, DescriptorTypes* t
 
 	ShaderResourceManager* manager = descriptorManagers.Get(descriptorManagerIndex);
 
-	manager->Create(storageAllocator, maxShaderResourceSets);
+	manager->Create(storageAllocator, maxShaderResourceSets, STRING_VIEW_FROM_LITERAL("Descriptor Manager"), internalRendererLogger);
 
 	DescriptorPoolBuilder builder = dev->CreateDescriptorPoolBuilder(numDescriptorTypesCount, VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT);
 

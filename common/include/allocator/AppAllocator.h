@@ -1,5 +1,6 @@
 #pragma once
 #include "IndexTypes.h"
+#include "logger/Logger.h"
 #include "StringUtils.h"
 #include "TLSFAllocator.h"
 
@@ -60,7 +61,17 @@ T_AtomicType UpdateAtomic(std::atomic<T_AtomicType>& atomic, T_AtomicType stride
 
 struct Allocator
 {
+	StringView allocatorName{};
+	Logger* logger{};
+
 	Allocator() = default;
+
+	Allocator(StringView _allocatorName, Logger* _logger)
+		:
+		allocatorName(_allocatorName), logger(_logger)
+	{
+
+	}
 
 	virtual void* Allocate(int _allocSize, int alignment) = 0;
 	virtual void* Allocate(int _allocSize) = 0;
@@ -88,8 +99,8 @@ struct RingAllocator : public Allocator
 
 	RingAllocator() = default;
 
-	RingAllocator(void* _dataHead, int _size)
-		: Allocator()
+	RingAllocator(void* _dataHead, int _size, StringView _allocatorName, Logger* _logger)
+		: Allocator(_allocatorName, _logger)
 	{
 		dataSize = _size;
 		dataAllocator = 0;
@@ -120,9 +131,9 @@ struct SlabAllocator : public Allocator
 	std::atomic<int> dataAllocator;
 
 	SlabAllocator() = default;
-	SlabAllocator(void* _dataHead, int _size) 
+	SlabAllocator(void* _dataHead, int _size, StringView _allocatorName, Logger* _logger)
 		:
-		Allocator()
+		Allocator(_allocatorName, _logger)
 	{
 		dataSize = _size;
 		dataAllocator = 0;
@@ -150,7 +161,7 @@ struct TLSFAllocator : public Allocator
 {
 	TLSFMain tlsf;
 	TLSFAllocator() = default;
-	TLSFAllocator(void* _dataHead, int _size)
+	TLSFAllocator(void* _dataHead, int _size, StringView _allocatorName, Logger* _logger)
 		:
 		Allocator()
 	{
@@ -178,12 +189,18 @@ struct DeviceSlabAllocator
 	DeviceSlabAllocator() = default;
 	int dataSize;
 	std::atomic<int> dataAllocator;
-	constexpr DeviceSlabAllocator(int _size) :
+
+	StringView allocatorName{};
+	Logger* logger{};
+
+	DeviceSlabAllocator(int _size, StringView _allocatorName, Logger* _logger) :
 		dataSize(_size), dataAllocator(0)
 	{
 
 	}
+
 	int Allocate(int _allocSize, int alignment);
+
 	std::pair<int, int> GetUsageAndCapacity() const;
 };
 
@@ -195,16 +212,20 @@ struct PoolAllocator
 	int freeListTop = -1;
 	int count = 0;
 	int maxCount = 0;
+	StringView allocatorName{};
+	Logger* logger;
 
 	PoolAllocator() = default;
 
-	void Create(Allocator* allocator, uint32_t maxElements)
+	void Create(Allocator* allocator, uint32_t maxElements, StringView _allocatorName, Logger* _logger)
 	{
 		pool = (T*)allocator->Allocate(sizeof(T) * maxElements, alignof(T));
 		freeList = (int*)allocator->Allocate(sizeof(int) * maxElements, alignof(int));
 		maxCount = maxElements;
 		count = 0;
 		freeListTop = -1;
+		allocatorName = _allocatorName;
+		logger = _logger;
 	}
 
 	int Allocate()
@@ -214,12 +235,26 @@ struct PoolAllocator
 			return freeList[freeListTop--];
 		}
 
+		if (count == maxCount)
+		{
+			logger->AddLogMessage(LOGERROR, allocatorName);
+			logger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Pool Allocator - Allocate(): Max Count reached and no free slots"));
+			return -1;
+		}
+
 		return count++;
 	}
 
 	int Allocate(int N)
 	{
 		int ret = count;
+
+		if ((ret + N) > maxCount)
+		{
+			logger->AddLogMessage(LOGERROR, allocatorName);
+			logger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Pool Allocator - Allocate(int n): No contiguous range of slots"));
+			return -1;
+		}
 
 		count += N;
 
@@ -228,16 +263,37 @@ struct PoolAllocator
 
 	void Free(int index)
 	{
+		if (index >= maxCount || index < 0 || freeListTop >= maxCount)
+		{
+			logger->AddLogMessage(LOGERROR, allocatorName);
+			logger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Pool Allocator - Free(): Invalid Index / Free List Full"));
+			return;
+		}
+
 		freeList[++freeListTop] = index;
 	}
 
 	T* Get(int index)
 	{
+		if (index >= maxCount || index < 0)
+		{
+			logger->AddLogMessage(LOGERROR, allocatorName);
+			logger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Pool Allocator - Get(): Invalid Index"));
+			return nullptr;
+		}
+
 		return &pool[index];
 	}
 
 	T operator[](int index)
 	{
+		if (index >= maxCount || index < 0)
+		{
+			logger->AddLogMessage(LOGERROR, allocatorName);
+			logger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Pool Allocator - operator[]: Invalid Index"));
+			return {};
+		}
+
 		return pool[index];
 	}
 };

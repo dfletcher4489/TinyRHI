@@ -94,7 +94,7 @@ static int HandleBlendAttachment(char* fileData, int size, int currentLocation, 
 
 
 static int ReadAttributesAttachments(char* fileData, int size, int currentLocation, unsigned long* hashes, int* stackSize, Logger* scratchLogger);
-static int HandleAttachment(char* fileData, int size, int currentLocation, AttachmentDescriptionType descType, AttachmentDescription* description, Logger* scratchLogger);
+static int HandleAttachment(char* fileData, int size, int currentLocation, ImageUsageFlags descType, AttachmentDescription* description, Logger* scratchLogger);
 static int HandleAttachmentDesc(char* fileData, int size, int currentLocation, AttachmentRenderPass* holder, Logger* scratchLogger);
 static int HandleAttachmentResource(char* fileData, int size, int currentLocation, AttachmentResource* resource, Logger* scratchLogger);
 
@@ -2262,27 +2262,27 @@ int CreateAttachmentGraphFromFile(StringView filename, AttachmentGraph* graph, A
 				currentHolder = &graph->holders[holderCounter++];
 				break;
 			case hash("ColorAttachment"):
-				stride = HandleAttachment(dataStart, dataSize, curr, AttachmentDescriptionType::COLORATTACH, &currentHolder->descs[attachmentCounter], outputLogger);
+				stride = HandleAttachment(dataStart, dataSize, curr, ImageUsageFlagBits::COLOR_ATTACHMENT, &currentHolder->descs[attachmentCounter], outputLogger);
 				attachmentCounter++;
 				colorCount++;
 				break;
 			case hash("DepthAttachment"):
-				stride = HandleAttachment(dataStart, dataSize, curr, AttachmentDescriptionType::DEPTHATTACH, &currentHolder->descs[attachmentCounter], outputLogger);
+				stride = HandleAttachment(dataStart, dataSize, curr, ImageUsageFlagBits::DEPTH_ATTACHMENT, &currentHolder->descs[attachmentCounter], outputLogger);
 				attachmentCounter++;
 				depthStencilCount++;
 				break;
 			case hash("ResolveAttachment"):
-				stride = HandleAttachment(dataStart, dataSize, curr, AttachmentDescriptionType::RESOLVEATTACH, &currentHolder->descs[attachmentCounter], outputLogger);
+				stride = HandleAttachment(dataStart, dataSize, curr, ImageUsageFlagBits::RESOLVE_ATTACHMENT, &currentHolder->descs[attachmentCounter], outputLogger);
 				attachmentCounter++;
 				resolveCount++;
 				break;
 			case hash("StencilAttachment"):
-				stride = HandleAttachment(dataStart, dataSize, curr, AttachmentDescriptionType::STENCILATTACH, &currentHolder->descs[attachmentCounter], outputLogger);
+				stride = HandleAttachment(dataStart, dataSize, curr, ImageUsageFlagBits::STENCIL_ATTACHMENT, &currentHolder->descs[attachmentCounter], outputLogger);
 				attachmentCounter++;
 				depthStencilCount++;
 				break;
 			case hash("DepthStencilAttachment"):
-				stride = HandleAttachment(dataStart, dataSize, curr, AttachmentDescriptionType::DEPTHSTENCILATTACH, &currentHolder->descs[attachmentCounter], outputLogger);
+				stride = HandleAttachment(dataStart, dataSize, curr, ImageUsageFlagBits::DEPTH_ATTACHMENT | ImageUsageFlagBits::STENCIL_ATTACHMENT, &currentHolder->descs[attachmentCounter], outputLogger);
 				attachmentCounter++;
 				depthStencilCount++;
 				break;
@@ -2334,7 +2334,7 @@ int CreateAttachmentGraphFromFile(StringView filename, AttachmentGraph* graph, A
 	return retCode;
 }
 
-int HandleAttachment(char* fileData, int size, int currentLocation, AttachmentDescriptionType descType, AttachmentDescription* description, Logger* scratchLogger)
+int HandleAttachment(char* fileData, int size, int currentLocation, ImageUsageFlags descType, AttachmentDescription* description, Logger* scratchLogger)
 {
 	unsigned long hashes[16];
 
@@ -2897,9 +2897,9 @@ void ShaderResourceSetBuilder::UploadConstant(ShaderResourceSetContext* context,
 	header->data = data;
 }
 
-void ShaderResourceManager::Create(Allocator* shaderResourceMemoryAllocator, uint32_t maxDescriptorSets)
+void ShaderResourceManager::Create(Allocator* shaderResourceMemoryAllocator, uint32_t maxDescriptorSets, StringView descriptorPoolName, Logger* logger)
 {
-	descriptorSetHandles.Create(shaderResourceMemoryAllocator, maxDescriptorSets);
+	descriptorSetHandles.Create(shaderResourceMemoryAllocator, maxDescriptorSets, descriptorPoolName, logger);
 	memset(descriptorSetHandles.pool, 0xFF, sizeof(EntryHandle) * maxDescriptorSets);
 	descriptorSets = (ShaderResourceSet**)shaderResourceMemoryAllocator->Allocate(sizeof(ShaderResourceSet*) * maxDescriptorSets, alignof(ShaderResourceSet*));
 }

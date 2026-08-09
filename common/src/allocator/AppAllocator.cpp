@@ -113,6 +113,8 @@ int RingAllocator::OffsetInAllocator(void* dataPtr)
 
 	if (dataPtrInT < dataHeadInT || dataPtrInT >= (dataHeadInT + dataSize))
 	{
+		logger->AddLogMessage(LOGERROR, allocatorName);
+		logger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Ring Allocator: Offset into allocator overflow/underflow"));
 		return -1;
 	}
 
@@ -131,6 +133,8 @@ void* SlabAllocator::Allocate(int _allocSize, int alignment)
 
 	if ((dataAllocator + _allocSize) > dataSize)
 	{
+		logger->AddLogMessage(LOGERROR, allocatorName);
+		logger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Slab Allocator: Too big of allocation"));
 		return nullptr;
 	}
 
@@ -145,6 +149,8 @@ void* SlabAllocator::Allocate(int _allocSize)
 
 	if ((dataAllocator + _allocSize) > dataSize)
 	{
+		logger->AddLogMessage(LOGERROR, allocatorName);
+		logger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Slab Allocator: Too big of allocation"));
 		return nullptr;
 	}
 
@@ -159,6 +165,8 @@ void* SlabAllocator::CAllocate(int _allocSize, int alignment)
 
 	if ((dataAllocator + _allocSize) > dataSize)
 	{
+		logger->AddLogMessage(LOGERROR, allocatorName);
+		logger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Slab Allocator: Too big of allocation"));
 		return nullptr;
 	}
 
@@ -175,6 +183,8 @@ void* SlabAllocator::CAllocate(int _allocSize)
 
 	if ((dataAllocator + _allocSize) > dataSize)
 	{
+		logger->AddLogMessage(LOGERROR, allocatorName);
+		logger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Slab Allocator: Too big of allocation"));
 		return nullptr;
 	}
 
@@ -252,6 +262,8 @@ int SlabAllocator::OffsetInAllocator(void* dataPtr)
 
 	if (dataPtrInT < dataHeadInT || dataPtrInT >= (dataHeadInT + dataSize))
 	{
+		logger->AddLogMessage(LOGERROR, allocatorName);
+		logger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Slab Allocator: Offset in underflow/overflow"));
 		return -1;
 	}
 
@@ -288,6 +300,8 @@ int DeviceSlabAllocator::Allocate(int _allocSize, int alignment)
 
 	if ((out + _allocSize) > dataSize)
 	{
+		logger->AddLogMessage(LOGERROR, allocatorName);
+		logger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Device Slab Allocator: Too big of an allocation"));
 		return -1;
 	}
 
@@ -301,17 +315,40 @@ std::pair<int, int> DeviceSlabAllocator::GetUsageAndCapacity() const
 
 void* TLSFAllocator::Allocate(int _allocSize, int alignment)
 {
-	return TLSFAllocate(&tlsf, _allocSize, alignment);
+	void* ret = TLSFAllocate(&tlsf, _allocSize, alignment);
+
+	if (!ret)
+	{
+		logger->AddLogMessage(LOGERROR, allocatorName);
+		logger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("TLSF Allocator: Allocation Failed"));
+	}
+	
+	return ret;
 }
 
 void* TLSFAllocator::Allocate(int _allocSize)
 {
-	return TLSFAllocate(&tlsf, _allocSize);
+	void* ret = TLSFAllocate(&tlsf, _allocSize);
+
+	if (!ret)
+	{
+		logger->AddLogMessage(LOGERROR, allocatorName);
+		logger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("TLSF Allocator: Allocation Failed"));
+	}
+
+	return ret;
 }
 
 void* TLSFAllocator::CAllocate(int _allocSize, int alignment)
 {
 	void* alloc = TLSFAllocate(&tlsf, _allocSize, alignment);
+
+	if (!alloc)
+	{
+		logger->AddLogMessage(LOGERROR, allocatorName);
+		logger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("TLSF Allocator: Allocation Failed"));
+		return alloc;
+	}
 
 	memset(alloc, 0, _allocSize);
 
@@ -321,6 +358,13 @@ void* TLSFAllocator::CAllocate(int _allocSize, int alignment)
 void* TLSFAllocator::CAllocate(int _allocSize)
 {
 	void* alloc = TLSFAllocate(&tlsf, _allocSize);
+
+	if (!alloc)
+	{
+		logger->AddLogMessage(LOGERROR, allocatorName);
+		logger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("TLSF Allocator: Allocation Failed"));
+		return alloc;
+	}
 
 	memset(alloc, 0, _allocSize);
 
@@ -334,12 +378,20 @@ void TLSFAllocator::Free(void* _allocPtr)
 
 void* TLSFAllocator::Realloc(void* memaddress, int _allocSize)
 {
-	return TLSFRealloc(&tlsf, memaddress, _allocSize);
+	void* alloc = TLSFRealloc(&tlsf, memaddress, _allocSize);
+
+	if (!alloc)
+	{
+		logger->AddLogMessage(LOGERROR, allocatorName);
+		logger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("TLSF Allocator: Reallocation Failed"));
+		return alloc;
+	}
+
+	return alloc;
 }
 
 void TLSFAllocator::Reset()
 {
-	//dataAllocator = 0;
 	memset((void*)tlsf.memPool, 0, tlsf.totalMemPoolSize);
 	TLSFInitialize(&tlsf, (void*)tlsf.memPool, tlsf.totalMemPoolSize);
 }
@@ -400,6 +452,8 @@ int TLSFAllocator::OffsetInAllocator(void* dataPtr)
 
 	if (dataPtrInT < dataHeadInT || dataPtrInT >= (dataHeadInT + tlsf.totalMemPoolSize))
 	{
+		logger->AddLogMessage(LOGERROR, allocatorName);
+		logger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("TLSF Allocator: Offset into allocator failed"));
 		return -1;
 	}
 

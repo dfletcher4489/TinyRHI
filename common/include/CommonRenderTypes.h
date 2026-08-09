@@ -58,12 +58,6 @@ enum class ImageLayout
 	TRANSFER_SRC_OPTIMAL = 10
 };
 
-enum class ImageUsage
-{
-	DEPTHSTENCIL = 0,
-	COLOR = 1
-};
-
 enum class ComponentFormatType
 {
 	NO_BUFFER_FORMAT = 0,
@@ -129,6 +123,38 @@ enum class ShaderResourceAction
 	SHADERREAD = 1,
 	SHADERWRITE = 2,
 	SHADERREADWRITE = 3
+};
+
+enum ImageViewAspectMaskBits
+{
+	COLOR_IMAGE_ASPECT = 1,
+	DEPTH_IMAGE_ASPECT = 2,
+	STENCIL_IMAGE_ASPECT = 4,
+};
+
+typedef int ImageViewAspectMask;
+
+enum class ImageType
+{
+	IMAGE_1D = 1,
+	IMAGE_2D = 2,
+	IMAGE_3D = 3,
+	IMAGE_CUBE = 4,
+};
+
+typedef int ImageUsageFlags;
+
+enum ImageUsageFlagBits
+{
+	TRANSFER_SRC = 1,
+	TRANSFER_DEST = 2,
+	SAMPLED = 4,
+	STORAGE = 8,
+	DEPTH_ATTACHMENT = 16,
+	STENCIL_ATTACHMENT = 32,
+	COLOR_ATTACHMENT = 64,
+	TRANSIENT_ATTACHMENT = 128,
+	RESOLVE_ATTACHMENT = 256,
 };
 
 enum ShaderStageTypeBits
@@ -385,15 +411,6 @@ struct GenericPipelineStateInfo
 	BlendAttachments blendAttachments[4];
 };
 
-enum class AttachmentDescriptionType
-{
-	COLORATTACH = 0,
-	RESOLVEATTACH = 1,
-	DEPTHATTACH = 2,
-	STENCILATTACH = 3,
-	DEPTHSTENCILATTACH = 4,
-};
-
 enum class AttachmentViewType
 {
 	SWAPCHAIN = 1,
@@ -421,7 +438,7 @@ struct AttachmentResource
 
 struct AttachmentDescription
 {
-	AttachmentDescriptionType attachType;
+	ImageUsageFlags attachType;
 	AttachmentLoadUsage loadOp;
 	AttachmentStoreUsage storeOp;
 	ImageLayout srcLayout;
@@ -452,21 +469,10 @@ struct AttachmentGraph
 	AttachmentResource resources[12];
 };
 
-enum class AttachmentResourceInstanceUsage
-{
-	COLOR_ATTACHMENT_USAGE = 1,
-	DEPTH_ATTACHMENT_USAGE = 2,
-	STENCIL_ATTACHMENT_USAGE = 4,
-	RESOLVE_ATTACHMENT_USAGE = 8,
-	PRESERVE_ATTACHMENT_USAGE = 16,
-	INPUT_ATTACHMENT_USAGE = 32,
-	DEPTH_STENCIL_ATTACHMENT_USAGE = 64,
-};
-
 struct AttachmentResourceInstance
 {
 	int** textureIds;
-	AttachmentResourceInstanceUsage usage;
+	ImageUsageFlags usage;
 	int sampLo;
 	int sampHi;
 	int imageCount;
@@ -627,36 +633,7 @@ enum class DescriptorTypes
 	COMBINED_IMAGE_SAMPLER_DESCRIPTOR = 6,
 };
 
-enum ImageViewAspectMaskBits
-{
-	COLOR_IMAGE_ASPECT = 1,
-	DEPTH_IMAGE_ASPECT = 2,
-	STENCIL_IMAGE_ASPECT = 4,
-};
 
-typedef int ImageViewAspectMask;
-
-enum class ImageType
-{
-	IMAGE_1D = 1,
-	IMAGE_2D = 2,
-	IMAGE_3D = 3,
-	IMAGE_CUBE = 4,
-};
-
-typedef int ImageUsageFlags;
-
-enum ImageUsageFlagBits
-{
-	TRANSFER_SRC = 1,
-	TRANSFER_DEST = 2,
-	SAMPLED = 4,
-	STORAGE = 8,
-	DEPTH_ATTACHMENT = 16,
-	STENCIL_ATTACHMENT = 32,
-	COLOR_ATTACHMENT = 64,
-	TRANSIENT_ATTACHMENT = 128,
-};
 
 enum class BarrierType
 {

@@ -24,7 +24,7 @@ struct ShaderResourceManager
 
 	ShaderResourceManager() = default;
 
-	void Create(Allocator* shaderResourceMemoryAllocator, uint32_t maxDescriptorSets);
+	void Create(Allocator* shaderResourceMemoryAllocator, uint32_t maxDescriptorSets, StringView descriptorPoolName, Logger* logger);
 
 	int AddShaderToSets(ShaderResourceSet* location);
 

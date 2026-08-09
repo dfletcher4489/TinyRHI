@@ -437,3 +437,7 @@ namespace GlobalRenderer
 {
 	extern RenderInstance gRenderInstance;
 }
+
+int DestroyDriverImageView(RHIDevice* device, EntryHandle viewIndex);
+
+int DestroyDriverImage(RHIDevice* device, EntryHandle imageIndex);

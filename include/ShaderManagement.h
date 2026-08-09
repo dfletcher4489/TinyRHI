@@ -42,11 +42,11 @@ struct ShaderGraphsHolder
 
 	ShaderGraphsHolder() = default;
 
-	void Create(Allocator* shaderGraphAllocator, uint32_t maxShaderGraphs, uint32_t maxShaderHandles)
+	void Create(Allocator* shaderGraphAllocator, uint32_t maxShaderGraphs, uint32_t maxShaderHandles, StringView shadersGraphsAllocatorName, StringView shadersAllocatorName, Logger* loggerForBoth)
 	{
-		shaderGraphPtrs.Create(shaderGraphAllocator, maxShaderGraphs);
+		shaderGraphPtrs.Create(shaderGraphAllocator, maxShaderGraphs, shadersGraphsAllocatorName, loggerForBoth);
 		
-		shaders.Create(shaderGraphAllocator, maxShaderHandles);
+		shaders.Create(shaderGraphAllocator, maxShaderHandles, shadersAllocatorName, loggerForBoth);
 
 		shaderDetails = (ShaderDetails*)shaderGraphAllocator->Allocate(sizeof(ShaderDetails) * maxShaderHandles, alignof(ShaderDetails));
 	}

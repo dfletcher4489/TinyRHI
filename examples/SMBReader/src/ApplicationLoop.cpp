@@ -397,6 +397,8 @@ struct Font
 	int fontWidths[256];
 };
 
+static Logger mainAppLogger{};
+
 static int mainGPU = -1;
 static int mainLogicalDevice = -1;
 static int mainPresentationSwapChain = -1;
@@ -406,7 +408,11 @@ static int mainDeviceBuffer = -1;
 static int mainDescriptorManagerIndex = -1;
 static int mainCommandStreamIndex = -1;
 
-static DeviceSlabAllocator mainHostAllocator, mainDeviceAllocator;
+static size_t mainHostSize = 128 * MiB;
+static size_t mainDeviceSize = 64 * MiB;
+
+static DeviceSlabAllocator mainHostAllocator(mainHostSize, STRING_VIEW_FROM_LITERAL("Main GPU Host Driver Buffer"), &mainAppLogger);
+static DeviceSlabAllocator mainDeviceAllocator(mainDeviceSize, STRING_VIEW_FROM_LITERAL("Main GPU Device Driver Buffer"), &mainAppLogger);
 
 static IndirectDrawData mainIndirectDrawData;
 static IndirectDrawData debugIndirectDrawData;
@@ -482,9 +488,9 @@ static const int globalGeometryRenderableCountMax = globalGeometryRenderableSize
 
 static int shadowMapIndex = 0;
 
-static DeviceSlabAllocator indexBufferAlloc(globalIndexBufferSize);
+static DeviceSlabAllocator indexBufferAlloc(globalIndexBufferSize, STRING_VIEW_FROM_LITERAL("Global Index Buffer"), &mainAppLogger);
 
-static DeviceSlabAllocator vertexBufferAlloc(globalVertexBufferSize);
+static DeviceSlabAllocator vertexBufferAlloc(globalVertexBufferSize, STRING_VIEW_FROM_LITERAL("Global Vertex Buffer"), &mainAppLogger);
 
 static TextureDictionary mainDictionary;
 
@@ -550,8 +556,6 @@ static char RenderableAllocQueueMemory[512];
 static CircularMessageQueueMPSC DebugAllocQueue{ DebugAllocQueueMemory, sizeof(DebugAllocQueueMemory) };
 static CircularMessageQueueMPSC RenderableAllocQueue{ RenderableAllocQueueMemory, sizeof(RenderableAllocQueueMemory) };
 
-static Logger mainAppLogger{};
-
 static int mainLinearSampler = -1;
 static int mainNearestSampler = -1;
 
@@ -560,7 +564,10 @@ static uint32_t swcImageIndex = 0;
 static int mainRTVIndex;
 static int mainDSVIndex;
 
-static DeviceSlabAllocator mainRTVSlab, mainDSVSlab;
+size_t mainRTVSize = 800 * MiB, mainDSVSize = 1024 * MiB;
+
+static DeviceSlabAllocator mainRTVSlab(mainRTVSize, STRING_VIEW_FROM_LITERAL("Main RTV Slab Allocator"), &mainAppLogger);
+static DeviceSlabAllocator mainDSVSlab(mainDSVSize, STRING_VIEW_FROM_LITERAL("Main DSV Slab Allocator"), &mainAppLogger);
 
 static int graphNoMSAAIndex = -1;
 static int graphMSAAIndex = -1;
@@ -596,12 +603,12 @@ static char PollingThreadStringViewMemory[4 * KiB];
 static char LoggerMessageMemory[64 * KiB];
 static char MainWindowEventBuffer[KiB];
 
-static TLSFAllocator RenderInstanceMemoryAllocator{ RenderInstanceMemoryPool, sizeof(RenderInstanceMemoryPool) };
-static RingAllocator RenderInstanceTemporaryAllocator{ RenderInstanceTemporaryPool, sizeof(RenderInstanceTemporaryPool) };
-static RingAllocator AppInstanceTempAllocator{ AppInstanceTempMemory, sizeof(AppInstanceTempMemory) };
-static SlabAllocator GlobaScratchAllocator{ GlobalInputScratchMemory, sizeof(GlobalInputScratchMemory) };
+static TLSFAllocator RenderInstanceMemoryAllocator{ RenderInstanceMemoryPool, sizeof(RenderInstanceMemoryPool), STRING_VIEW_FROM_LITERAL("Global Render Instance Storage Buffer"), &mainAppLogger };
+static RingAllocator RenderInstanceTemporaryAllocator{ RenderInstanceTemporaryPool, sizeof(RenderInstanceTemporaryPool), STRING_VIEW_FROM_LITERAL("Global Render Instance Frame Buffer"), &mainAppLogger };
+static RingAllocator AppInstanceTempAllocator{ AppInstanceTempMemory, sizeof(AppInstanceTempMemory), STRING_VIEW_FROM_LITERAL("Global App Instance Temporary Buffer"), &mainAppLogger };
+static SlabAllocator GlobaScratchAllocator{ GlobalInputScratchMemory, sizeof(GlobalInputScratchMemory), STRING_VIEW_FROM_LITERAL("Global App Instance Storage Buffer"), &mainAppLogger };
 static MessageQueue ThreadSharedMessageQueue{ PollingThreadSharedCmdMemory, sizeof(PollingThreadSharedCmdMemory) };
-static RingAllocator ThreadSharedStringViewAllocator{ PollingThreadStringViewMemory, sizeof(PollingThreadStringViewMemory) };
+static RingAllocator ThreadSharedStringViewAllocator{ PollingThreadStringViewMemory, sizeof(PollingThreadStringViewMemory), STRING_VIEW_FROM_LITERAL("Polling Threaded Share Buffer"), &mainAppLogger };
 
 static char SMBThreadedFileInputMemory[48 * MiB];
 static char SMBThreadedFileScratchMemory[60 * KiB];
@@ -636,30 +643,30 @@ static const int SMBArenasOffset[MAX_SMB_ARENAS] =
 
 static SlabAllocator SMBThreadedFileInputAllocators[MAX_SMB_ARENAS] =
 {
-	{SMBThreadedFileInputMemory					    , SMBArenasSize[0] },
-	{SMBThreadedFileInputMemory + SMBArenasOffset[1], SMBArenasSize[1] },
-	{SMBThreadedFileInputMemory + SMBArenasOffset[2], SMBArenasSize[2] },
-	{SMBThreadedFileInputMemory + SMBArenasOffset[3], SMBArenasSize[3] },
-	{SMBThreadedFileInputMemory + SMBArenasOffset[4], SMBArenasSize[4] },
-	{SMBThreadedFileInputMemory + SMBArenasOffset[5], SMBArenasSize[5] },
-	{SMBThreadedFileInputMemory + SMBArenasOffset[6], SMBArenasSize[6] },
-	{SMBThreadedFileInputMemory + SMBArenasOffset[7], SMBArenasSize[7] },
-	{SMBThreadedFileInputMemory + SMBArenasOffset[8], SMBArenasSize[8] },
-	{SMBThreadedFileInputMemory + SMBArenasOffset[9], SMBArenasSize[9] },
+	{SMBThreadedFileInputMemory					    , SMBArenasSize[0], STRING_VIEW_FROM_LITERAL("SMB Threaded File Input Memory #1"), &mainAppLogger },
+	{SMBThreadedFileInputMemory + SMBArenasOffset[1], SMBArenasSize[1], STRING_VIEW_FROM_LITERAL("SMB Threaded File Input Memory #2"), &mainAppLogger },
+	{SMBThreadedFileInputMemory + SMBArenasOffset[2], SMBArenasSize[2], STRING_VIEW_FROM_LITERAL("SMB Threaded File Input Memory #3"), &mainAppLogger },
+	{SMBThreadedFileInputMemory + SMBArenasOffset[3], SMBArenasSize[3], STRING_VIEW_FROM_LITERAL("SMB Threaded File Input Memory #4"), &mainAppLogger },
+	{SMBThreadedFileInputMemory + SMBArenasOffset[4], SMBArenasSize[4], STRING_VIEW_FROM_LITERAL("SMB Threaded File Input Memory #5"), &mainAppLogger },
+	{SMBThreadedFileInputMemory + SMBArenasOffset[5], SMBArenasSize[5], STRING_VIEW_FROM_LITERAL("SMB Threaded File Input Memory #6"), &mainAppLogger },
+	{SMBThreadedFileInputMemory + SMBArenasOffset[6], SMBArenasSize[6], STRING_VIEW_FROM_LITERAL("SMB Threaded File Input Memory #7"), &mainAppLogger },
+	{SMBThreadedFileInputMemory + SMBArenasOffset[7], SMBArenasSize[7], STRING_VIEW_FROM_LITERAL("SMB Threaded File Input Memory #8"), &mainAppLogger },
+	{SMBThreadedFileInputMemory + SMBArenasOffset[8], SMBArenasSize[8], STRING_VIEW_FROM_LITERAL("SMB Threaded File Input Memory #9"), &mainAppLogger },
+	{SMBThreadedFileInputMemory + SMBArenasOffset[9], SMBArenasSize[9], STRING_VIEW_FROM_LITERAL("SMB Threaded File Input Memory #10"), &mainAppLogger },
 };
 
 static SlabAllocator SMBThreadedFileScratchAllocators[MAX_SMB_ARENAS] =
 {
-	{SMBThreadedFileScratchMemory + (6 * KiB * 0), 6 * KiB  },
-	{SMBThreadedFileScratchMemory + (6 * KiB * 1), 6 * KiB  },
-	{SMBThreadedFileScratchMemory + (6 * KiB * 2), 6 * KiB  },
-	{SMBThreadedFileScratchMemory + (6 * KiB * 3), 6 * KiB  },
-	{SMBThreadedFileScratchMemory + (6 * KiB * 4), 6 * KiB  },
-	{SMBThreadedFileScratchMemory + (6 * KiB * 5), 6 * KiB  },
-	{SMBThreadedFileScratchMemory + (6 * KiB * 6), 6 * KiB  },
-	{SMBThreadedFileScratchMemory + (6 * KiB * 7), 6 * KiB  },
-	{SMBThreadedFileScratchMemory + (6 * KiB * 8), 6 * KiB  },
-	{SMBThreadedFileScratchMemory + (6 * KiB * 9), 6 * KiB  },
+	{SMBThreadedFileScratchMemory + (6 * KiB * 0), 6 * KiB, STRING_VIEW_FROM_LITERAL("SMB Threaded File Temp Memory #1"), &mainAppLogger   },
+	{SMBThreadedFileScratchMemory + (6 * KiB * 1), 6 * KiB, STRING_VIEW_FROM_LITERAL("SMB Threaded File Temp Memory #2"), &mainAppLogger   },
+	{SMBThreadedFileScratchMemory + (6 * KiB * 2), 6 * KiB, STRING_VIEW_FROM_LITERAL("SMB Threaded File Temp Memory #3"), &mainAppLogger   },
+	{SMBThreadedFileScratchMemory + (6 * KiB * 3), 6 * KiB, STRING_VIEW_FROM_LITERAL("SMB Threaded File Temp Memory #4"), &mainAppLogger   },
+	{SMBThreadedFileScratchMemory + (6 * KiB * 4), 6 * KiB, STRING_VIEW_FROM_LITERAL("SMB Threaded File Temp Memory #5"), &mainAppLogger   },
+	{SMBThreadedFileScratchMemory + (6 * KiB * 5), 6 * KiB, STRING_VIEW_FROM_LITERAL("SMB Threaded File Temp Memory #6"), &mainAppLogger   },
+	{SMBThreadedFileScratchMemory + (6 * KiB * 6), 6 * KiB, STRING_VIEW_FROM_LITERAL("SMB Threaded File Temp Memory #7"), &mainAppLogger   },
+	{SMBThreadedFileScratchMemory + (6 * KiB * 7), 6 * KiB, STRING_VIEW_FROM_LITERAL("SMB Threaded File Temp Memory #8"), &mainAppLogger   },
+	{SMBThreadedFileScratchMemory + (6 * KiB * 8), 6 * KiB, STRING_VIEW_FROM_LITERAL("SMB Threaded File Temp Memory #9"), &mainAppLogger   },
+	{SMBThreadedFileScratchMemory + (6 * KiB * 9), 6 * KiB, STRING_VIEW_FROM_LITERAL("SMB Threaded File Temp Memory #10"), &mainAppLogger  },
 };
 
 static std::atomic_bool arenasUsed[MAX_SMB_ARENAS];
@@ -669,9 +676,9 @@ static char geometryObjectSpecificMemory[4 * KiB];
 static char mainTextureCacheMemory[256 * MiB];
 static char mainOSDataManagement[32 * KiB];
 
-static SlabAllocator osAllocator(mainOSDataManagement, sizeof(mainOSDataManagement));
-static SlabAllocator vertexAndIndicesAlloc(vertexAndIndicesMemory, sizeof(vertexAndIndicesMemory));
-static SlabAllocator geometryObjectSpecificAlloc(geometryObjectSpecificMemory, sizeof(geometryObjectSpecificMemory));
+static SlabAllocator osAllocator(mainOSDataManagement, sizeof(mainOSDataManagement), STRING_VIEW_FROM_LITERAL("OS Data Allocator"), &mainAppLogger);
+static SlabAllocator vertexAndIndicesAlloc(vertexAndIndicesMemory, sizeof(vertexAndIndicesMemory), STRING_VIEW_FROM_LITERAL("CPU Vertex and Index Data Allocator"), &mainAppLogger);
+static SlabAllocator geometryObjectSpecificAlloc(geometryObjectSpecificMemory, sizeof(geometryObjectSpecificMemory), STRING_VIEW_FROM_LITERAL("Geomerty Specific Data Allocator"), &mainAppLogger);
 
 static ShaderResourceSetHandle mainFullScreen;
 
@@ -710,7 +717,7 @@ static int globalUITextIndirectDispatchCommands = -1;
 static int globalUIFontWidthsBuffer = -1;
 static int globalUIFontWidthsBufferSize = 16 * KiB;
 
-static DeviceSlabAllocator globalUITextAllocator(4*KiB);
+static DeviceSlabAllocator globalUITextAllocator(4*KiB, STRING_VIEW_FROM_LITERAL("Global Device UI Text Data"), &mainAppLogger);
 
 static const char* globalUITestText = "Test";
 static const char* globalUITestText2 = "Test2";
@@ -727,7 +734,7 @@ static Vector2i tempCursorPos = { 200, 200 };
 static Font mainFontData[16];
 static int mainFontImage[16];
 static int globalUIFontAllocIndex = 0;
-static DeviceSlabAllocator globalUIFontWidths{ 16 * KiB };
+static DeviceSlabAllocator globalUIFontWidths{ 16 * KiB, STRING_VIEW_FROM_LITERAL("Global Device UI Font Widths Data"), &mainAppLogger };
 static ShaderResourceSetHandle globalFontImageDescriptor;
 
 static std::array<int, DEPTH_MAX+2> depths = { 0, 1, 2, 3, 4, 5, 6, 7, 8 };
@@ -1000,13 +1007,13 @@ void ApplicationLoop::Execute()
 	{
 		InitializeRuntime();
 
-		meshCPUData.Create(&GlobaScratchAllocator, globalMeshCountMax);
+		meshCPUData.Create(&GlobaScratchAllocator, globalMeshCountMax, STRING_VIEW_FROM_LITERAL("Mesh CPU Data Pool Allocator"), &mainAppLogger);
 
-		geometryCPUData.Create(&GlobaScratchAllocator, globalGeometryDescriptionsCountMax);
+		geometryCPUData.Create(&GlobaScratchAllocator, globalGeometryDescriptionsCountMax, STRING_VIEW_FROM_LITERAL("Geometry CPU Data Pool Allocator"), &mainAppLogger);
 
-		renderablesGeomObjects.Create(&GlobaScratchAllocator, globalGeometryRenderableCount);
+		renderablesGeomObjects.Create(&GlobaScratchAllocator, globalGeometryRenderableCountMax, STRING_VIEW_FROM_LITERAL("Geometry GPU Data Pool Allocator"), &mainAppLogger);
 
-		renderablesMeshObjects.Create(&GlobaScratchAllocator, globalRenderableMax);
+		renderablesMeshObjects.Create(&GlobaScratchAllocator, globalRenderableMax, STRING_VIEW_FROM_LITERAL("Mesh GPU Data Pool Allocator"), &mainAppLogger);
 
 		cleaned = false;
 
@@ -3893,16 +3900,8 @@ void ApplicationLoop::InitializeRuntime()
 
 	mainDescriptorManagerIndex = GlobalRenderer::gRenderInstance.CreateDescriptorHeap(mainLogicalDevice, descriptorTypes.data(), descriptorCounts.data(), 4, 100, 50);
 
-	size_t mainHostSize = 128 * MiB;
-	size_t mainDeviceSize = 64 * MiB;
-
 	mainDeviceBuffer = GlobalRenderer::gRenderInstance.CreateUniversalBuffer(mainLogicalDevice, mainDeviceSize, MemoryTypeBits::DEVICE_MEMORY_TYPE);
 	mainHostBuffer = GlobalRenderer::gRenderInstance.CreateUniversalBuffer(mainLogicalDevice, mainHostSize, MemoryTypeBits::HOST_MEMORY_COHERENT_TYPE);
-
-	mainHostAllocator.dataAllocator = 0;
-	mainHostAllocator.dataSize = mainHostSize;
-	mainDeviceAllocator.dataSize = mainDeviceSize;
-	mainDeviceAllocator.dataAllocator = 0;
 
 	ImageFormat requestedColorFormats = ImageFormat::B8G8R8A8;
 
@@ -3911,8 +3910,6 @@ void ApplicationLoop::InitializeRuntime()
 	ImageFormat requestedDSVFormats = ImageFormat::D24UNORMS8STENCIL;
 
 	ImageFormat mainDepthFormat = GlobalRenderer::gRenderInstance.FindSupportedDepthFormat(mainLogicalDevice, &requestedDSVFormats, 1);
-
-	size_t mainRTVSize = 800 * MiB, mainDSVSize = 1024 * MiB;
 
 	mainRTVIndex = GlobalRenderer::gRenderInstance.CreateImagePool(
 		mainLogicalDevice, mainRTVSize, mainColorFormat, 4096, 4096,
@@ -3927,12 +3924,6 @@ void ApplicationLoop::InitializeRuntime()
 		ImageUsageFlagBits::SAMPLED | ImageUsageFlagBits::DEPTH_ATTACHMENT | 
 		ImageUsageFlagBits::STENCIL_ATTACHMENT,
 		MemoryTypeBits::DEVICE_MEMORY_TYPE);
-
-	mainRTVSlab.dataAllocator = 0;
-	mainRTVSlab.dataSize = mainRTVSize;
-
-	mainDSVSlab.dataAllocator = 0;
-	mainDSVSlab.dataSize = mainDSVSize;
 
 	BasicShadow = GlobalRenderer::gRenderInstance.CreateAttachmentGraph(mainLogicalDevice, &mainLayoutAttachments[0], nullptr);
 	MSAAShadowMapping = GlobalRenderer::gRenderInstance.CreateAttachmentGraph(mainLogicalDevice, &mainLayoutAttachments[1], nullptr);

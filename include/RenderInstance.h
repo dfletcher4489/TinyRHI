@@ -126,7 +126,7 @@ struct RenderInstance
 
 	int RecreateSwapChain(int deviceSelection, int swapChainIndex, uint32_t width, uint32_t height);
 
-	int CreateAttachmentResources(int deviceSelection, int graphIndex, int renderPassIndex, int imageCount, EntryHandle* backBufferViews, int* backBufferTextureIds, uint32_t width, uint32_t height,
+	int CreateAttachmentResources(int deviceSelection, int graphIndex, int renderPassIndex, int imageCount, int* backBufferTextureIds, uint32_t width, uint32_t height,
 		RenderPassType rpType, AttachmentClear* clears, DeviceSlabAllocator* rsvAllocator, DeviceSlabAllocator* dsvAllocator, int rsvPoolIndex, int dsvPoolIndex);
 
 	int CreateSwapChainAttachment(int deviceSelection, int swapChainIndex, int graphIndex, int renderPassIndex, AttachmentClear* clears, DeviceSlabAllocator* rsvAllocator, DeviceSlabAllocator* dsvAllocator, int rsvPoolIndex, int dsvPoolIndex);
@@ -147,7 +147,7 @@ struct RenderInstance
 
 	void CreatePipelines(StringView* pipelineDescriptions, int pipelineDescriptionsCount);
 
-	void CreateSwapChainData(int deviceSelection, EntryHandle swapChainIndex, uint32_t width, uint32_t height, bool recreate);
+	int CreateDriverSwapChainData(RHIDevice* rhiDevice, EntryHandle swapChainIndex, uint32_t width, uint32_t height, bool recreate);
 
 	void UploadHostTransfers(int deviceSelection);
 
@@ -189,7 +189,7 @@ struct RenderInstance
 
 	void DecreaseMSAA(int frameGraph, int renderPassIndex);
 
-	void CreateShaderResourceMap(int deviceSelection, ShaderGraph *graph);
+	int CreateShaderResourceMap(RHIDevice* device, ShaderGraph *graph);
 
 	ShaderResourceSetBuilder AllocateShaderResourceSet(int descriptorManagerIndex, int shaderGraphIndex, int targetSet, int setCount);
 
@@ -239,7 +239,7 @@ struct RenderInstance
 
 	int CreateSwapChainHandle(int deviceSelection, int surfaceIndex, ImageFormat mainBackBufferColorFormat, uint32_t width, uint32_t height);
 
-	void CreateShaderGraphs(int deviceSelection, StringView* shaderGraphLayouts, int shaderGraphLayoutsCount);
+	int CreateShaderGraphs(int deviceSelection, StringView* shaderGraphLayouts, int shaderGraphLayoutsCount);
 
 	int CreateGraphicRenderStateObject(int deviceSelection, int shaderGraphIndex, int pipelineDescriptionIndex, int* frameGraphAttachments, int* perFrameRenderPassSelection, int frameGraphCount);
 	int CreateComputePipelineStateObject(int deviceSelection, int shaderGraphIndex);
@@ -300,9 +300,10 @@ struct RenderInstance
 		ImageType imageType, int sampleCount,
 		ImageFormat format, ImageUsageFlags usageFlags,
 		DeviceSlabAllocator* attachmentAllocator, ImageLayout initialLayout,
-		VKDevice* dev, int imageMemoryPoolIndex, ResourceStatusType resourceType);
+		RHIDevice* dev, int imageMemoryPoolIndex, ResourceStatusType resourceType
+	);
 
-	int CreateAttachmentImageView(int textureIndex, uint32_t firstMip, uint32_t mipCount, uint32_t firstArrayLayer, uint32_t arrayLayerCount, ImageViewAspectMask mask, ImageLayout desiredLayout, VKDevice* dev);
+	int CreateAttachmentImageView(int textureIndex, uint32_t firstMip, uint32_t mipCount, uint32_t firstArrayLayer, uint32_t arrayLayerCount, ImageViewAspectMask mask, ImageLayout desiredLayout, RHIDevice* dev);
 
 	int CreateAttachmentImageView(int deviceSelection, int attachmentGraphInstance, int attachmentResourceIndex, uint32_t firstMip, uint32_t mipCount, uint32_t firstArrayLayer, uint32_t arrayLayerCount, ImageViewAspectMask mask, ImageLayout desiredLayout);
 
@@ -330,6 +331,8 @@ struct RenderInstance
 
 	RHIDevice* GetDeviceHandle(int deviceSelection);
 
+	void GetLastDriverError(RHIDevice* device, StringView headerMessage);
+
 	size_t GetNecessaryMemoryUsage(RenderInstanceCreateInfo* info);
 	
 	void DeletePhysicalDevice(int physicalDeviceIndex);
@@ -343,6 +346,10 @@ struct RenderInstance
 	void DeleteBufferHandle(int bufferHandleIndex);
 
 	void DeleteImagePools(int imagePoolIndex);
+
+	void DeleteRenderPass(RHIDevice* device, int renderPassIndex);
+
+	void DeleteShaderGraph(RHIDevice* device, int shaderGraphIndex);
 	
 	static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 3;
 
@@ -359,8 +366,6 @@ struct RenderInstance
 	PoolAllocator<RenderBufferDescription> bufferHandles{};
 
 	PoolAllocator<ImagePoolDescription> imagePools{};
-
-	PoolAllocator<RenderPipelineDescription> pipelineInstancesIdentifier{};
 
 	PoolAllocator<PipelineHandle> pipelineHandles{};
 	
@@ -441,3 +446,6 @@ namespace GlobalRenderer
 int DestroyDriverImageView(RHIDevice* device, EntryHandle viewIndex);
 
 int DestroyDriverImage(RHIDevice* device, EntryHandle imageIndex);
+
+int DestroyOldStyleRenderPass(RHIDevice* device, EntryHandle renderPass);
+

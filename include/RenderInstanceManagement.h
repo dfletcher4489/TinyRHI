@@ -175,15 +175,6 @@ struct PipelineHandle
 	int indirectDispatchCommandHandle;
 };
 
-struct PipelineInstanceData
-{
-	int frameGraphIndices[4];
-	int frameGraphRenderPasses[4];
-	int frameGraphPipelineIndices[4];
-	int frameGraphCount;
-	int pipelineCount;
-};
-
 enum GPUCommandStreamType
 {
 	ATTACHMENT_COMMANDS = 1,
@@ -759,6 +750,8 @@ struct RenderTimelineSync
 	uint64_t currentValue;
 };
 
+#define MAX_SWC_IMAGE_COUNT 4
+
 struct RenderSwapchainData
 {
 	EntryHandle swapChainIdx;
@@ -766,7 +759,7 @@ struct RenderSwapchainData
 	uint32_t height;
 	EntryHandle* rendererWaitSemaphores;
 	EntryHandle* rendererFinishedSemaphores;
-	int* textureIds;
+	int textureIds[MAX_SWC_IMAGE_COUNT];
 	uint32_t imageCount;
 };
 
@@ -835,12 +828,6 @@ struct RenderTextureDescription
 	uint32_t mipLayers;
 	uint32_t arrayLayers;
 	uint32_t viewCount;
-};
-
-struct RenderPipelineDescription
-{
-	PipelineInstanceData instanceData;
-	EntryHandle* pipelineIndices;
 };
 
 #define IMAGE_VIEW_ALL_MIPS ~0U

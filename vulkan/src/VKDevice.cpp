@@ -3166,7 +3166,7 @@ uint32_t VKDevice::BeginFrameForSwapchain(EntryHandle swapChainIndex, EntryHandl
 	VkSemaphore acquireSemaphore = GetSemaphore(acquireSemaphoreHandle);
 
 	if (!swapChain || !acquireSemaphore)
-		return ~0U;
+		return ~0UL;
 
 	uint32_t imageIndex = swapChain->AcquireNextSwapChainImage2(UINT64_MAX, acquireSemaphore, currentFrame);
 
@@ -3600,7 +3600,10 @@ int VKDevice::CommandBufferWaitOn(uint64_t timeout, EntryHandle bufferIndex)
 	VkResult res = vkWaitForFences(device, 1, &fence, VK_TRUE, timeout);
 
 	if (res == VK_TIMEOUT)
+	{
+		AddDeviceErrorCode((MINOR_CODE_PACK(DEVICE_VK_TYPE_COMMAND_BUFFER_FAILED) | DEVICE_VK_TYPE_TIMED_RESULT_FAILED), res);
 		return -1;
+	}
 
 	return 0;
 }
@@ -3626,10 +3629,8 @@ int VKDevice::CommandBufferResetFence(EntryHandle bufferIndex)
 
 	VkFence fence = GetFence(vkcb->fenceIdx);
 
-	if (!fence)
-		return -1;
-
-	vkResetFences(device, 1, &fence);
+	if (fence)
+		vkResetFences(device, 1, &fence);
 
 	return 0;
 }

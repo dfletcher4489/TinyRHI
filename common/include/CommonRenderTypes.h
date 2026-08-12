@@ -469,9 +469,14 @@ struct AttachmentGraph
 	AttachmentResource resources[12];
 };
 
+#define MAX_SAMPLE_COUNT_LEVEL 4
+#define MAX_SAMPLE_COUNT (1 << MAX_SAMPLE_COUNT_LEVEL)
+#define MAX_RESOURCE_IMAGES 4
+
+
 struct AttachmentResourceInstance
 {
-	int** textureIds;
+	int textureIds[MAX_SAMPLE_COUNT_LEVEL][MAX_RESOURCE_IMAGES];
 	ImageUsageFlags usage;
 	int sampLo;
 	int sampHi;

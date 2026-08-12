@@ -792,6 +792,17 @@ RHIDevice* RenderInstance::GetDeviceHandle(int deviceSelection)
 	return deviceContainer;
 }
 
+void RenderInstance::GetLastDriverError(RHIDevice* device, StringView headerMessage)
+{
+	internalRendererLogger->AddLogMessage(LOGERROR, headerMessage);
+
+	int strLength = 0;
+
+	char* string = device->device->PopErrorOffQueue(&strLength);
+
+	internalRendererLogger->AddLogMessage(LOGERROR, string, strLength);
+}
+
 void RenderInstance::CreateRenderInstance(RenderInstanceCreateInfo* info, Allocator* instanceStorageAllocator, RingAllocator* instanceCacheAllocator)
 {
 	cacheAllocator = instanceCacheAllocator;
@@ -837,8 +848,6 @@ void RenderInstance::CreateRenderInstance(RenderInstanceCreateInfo* info, Alloca
 	bufferHandles.Create(storageAllocator, info->maxBufferPoolsCount, STRING_VIEW_FROM_LITERAL("Buffer Handles Allocator"), internalRendererLogger);
 
 	imagePools.Create(storageAllocator, info->maxImagePoolsCount, STRING_VIEW_FROM_LITERAL("Image Pools Allocator"), internalRendererLogger);
-
-	pipelineInstancesIdentifier.Create(storageAllocator, info->maxPipelineInstances, STRING_VIEW_FROM_LITERAL("Pipeline Instances Identifier Allocator"), internalRendererLogger);
 
 	pipelineHandles.Create(storageAllocator, info->maxPipelineHandles, STRING_VIEW_FROM_LITERAL("Pipeline Handles Allocator"), internalRendererLogger);
 
@@ -993,9 +1002,7 @@ void RenderInstance::DestroySwapChainAttachments(int deviceSelection, EntryHandl
 
 	if (!swc)
 	{
-		int errorLength = 0;
-		char* errorString = dev->PopErrorOffQueue(&errorLength);
-		internalRendererLogger->AddLogMessage(LOGERROR, errorString, errorLength);
+		GetLastDriverError(rhiDevice, STRING_VIEW_FROM_LITERAL("Destroy Swap Chain Attachments"));
 		return;
 	}
 
@@ -1071,7 +1078,7 @@ int RenderInstance::RecreateSwapChain(int deviceSelection, int swapChainIndex, u
 
 		DestroySwapChainAttachments(deviceSelection, data->swapChainIdx);
 
-		CreateSwapChainData(deviceSelection, data->swapChainIdx, width, height, true);
+		CreateDriverSwapChainData(rhiDevice, data->swapChainIdx, width, height, true);
 
 		for (uint32_t i = 0; i < swc->imageCount; i++)
 		{
@@ -1127,7 +1134,7 @@ int RenderInstance::CreateAttachmentGraphInstance(int deviceSelection, Attachmen
 
 			int sampleCountHi = (resDesc->msaa ? (1 << (rhiDevice->container.relatedPhysDeviceInfo->maxMSAALevels)) : 1);
 
-			sampHi = RENDER_MAX(sampleCountHi, sampHi);
+			sampHi = RENDER_MIN(RENDER_MAX(sampleCountHi, sampHi), MAX_SAMPLE_COUNT);
 		}
 
 		int renderPassSampleCount = RENDER_MAX(findMSB(sampHi), 1);
@@ -1200,9 +1207,8 @@ int RenderInstance::CreateAttachmentGraphInstance(int deviceSelection, Attachmen
 
 			int sampleCountHi = (resDesc->msaa ? (1 << (rhiDevice->container.relatedPhysDeviceInfo->maxMSAALevels)) : 1);
 
-			sampHi = RENDER_MAX(sampleCountHi, sampHi);
+			sampHi = RENDER_MIN(RENDER_MAX(sampleCountHi, sampHi), MAX_SAMPLE_COUNT);
 
-			currResource->textureIds = nullptr;
 			currResource->usage = desc->attachType;
 			currResource->sampLo = sampleCountLo;
 			currResource->sampHi = sampleCountHi;
@@ -1227,6 +1233,20 @@ int RenderInstance::CreateAttachmentGraphInstance(int deviceSelection, Attachmen
 	}
 
 	return attachmentInstanceIndex;
+}
+
+void RenderInstance::DeleteRenderPass(RHIDevice* device, int renderPassIndex)
+{
+	EntryHandle* rp = renderPasses.Get(renderPassIndex);
+
+	if (*rp != EntryHandle())
+	{
+		DestroyOldStyleRenderPass(device, *rp);
+	}
+
+	*rp = EntryHandle();
+
+	renderPasses.Free(renderPassIndex);
 }
 
 int RenderInstance::CreateRenderPass(int deviceSelection, AttachmentGraphInstance* graphInstance)
@@ -1258,6 +1278,8 @@ int RenderInstance::CreateRenderPass(int deviceSelection, AttachmentGraphInstanc
 	{
 		return -1;
 	}
+
+	int currRenderPassIndex = headRenderPassIndex;
 
 	totalRenderPassesCreated = 0;
 
@@ -1349,12 +1371,24 @@ int RenderInstance::CreateRenderPass(int deviceSelection, AttachmentGraphInstanc
 
 		while (sampleCount--)
 		{
-			renderPasses.pool[headRenderPassIndex] = dev->CreateRenderPasses(rpb);
+			EntryHandle returnValue = renderPasses.pool[currRenderPassIndex] = dev->CreateRenderPasses(rpb);
+
+			if (returnValue == EntryHandle())
+			{
+				for (int rp = headRenderPassIndex; rp < headRenderPassIndex + totalRenderPassesCreated; rp++)
+				{
+					DeleteRenderPass(logicalDeviceIndices, rp);
+				}
+				
+				GetLastDriverError(logicalDeviceIndices, STRING_VIEW_FROM_LITERAL("RenderPass Creation Failed:"));
+
+				return -1;
+			}
 
 			if (graphInstance->consecutiveRenderPassBase < 0)
-				graphInstance->consecutiveRenderPassBase = headRenderPassIndex;
+				graphInstance->consecutiveRenderPassBase = currRenderPassIndex;
 
-			headRenderPassIndex++;
+			currRenderPassIndex++;
 
 			sampLo <<= 1;
 
@@ -1396,10 +1430,17 @@ uint32_t RenderInstance::BeginFrame(int deviceSelection, int swapChainIndex)
 
 	int32_t res = dev->CommandBufferWaitOn(UINT64_MAX, rhiDevice->container.currentCommandBufferIndex[currentFrame]);
 
-	uint32_t imageIndex = dev->BeginFrameForSwapchain(swcData->swapChainIdx, swcData->rendererWaitSemaphores[currentFrame], currentFrame);
+	uint32_t imageIndex = ~0UL;
+
+	if (!res)
+	{
+		imageIndex = dev->BeginFrameForSwapchain(swcData->swapChainIdx, swcData->rendererWaitSemaphores[currentFrame], currentFrame);
+	}
 
 	if (imageIndex == ~0UL)
 	{
+		GetLastDriverError(rhiDevice, STRING_VIEW_FROM_LITERAL("BeginFrame failed:"));
+
 		return imageIndex;
 	}
 
@@ -1445,6 +1486,7 @@ int RenderInstance::SubmitFrame(int deviceSelection, int swapChainIndex, uint32_
 
 	if (res)
 	{
+		GetLastDriverError(rhiDevice, STRING_VIEW_FROM_LITERAL("SubmitFrame - Submit Command Buffer failed:"));
 		return res;
 	}
 
@@ -1459,6 +1501,7 @@ int RenderInstance::SubmitFrame(int deviceSelection, int swapChainIndex, uint32_
 
 	if (res) 
 	{
+		GetLastDriverError(rhiDevice, STRING_VIEW_FROM_LITERAL("SubmitFrame - Present failed:"));
 		dev->CommandBufferWaitOn(UINT64_MAX, rhiDevice->container.currentCommandBufferIndex[currentFrame]);
 	}
 
@@ -1478,32 +1521,40 @@ int RenderInstance::CreateSwapChainAttachment(int deviceSelection, int swapChain
 {
 	RHIDevice* rhiDevice = GetDeviceHandle(deviceSelection);
 
-	VKDevice* dev = rhiDevice->device;
-
 	RenderSwapchainData* swcData = swapChains.Get(swapChainIndex);
 
-	VKSwapChain* swapChain = dev->GetSwapChain(swcData->swapChainIdx);
-
-	EntryHandle* backBuffers = swapChain->imageViews;
-
-	return CreateAttachmentResources(deviceSelection, graphIndex, renderPassIndex, swapChain->imageCount, backBuffers, swcData->textureIds, swcData->width, swcData->height, RenderPassType::SWAPCHAIN_IMAGE_COUNT, clears, rtvAllocator, dsvAllocator, rtvPoolIndex, dsvPoolIndex);
+	return CreateAttachmentResources(deviceSelection, graphIndex, renderPassIndex, swcData->imageCount, swcData->textureIds, swcData->width, swcData->height, RenderPassType::SWAPCHAIN_IMAGE_COUNT, clears, rtvAllocator, dsvAllocator, rtvPoolIndex, dsvPoolIndex);
 }
 
 int RenderInstance::CreatePerFrameAttachment(int deviceSelection, int graphIndex, int renderPassIndex, int imageCount, uint32_t width, uint32_t height, AttachmentClear* clears, DeviceSlabAllocator* rtvAllocator, DeviceSlabAllocator* dsvAllocator, int rtvPoolIndex, int dsvPoolIndex)
 {
-	return CreateAttachmentResources(deviceSelection, graphIndex, renderPassIndex, imageCount, nullptr, nullptr, width, height, RenderPassType::PER_FRAME_IMAGE_COUNT, clears, rtvAllocator, dsvAllocator, rtvPoolIndex, dsvPoolIndex);
+	return CreateAttachmentResources(deviceSelection, graphIndex, renderPassIndex, imageCount, nullptr, width, height, RenderPassType::PER_FRAME_IMAGE_COUNT, clears, rtvAllocator, dsvAllocator, rtvPoolIndex, dsvPoolIndex);
 }
 
 int RenderInstance::CreateResourceStatusActions(ResourceStatus* status, int numberOfCurrentActions, int numberOfCurrentStages, int numberOfCurrentLayouts)
 {
 	status->currAction = (BarrierAction*)AllocateFromStorageAllocator(sizeof(BarrierAction) * numberOfCurrentActions);
-	status->currStage = (BarrierStage*)AllocateFromStorageAllocator(sizeof(BarrierStage) * numberOfCurrentStages);
-	status->currentLayout = (ImageLayout*)AllocateFromStorageAllocator(sizeof(ImageLayout) * numberOfCurrentLayouts);
 
-	if (!status->currAction || !status->currStage || !status->currentLayout)
-		return -1;
+	if (status->currAction)
+	{
+		status->currStage = (BarrierStage*)AllocateFromStorageAllocator(sizeof(BarrierStage) * numberOfCurrentStages);
 
-	return 0;
+		if (status->currStage)
+		{
+			status->currentLayout = (ImageLayout*)AllocateFromStorageAllocator(sizeof(ImageLayout) * numberOfCurrentLayouts);
+
+			if (status->currentLayout)
+			{
+				return 0;
+			}
+		}
+	}
+	
+	storageAllocator->Free(status->currAction);
+	storageAllocator->Free(status->currStage);
+	storageAllocator->Free(status->currentLayout);
+
+	return -1;
 }
 
 void RenderInstance::InitializeResourceStatus(ResourceStatus* status, int numberOfCurrentActions, int numberOfCurrentStages, int numberOfCurrentLayouts, BarrierAction action, BarrierStage stage, ImageLayout imageLayout)
@@ -1525,14 +1576,24 @@ int RenderInstance::CreateAttachmentImage
 	ImageType imageType, int sampleCount, 
 	ImageFormat format, ImageUsageFlags usageFlags, 
 	DeviceSlabAllocator* attachmentAllocator, ImageLayout initialLayout,
-	VKDevice* dev, int imageMemoryPoolIndex, ResourceStatusType resourceType)
+	RHIDevice* dev, int imageMemoryPoolIndex, ResourceStatusType resourceType)
 {
 
 	int textureIndex = textureResourceHandles.Allocate();
 
-	if (textureIndex < 0)
+	int resourceStatus = resourceStatuses.Allocate();
+
+	ResourceStatus* status = resourceStatuses.Get(resourceStatus);
+
+	uint32_t totalResourceCount = mipCount * arrayLayers;
+
+	int createdResourceStatus = CreateResourceStatusActions(status, totalResourceCount, totalResourceCount, totalResourceCount);
+
+	if (textureIndex < 0 || resourceStatus < 0 || createdResourceStatus < 0)
 	{
-		return textureIndex;
+		resourceStatuses.Free(resourceStatus);
+		textureResourceHandles.Free(textureIndex);
+		return -1;
 	}
 
 	VkFormat vkAttachmentFormat = API::ConvertImageFormatToVulkanFormat(format);
@@ -1545,7 +1606,7 @@ int RenderInstance::CreateAttachmentImage
 
 	size_t actualImageSize = 0, actualImageAlignment = 0;
 
-	dev->GetImageMemorySizeAndAlignment(width, height,
+	dev->device->GetImageMemorySizeAndAlignment(width, height,
 		mipCount, vkAttachmentFormat, arrayLayers,
 		vkUsageFlags,
 		sampleCount,
@@ -1555,10 +1616,7 @@ int RenderInstance::CreateAttachmentImage
 
 	if (!actualImageSize || !actualImageAlignment)
 	{
-		int errorLength = 0;
-		char* errorString = dev->PopErrorOffQueue(&errorLength);
-		internalRendererLogger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("CreateAttachmentImage: GetImageMemorySizeAndAlignment failed"));
-		internalRendererLogger->AddLogMessage(LOGERROR, errorString, errorLength);
+		GetLastDriverError(dev, STRING_VIEW_FROM_LITERAL("CreateAttachmentImage: GetImageMemorySizeAndAlignment failed"));
 		return -1;
 	}
 
@@ -1566,10 +1624,11 @@ int RenderInstance::CreateAttachmentImage
 
 	if (actualMemAddr < 0)
 	{
+		internalRendererLogger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Create Attachment Image: Allocator Failed"));
 		return -1;
 	}
 
-	EntryHandle imageHandle = dev->CreateImage(
+	EntryHandle imageHandle = dev->device->CreateImage(
 		width, height,
 		mipCount, vkAttachmentFormat, arrayLayers,
 		vkUsageFlags,
@@ -1579,10 +1638,16 @@ int RenderInstance::CreateAttachmentImage
 		vkImageType, imagePools[imageMemoryPoolIndex].imagePoolHandle
 	);
 
+	if (imageHandle == EntryHandle())
+	{
+		GetLastDriverError(dev, STRING_VIEW_FROM_LITERAL("CreateAttachmentImage: CreateImage failed"));
+		//attachmentAllocator->
+		return -1;
+	}
+
 	RenderTextureDescription* desc = textureResourceHandles.Get(textureIndex);
-
-	int resourceStatus = desc->resourceStatusIndex = resourceStatuses.Allocate();
-
+	
+	desc->resourceStatusIndex = resourceStatus;
 	desc->arrayLayers = arrayLayers;
 	desc->mipLayers = mipCount;
 	desc->imageHeight = height;
@@ -1595,12 +1660,6 @@ int RenderInstance::CreateAttachmentImage
 	for (int i = 0; i < MAX_VIEWS_ATTACHED_TO_TEXTURE; i++)
 		desc->viewIndex[i] = -1;
 
-	ResourceStatus* status = resourceStatuses.Get(resourceStatus);
-
-	uint32_t totalResourceCount = mipCount * arrayLayers;
-
-	CreateResourceStatusActions(status, totalResourceCount, totalResourceCount, totalResourceCount);
-
 	status->resourceType = resourceType;
 
 	InitializeResourceStatus(status, totalResourceCount, totalResourceCount, totalResourceCount, 0, BEGINNING_OF_PIPE, initialLayout);
@@ -1608,9 +1667,20 @@ int RenderInstance::CreateAttachmentImage
 	return textureIndex;
 }
 
-int RenderInstance::CreateAttachmentImageView(int textureIndex, uint32_t firstMip, uint32_t mipCount, uint32_t firstArrayLayer, uint32_t arrayLayerCount, ImageViewAspectMask mask, ImageLayout desiredLayout, VKDevice* dev)
+int RenderInstance::CreateAttachmentImageView(int textureIndex, uint32_t firstMip, uint32_t mipCount, uint32_t firstArrayLayer, uint32_t arrayLayerCount, ImageViewAspectMask mask, ImageLayout desiredLayout, RHIDevice* dev)
 {
 	RenderTextureDescription* desc = textureResourceHandles.Get(textureIndex);
+
+	if (desc->viewCount == MAX_VIEWS_ATTACHED_TO_TEXTURE)
+	{
+		internalRendererLogger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Create Attachment View -- Too Many Textures Views"));
+		return -1;
+	}
+
+	int viewIndex =  textureViewsResourceHandles.Allocate();
+
+	if (viewIndex < 0)
+		return -1;
 
 	VkFormat vkAttachmentFormat = API::ConvertImageFormatToVulkanFormat(desc->format);
 
@@ -1618,14 +1688,18 @@ int RenderInstance::CreateAttachmentImageView(int textureIndex, uint32_t firstMi
 
 	VkImageAspectFlags aspectFlags = API::ConvertImageViewAspectMaskToVulkanImageAspectFlags(mask);
 
-	if (desc->viewCount == MAX_VIEWS_ATTACHED_TO_TEXTURE)
+	EntryHandle imageViewHandle = dev->device->CreateImageView(desc->textureIndex, firstMip, firstArrayLayer, mipCount, arrayLayerCount, vkAttachmentFormat, aspectFlags, vkImageViewType);
+
+	if (imageViewHandle == EntryHandle())
+	{
+		GetLastDriverError(dev, STRING_VIEW_FROM_LITERAL("Create Attachment View -- Image View Created Failed"));
+		textureViewsResourceHandles.Free(viewIndex);
 		return -1;
+	}
 
 	int texViewCount = desc->viewCount++;
 
-	EntryHandle imageViewHandle = dev->CreateImageView(desc->textureIndex, firstMip, firstArrayLayer, mipCount, arrayLayerCount, vkAttachmentFormat, aspectFlags, vkImageViewType);
-
-	int viewIndex = desc->viewIndex[texViewCount] = textureViewsResourceHandles.Allocate();
+	desc->viewIndex[texViewCount] = viewIndex;
 
 	RenderImageViewDescription* imageViewDesc = textureViewsResourceHandles.Get(viewIndex);
 
@@ -1644,8 +1718,6 @@ int RenderInstance::CreateAttachmentImageView(int deviceSelection, int attachmen
 {
 	RHIDevice* rhiDevice = GetDeviceHandle(deviceSelection);
 
-	VKDevice* dev = rhiDevice->device;
-
 	AttachmentGraphInstance* graphInstance = attachmentGraphsInstances.Get(attachmentGraphInstance);
 
 	AttachmentResourceInstance* resource = &graphInstance->resources[attachmentResourceIndex];
@@ -1662,7 +1734,7 @@ int RenderInstance::CreateAttachmentImageView(int deviceSelection, int attachmen
 		{
 			int textureHandle = resource->textureIds[currSampleCount][i];
 
-			texViewIndex = CreateAttachmentImageView(textureHandle, firstMip, mipCount, firstArrayLayer, arrayLayerCount, mask, desiredLayout, dev);
+			texViewIndex = CreateAttachmentImageView(textureHandle, firstMip, mipCount, firstArrayLayer, arrayLayerCount, mask, desiredLayout, rhiDevice);
 		}
 	}
 
@@ -1672,7 +1744,7 @@ int RenderInstance::CreateAttachmentImageView(int deviceSelection, int attachmen
 int RenderInstance::CreateAttachmentResources(
 	int deviceSelection,
 	int graphIndex, int renderPassIndex, int imageCount, 
-	EntryHandle* backBufferViews, int* backBufferTexturesIds, uint32_t width, uint32_t height, 
+	 int* backBufferTexturesIds, uint32_t width, uint32_t height, 
 	RenderPassType rpType, AttachmentClear* clears,
 	DeviceSlabAllocator* rtvAllocator, DeviceSlabAllocator* dsvAllocator, int rtvPoolIndex, int dsvPoolIndex)
 {
@@ -1725,21 +1797,13 @@ int RenderInstance::CreateAttachmentResources(
 
 		if (resourceTempl->viewType == AttachmentViewType::SWAPCHAIN)
 		{
-			resourceInst->textureIds = (int**)AllocateFromStorageAllocator(sizeof(int*) * 1);
-			resourceInst->textureIds[0] = backBufferTexturesIds;
+			for (int i = 0; i < imageCount; i++)
+			{
+				resourceInst->textureIds[0][i] = backBufferTexturesIds[i];
+			}
 		}
 		else
 		{
-			if (!resourceInst->textureIds)
-			{
-				resourceInst->textureIds = (int**)AllocateFromStorageAllocator(sizeof(int*) * sampleCount);
-
-				for (int c = 0; c<sampleCount; c++)
-				{ 
-					resourceInst->textureIds[c] = (int*)AllocateFromStorageAllocator(sizeof(int) * imageCount);
-				}
-			}
-
 			resourceInst->imageCount = imageCount;
 
 			ImageUsageFlags usage = resourceInst->usage;
@@ -1782,9 +1846,9 @@ int RenderInstance::CreateAttachmentResources(
 				{
 					int textureIndex = resourceInst->textureIds[v][g] = CreateAttachmentImage(imageWidth, imageHeight, 1, 1,
 						ImageType::IMAGE_2D, sampLo, resourceTempl->format,
-						usage, allocator, ImageLayout::UNDEFINED, dev, poolIndex, MANAGED_IMAGE_RESOURCE);
+						usage, allocator, ImageLayout::UNDEFINED, rhiDevice, poolIndex, MANAGED_IMAGE_RESOURCE);
 
-					CreateAttachmentImageView(textureIndex, 0, 1, 0, 1, mask, imageViewLayout, dev);
+					int viewSucess = CreateAttachmentImageView(textureIndex, 0, 1, 0, 1, mask, imageViewLayout, rhiDevice);
 				}
 
 				sampLo <<= 1;
@@ -1792,8 +1856,7 @@ int RenderInstance::CreateAttachmentResources(
 		}
 	}
 
-	int rtWidth =  width;
-	int rtHeight = height;
+	int success = 1;
 
 	for (int sampleCount = 0; sampleCount < currentRenderPass->maxSampleCount; sampleCount++)
 	{
@@ -1806,7 +1869,7 @@ int RenderInstance::CreateAttachmentResources(
 			dev->DestroyRenderTarget(mainRenderTargets[absoluteRTIndex]);
 		}
 
-		mainRenderTargets.pool[absoluteRTIndex] = dev->CreateRenderTarget(renderPasses[absoluteRPIndex], imageCount, rtWidth, rtHeight, 0, 0);
+		mainRenderTargets.pool[absoluteRTIndex] = dev->CreateRenderTarget(renderPasses[absoluteRPIndex], imageCount, width, height, 0, 0);
 
 		RenderTarget* renderTarget = dev->GetRenderTarget(mainRenderTargets[absoluteRTIndex]);
 
@@ -1844,37 +1907,48 @@ int RenderInstance::CreateAttachmentResources(
 		}
 	}
 	
-	return 0;
+	return success;
 }
 
-void RenderInstance::CreateSwapChainData(int deviceSelection, EntryHandle swapChainIndex, uint32_t width, uint32_t height, bool recreate)
+int RenderInstance::CreateDriverSwapChainData(RHIDevice* rhiDevice, EntryHandle swapChainIndex, uint32_t width, uint32_t height, bool recreate)
 {
-	RHIDevice* rhiDevice = GetDeviceHandle(deviceSelection);
-
 	VKDevice* dev = rhiDevice->device;
 
 	VKSwapChain* swapChain = dev->GetSwapChain(swapChainIndex);
 
+	int success = 0;
+
 	if (recreate)
 	{
 		swapChain->ResetSwapChain();
-		swapChain->RecreateSwapChain(width, height);
+		success = swapChain->RecreateSwapChain(width, height);
 	}
 	else
 	{
-		swapChain->CreateSwapChain(width, height, rhiDevice->container.graphicsComputeTransfer, rhiDevice->container.presentQueue);
+		success = swapChain->CreateSwapChain(width, height, rhiDevice->container.graphicsComputeTransfer, rhiDevice->container.presentQueue);
 	}
 
-	swapChain->CreateSwapchainViews();
+	if (!success)
+	{
+		EntryHandle* views = swapChain->CreateSwapchainViews();
+		if (views) return success;
+	}
+
+	GetLastDriverError(rhiDevice, STRING_VIEW_FROM_LITERAL("CreateDriverSwapChainData: Failed"));
+
+	return -1;
 }
 
-void RenderInstance::CreateShaderResourceMap(int deviceSelection, ShaderGraph* graph)
+int RenderInstance::CreateShaderResourceMap(RHIDevice* device, ShaderGraph* graph)
 {
-	RHIDevice* rhiDevice = GetDeviceHandle(deviceSelection);
-
-	VKDevice* dev = rhiDevice->device;
+	VKDevice* dev = device->device;
 
 	int ResourceSetCount = graph->resourceSetCount;
+
+	int descriptorLayoutIndex = shaderResourceTemplates.Allocate(ResourceSetCount);
+
+	if (descriptorLayoutIndex < 0)
+		return -1;
 
 	DescriptorSetLayoutBuilder** descriptorBuilders = (DescriptorSetLayoutBuilder**)cacheAllocator->Allocate(sizeof(DescriptorSetLayoutBuilder*) * ResourceSetCount);
 
@@ -1890,7 +1964,8 @@ void RenderInstance::CreateShaderResourceMap(int deviceSelection, ShaderGraph* g
 
 		VkShaderStageFlags stageFlags = API::ConvertShaderStageToVulkanShaderStage(resource->stages);
 
-		if (resource->type == ShaderResourceType::CONSTANT_BUFFER) {
+		if (resource->type == ShaderResourceType::CONSTANT_BUFFER) 
+		{
 			continue;
 		}
 			
@@ -1968,19 +2043,81 @@ void RenderInstance::CreateShaderResourceMap(int deviceSelection, ShaderGraph* g
 		}
 	}
 
+	int currDescriptorLayout = descriptorLayoutIndex;
+
+	int success = 0;
+
 	for (int j = 0; j < ResourceSetCount; j++)
 	{
 		ShaderResourceSetTemplate* set = &graph->shaderResourceSetTemplates[j];
-		
-		int descriptorLayoutIndex = shaderResourceTemplates.Allocate();
 
-		shaderResourceTemplates.pool[descriptorLayoutIndex] = dev->CreateDescriptorSetLayout(descriptorBuilders[j]);
+		EntryHandle descHandle = shaderResourceTemplates.pool[currDescriptorLayout] = dev->CreateDescriptorSetLayout(descriptorBuilders[j]);
+
+		if (descHandle == EntryHandle())
+		{
+			for (int g = 0; g < j; g++)
+			{
+				ShaderResourceSetTemplate* set = &graph->shaderResourceSetTemplates[g];
+
+				dev->DestroyDescriptorLayout(shaderResourceTemplates.pool[set->vulkanDescLayout]);
+
+				set->vulkanDescLayout = -1;
+			}
+
+			GetLastDriverError(device, STRING_VIEW_FROM_LITERAL("CreateShaderResourceMap: layout creation failed"));
+
+			success = -1;
+
+			break;
+		}
 		
-		set->vulkanDescLayout = descriptorLayoutIndex;
+		set->vulkanDescLayout = currDescriptorLayout++;
+	}
+
+	return success;
+}
+
+void RenderInstance::DeleteShaderGraph(RHIDevice* device, int shaderGraphIndex)
+{
+	ShaderGraph* graph = shaderGraphs.shaderGraphPtrs.Get(shaderGraphIndex);
+
+	if (graph)
+	{
+		int shaderCount = graph->shaderMapCount;
+
+		for (int i = 0; i < shaderCount; i++)
+		{
+			int index = -1;
+			if ((index = graph->shaderMaps[i].shaderReference) >= 0)
+			{
+				EntryHandle handle = shaderGraphs.shaderDetails.Get(index)->shaderHandle;
+
+				if (handle != EntryHandle())
+				{
+					device->device->DestroyShader(handle);
+				}
+
+				shaderGraphs.shaderDetails.Free(index);
+			}
+		}
+
+		int resourceCount = graph->resourceSetCount;
+
+		for (int i = 0; i < resourceCount; i++)
+		{
+			ShaderResourceSetTemplate* set = &graph->shaderResourceSetTemplates[i];
+
+			if (set->vulkanDescLayout >= 0)
+			{
+				device->device->DestroyDescriptorLayout(shaderResourceTemplates.pool[set->vulkanDescLayout]);
+
+				set->vulkanDescLayout = -1;
+			}
+		}
 	}
 }
 
-void RenderInstance::CreateShaderGraphs(int deviceSelection, StringView* shaderGraphLayouts, int shaderGraphLayoutsCount)
+int RenderInstance::CreateShaderGraphs(int deviceSelection, StringView* shaderGraphLayouts, int shaderGraphLayoutsCount)
 {
 	RHIDevice* rhiDevice = GetDeviceHandle(deviceSelection);
 
@@ -1988,119 +2125,183 @@ void RenderInstance::CreateShaderGraphs(int deviceSelection, StringView* shaderG
 
 	int totalDetailSize = 0;
 
-	int shaderDetailsHead = shaderGraphs.shaders.count;
+	ShaderDetails cachedDetails[5];
 
-	int shaderGraphHead = shaderGraphs.shaderGraphPtrs.count;
+	int shaderGraphIndex = shaderGraphs.shaderGraphPtrs.Allocate(shaderGraphLayoutsCount);
 
-	ShaderDetails* details = &shaderGraphs.shaderDetails[shaderDetailsHead];
+	int success = 0;
+
+	int createdShaderGraph = 0;
 	
-	for (int i = 0; i < shaderGraphLayoutsCount; i++)
+	for (; createdShaderGraph < shaderGraphLayoutsCount; createdShaderGraph++)
 	{
 		int detailsSize = 0;
 
-		int detailsIndex = shaderGraphs.shaders.Allocate();
+		ShaderGraph* graph = shaderGraphs.shaderGraphPtrs.Get(shaderGraphIndex+ createdShaderGraph);
 
-		int shaderGraphIndex = shaderGraphs.shaderGraphPtrs.Allocate();
-
-		ShaderGraph* graph = shaderGraphs.shaderGraphPtrs.Get(shaderGraphIndex);
-
-		CreateShaderGraph
+		int sgCode = CreateShaderGraph
 		(
-			shaderGraphLayouts[i],
+			shaderGraphLayouts[createdShaderGraph],
 			cacheAllocator,
 			graph,
-			details, 
+			cachedDetails,
 			&detailsSize, 
 			internalRendererLogger
 		);
 
-		CreateShaderResourceMap(deviceSelection, graph);
+		if (sgCode < 0)
+		{
+			success = -1;
+			break;
+		}
+
+		sgCode = CreateShaderResourceMap(rhiDevice, graph);
+
+		if (sgCode < 0)
+		{
+			success = -1;
+			break;
+		}
+
+		int detailsIndex = shaderGraphs.shaderDetails.Allocate(detailsSize);
 
 		totalDetailSize += detailsSize;
 
-		details = &shaderGraphs.shaderDetails[shaderDetailsHead + totalDetailSize];
+		memcpy(shaderGraphs.shaderDetails.Get(detailsIndex), cachedDetails, sizeof(ShaderDetails) * detailsSize);
+
+		for (int i = 0; i < detailsSize; i++)
+		{
+			ShaderMap* map = &graph->shaderMaps[i];
+
+			map->shaderReference = detailsIndex + i;
+		}
 	}
 
-	int shaderGraph = shaderGraphHead;
-
-	ShaderGraph* graph = shaderGraphs.shaderGraphPtrs.Get(shaderGraph);
-
-	int shaderMapCount = graph->shaderMapCount, mapIter = 0;
-
-	for (int i = 0; i < totalDetailSize; i++)
+	if (success)
 	{
-		ShaderDetails* details = &shaderGraphs.shaderDetails[shaderDetailsHead + i];
-
-		char* str = details->glslShaderName;
-
-		int shaderNameLength = details->glslShaderNameSize;
-
-		if (mapIter >= shaderMapCount)
+		for (int g = 0; g < shaderGraphLayoutsCount; g++)
 		{
-			++shaderGraph;
-			graph = shaderGraphs.shaderGraphPtrs.Get(shaderGraph);
-			shaderMapCount = graph->shaderMapCount;
-			mapIter = 0;
-		}
-
-		ShaderMap* map = &graph->shaderMaps[mapIter++];
-
-		map->shaderReference = i;
-
-		char* shaderData;
-
-		OSFileHandle handle;
-
-		int shaderLength = 0;
-
-		char* stringBuffer = (char*)cacheAllocator->Allocate(shaderNameLength + 4);
-
-		memcpy(stringBuffer, str, shaderNameLength);
-
-		memcpy(stringBuffer + (shaderNameLength-1), ".spv", 5);
-
-		StringView nameView{ stringBuffer, shaderNameLength + 3 };
-
-		VkShaderStageFlags shaderFlags = API::ConvertShaderStageToVulkanShaderStage(map->type);
-
-		if (!OSFileExist(nameView.stringData, nameView.charCount, OSFileFlagsTypes::READ)) {
-
-			OSOpenFile(nameView.stringData, nameView.charCount, READ, &handle);
-
-			shaderLength = handle.fileLength;
-
-			shaderData = (char*)cacheAllocator->CAllocate(shaderLength);
-
-			OSReadFile(&handle, shaderLength, shaderData);
-		}
-		else
-		{
-			nameView.charCount -= 4;
-
-			OSOpenFile(nameView.stringData, nameView.charCount, READ, &handle);
-
-			shaderData = (char*)cacheAllocator->CAllocate(shaderLength + 1);
-
-			OSReadFile(&handle, shaderLength, shaderData);
-
-			if (shaderData[shaderLength - 1] != '\0')
+			if (g < createdShaderGraph)
 			{
-				shaderData[shaderLength] = '\0';
-				shaderLength++;
+				DeleteShaderGraph(rhiDevice, shaderGraphIndex + g);
 			}
 		}
 
-		shaderGraphs.shaders.pool[shaderDetailsHead + i] = dev->CreateShader(shaderData, shaderLength, shaderFlags);
-
-		OSCloseFile(&handle);
+		return success;
 	}
+
+	int currShaderGraph = shaderGraphIndex;
+
+	for (int i = 0; i < shaderGraphLayoutsCount; i++)
+	{
+		ShaderGraph* graph = shaderGraphs.shaderGraphPtrs.Get(currShaderGraph++);
+
+		int mapCount = graph->shaderMapCount;
+
+		for (int j = 0; j < mapCount; j++)
+		{
+			ShaderMap* map = &graph->shaderMaps[j];
+
+			ShaderDetails* details = shaderGraphs.shaderDetails.Get(map->shaderReference);
+
+			char* str = details->glslShaderName;
+
+			int shaderNameLength = details->glslShaderNameSize;
+
+			char* shaderData;
+
+			OSFileHandle handle;
+
+			int shaderLength = 0;
+
+			char* stringBuffer = (char*)cacheAllocator->Allocate(shaderNameLength + 4);
+
+			memcpy(stringBuffer, str, shaderNameLength);
+
+			memcpy(stringBuffer + (shaderNameLength - 1), ".spv", 5);
+
+			StringView nameView{ stringBuffer, shaderNameLength + 3 };
+
+			VkShaderStageFlags shaderFlags = API::ConvertShaderStageToVulkanShaderStage(map->type);
+
+			int64_t fileRet = 0;
+
+			if (OSFileExist(nameView.stringData, nameView.charCount, OSFileFlagsTypes::READ)) 
+			{
+				nameView.charCount -= 4;
+			}
+
+			fileRet = OSOpenFile(nameView.stringData, nameView.charCount, READ, &handle);
+
+			if (!fileRet)
+			{
+				shaderLength = handle.fileLength;
+
+				shaderData = (char*)cacheAllocator->CAllocate(shaderLength + 1);
+
+				fileRet = OSReadFile(&handle, shaderLength, shaderData);
+
+				if (fileRet > 0)
+				{
+					if (shaderData[shaderLength - 1] != '\0')
+					{
+						shaderData[shaderLength] = '\0';
+						shaderLength++;
+					}
+
+					OSCloseFile(&handle);
+
+					EntryHandle shaderHandle = details->shaderHandle = dev->CreateShader(shaderData, shaderLength, shaderFlags);
+
+					if (shaderHandle != EntryHandle())
+					{
+						continue;
+					}
+
+					GetLastDriverError(rhiDevice, STRING_VIEW_FROM_LITERAL("CreateShaderGraph : Shader Creation Failed"));
+
+					success = -1;
+				}
+			}
+
+			if (!success)
+			{
+				internalRendererLogger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("CreateShaderGraph : File Handling"));
+				internalRendererLogger->AddLogMessage(LOGERROR, nameView);
+			}
+			
+			i = shaderGraphLayoutsCount;
+			success = -1;
+			break;
+		}
+	}
+
+	if (success)
+	{
+		for (int g = 0; g < shaderGraphLayoutsCount; g++)
+		{
+			if (g < createdShaderGraph)
+			{
+				DeleteShaderGraph(rhiDevice, shaderGraphIndex + g);
+			}
+		}
+	}
+
+	return success;
 }
 
 int RenderInstance::CreateGraphicRenderStateObject(int deviceSelection, int shaderGraphIndex, int pipelineDescriptionIndex, int* frameGraphAttachments, int* perFrameRenderPassSelection, int frameGraphCount)
 {
 	ShaderGraph* graph = shaderGraphs.shaderGraphPtrs.Get(shaderGraphIndex);
 
+	if (!graph)
+	{
+		return -1;
+	}
+
 	ShaderMap* map = &graph->shaderMaps[0];
+
+	int success = -1;
 
 	if (map->type != COMPUTESHADERSTAGE)
 	{
@@ -2108,7 +2309,7 @@ int RenderInstance::CreateGraphicRenderStateObject(int deviceSelection, int shad
 
 		uint32_t totalPiplineVariations = 0;
 
-		PipelineInstanceData* instData = &pipelineInstancesIdentifier.Get(shaderGraphIndex)->instanceData;
+		PipelineInstanceData* instData = &graph->pipelineDescription.instanceData;
 
 		instData->frameGraphCount = frameGraphCount;
 
@@ -2119,7 +2320,7 @@ int RenderInstance::CreateGraphicRenderStateObject(int deviceSelection, int shad
 			instData->frameGraphRenderPasses[i] = perFrameRenderPassSelection[i];
 		}
 
-		EntryHandle* pipelineHandles = (EntryHandle*)AllocateFromStorageAllocator(sizeof(EntryHandle) * totalPiplineVariations);
+		EntryHandle* pipelineHandles = &graph->pipelineDescription.pipelineIndices[0];
 
 		instData->pipelineCount = totalPiplineVariations;
 
@@ -2134,10 +2335,14 @@ int RenderInstance::CreateGraphicRenderStateObject(int deviceSelection, int shad
 			);
 		}
 		
-		pipelineInstancesIdentifier.pool[shaderGraphIndex].pipelineIndices = pipelineHandles;
+		success = 0;
+	}
+	else
+	{
+		internalRendererLogger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("CreateGraphicRenderStateObject : Passed Compute Shader Graph"));
 	}
 
-	return 0;
+	return success;
 }
 
 int RenderInstance::CreateComputePipelineStateObject(int deviceSelection, int shaderGraphIndex)
@@ -2148,11 +2353,9 @@ int RenderInstance::CreateComputePipelineStateObject(int deviceSelection, int sh
 	
 	if (map->type == COMPUTESHADERSTAGE)
 	{
-		EntryHandle* pipelineID = (EntryHandle*)AllocateFromStorageAllocator(sizeof(EntryHandle));
+		EntryHandle pipelineID = CreateVulkanComputePipelineTemplate(deviceSelection, graph);
 
-		*pipelineID = CreateVulkanComputePipelineTemplate(deviceSelection, graph);
-
-		pipelineInstancesIdentifier.pool[shaderGraphIndex].pipelineIndices = pipelineID;
+		graph->pipelineDescription.pipelineIndices[0] = pipelineID;
 	}
 
 	return 0;
@@ -2182,7 +2385,7 @@ int RenderInstance::CreatePipelineFromGraphAndSpec(int deviceSelection, GenericP
 	for (int i = 0; i < graph->shaderMapCount; i++)
 	{
 		ShaderMap* map = &graph->shaderMaps[i];
-		shaderHandle[i] = shaderGraphs.shaders[map->shaderReference];
+		shaderHandle[i] = shaderGraphs.shaderDetails.Get(map->shaderReference)->shaderHandle;
 	}
 
 	int pushConstantRangeCount = 0;
@@ -2315,7 +2518,7 @@ EntryHandle RenderInstance::CreateVulkanComputePipelineTemplate(int deviceSelect
 
 	ShaderMap* map = &graph->shaderMaps[0];
 
-	shaderHandle = shaderGraphs.shaders[map->shaderReference];
+	shaderHandle = shaderGraphs.shaderDetails.Get(map->shaderReference)->shaderHandle;
 
 	int pushRangeSize = 0;
 
@@ -3580,7 +3783,7 @@ int RenderInstance::CreateSwapChainHandle(int deviceSelection, int surfaceIndex,
 
 	EntryHandle swapChainIndex = dev->CreateSwapChain(MAX_FRAMES_IN_FLIGHT, MAX_FRAMES_IN_FLIGHT, API::ConvertImageFormatToVulkanFormat(mainBackBufferColorFormat), winData->vkRenderSurface);
 
-	CreateSwapChainData(deviceSelection, swapChainIndex, _width, _height, false);
+	CreateDriverSwapChainData(rhiDevice, swapChainIndex, _width, _height, false);
 
 	VKSwapChain* vkSwcData = dev->GetSwapChain(swapChainIndex);
 
@@ -3595,13 +3798,9 @@ int RenderInstance::CreateSwapChainHandle(int deviceSelection, int surfaceIndex,
 	swcData->rendererWaitSemaphores = (EntryHandle*)AllocateFromStorageAllocator(sizeof(EntryHandle) * MAX_FRAMES_IN_FLIGHT);
 	swcData->rendererFinishedSemaphores = (EntryHandle*)AllocateFromStorageAllocator(sizeof(EntryHandle) * imageCount);
 
-	swcData->textureIds = (int*)AllocateFromStorageAllocator(sizeof(int) * imageCount);
-
 	for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 	{
 		swcData->rendererWaitSemaphores[i] = *dev->CreateSemaphores(1);
-
-		
 	}
 
 	for (uint32_t i = 0; i < imageCount; i++)
@@ -3906,7 +4105,7 @@ EntryHandle RenderInstance::CreateShaderResourceSet(ShaderResourceManager* descr
 
 int RenderInstance::CreateGraphicsPipelineObject(int deviceSelection, GraphicsIntermediaryPipelineInfo* info)
 {
-	PipelineInstanceData* pid = &pipelineInstancesIdentifier.Get(info->pipelinename)->instanceData;
+	PipelineInstanceData* pid = &shaderGraphs.shaderGraphPtrs.Get(info->pipelinename)->pipelineDescription.instanceData;
 
 	int ret = pipelineHandles.Allocate();
 
@@ -3957,7 +4156,7 @@ ShaderComputeLayout* RenderInstance::GetComputeLayout(int shaderGraphIndex)
 {
 	ShaderGraph* graph = shaderGraphs.shaderGraphPtrs.Get(shaderGraphIndex);
 	ShaderMap* map = &graph->shaderMaps[0];
-	ShaderDetails* details = &shaderGraphs.shaderDetails[map->shaderReference];
+	ShaderDetails* details = shaderGraphs.shaderDetails.Get(map->shaderReference);
 	return &details->computeLayout;
 }
 
@@ -4060,7 +4259,7 @@ void RenderInstance::DrawScene(int deviceSelection, int commandStreamIndex, uint
 
 				PipelineHandle* handle = pipelineHandles.Get(pipelineIndex);
 
-				EntryHandle pipelineTemp = pipelineInstancesIdentifier[handle->pipelineIdentifierGroup].pipelineIndices[0];
+				EntryHandle pipelineTemp = shaderGraphs.shaderGraphPtrs.Get(handle->pipelineIdentifierGroup)->pipelineDescription.pipelineIndices[0];
 			
 				rcb.BindComputePipeline(pipelineTemp);
 
@@ -4209,7 +4408,9 @@ void RenderInstance::DrawScene(int deviceSelection, int commandStreamIndex, uint
 
 						PipelineHandle* handle = pipelineHandles.Get(pipelineIndex);
 
-						PipelineInstanceData* pid = &pipelineInstancesIdentifier.Get(handle->pipelineIdentifierGroup)->instanceData;
+						GraphPipelineDescription* pipeDesc = &shaderGraphs.shaderGraphPtrs.Get(handle->pipelineIdentifierGroup)->pipelineDescription;
+
+						PipelineInstanceData* pid = &pipeDesc->instanceData;
 
 						uint32_t pipelineOffset = 0;
 
@@ -4222,7 +4423,7 @@ void RenderInstance::DrawScene(int deviceSelection, int commandStreamIndex, uint
 							}
 						}
 
-						EntryHandle pipelineTemp = pipelineInstancesIdentifier[handle->pipelineIdentifierGroup].pipelineIndices[pipelineOffset + sampleLevelForRenderPass];
+						EntryHandle pipelineTemp = pipeDesc->pipelineIndices[pipelineOffset + sampleLevelForRenderPass];
 
 						rcb.BindGraphicsPipeline(pipelineTemp);
 

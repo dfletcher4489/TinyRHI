@@ -266,6 +266,7 @@ int CreateShaderGraph(StringView filename, Allocator* readerMemory, ShaderGraph*
 		}
 
 		map->type = type;
+		map->shaderReference = -1;
 	}
 
 	int resourceIter = 0;

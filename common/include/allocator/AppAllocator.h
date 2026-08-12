@@ -220,6 +220,12 @@ struct PoolAllocator
 	void Create(Allocator* allocator, uint32_t maxElements, StringView _allocatorName, Logger* _logger)
 	{
 		pool = (T*)allocator->Allocate(sizeof(T) * maxElements, alignof(T));
+
+		for (int i = 0; i < maxElements; i++)
+		{
+			pool[i] = {};
+		}
+
 		freeList = (int*)allocator->Allocate(sizeof(int) * maxElements, alignof(int));
 		maxCount = maxElements;
 		count = 0;

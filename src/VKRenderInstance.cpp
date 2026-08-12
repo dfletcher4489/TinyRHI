@@ -11,3 +11,9 @@ int DestroyDriverImage(RHIDevice* device, EntryHandle imageIndex)
 	device->device->DestroyImage(imageIndex);
 	return 0;
 }
+
+int DestroyOldStyleRenderPass(RHIDevice* device, EntryHandle renderPass)
+{
+	device->device->DestroyRenderPass(renderPass);
+	return 0;
+}

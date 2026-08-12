@@ -15,12 +15,29 @@ struct ShaderDetails
 	char hlslShaderName[SHADER_NAME_SIZE];
 	int hlslShaderNameSize;
 	ShaderComputeLayout computeLayout;
+	int pad;
+	EntryHandle shaderHandle;
 };
 
 struct ShaderMap
 {
 	ShaderStageType type;
 	int shaderReference;
+};
+
+struct PipelineInstanceData
+{
+	int frameGraphIndices[4];
+	int frameGraphRenderPasses[4];
+	int frameGraphPipelineIndices[4];
+	int frameGraphCount;
+	int pipelineCount;
+};
+
+struct GraphPipelineDescription
+{
+	PipelineInstanceData instanceData;
+	EntryHandle pipelineIndices[MAX_SAMPLE_COUNT_LEVEL];
 };
 
 struct ShaderGraph
@@ -32,23 +49,22 @@ struct ShaderGraph
 	ShaderMap shaderMaps[MAX_SHADER_MAPS];
 	ShaderResourceTemplate shaderResources[MAX_SHADER_RESOURCES];
 	ShaderResourceSetTemplate shaderResourceSetTemplates[MAX_SHADER_RESOURCE_SET_TEMPLATES];
+
+	GraphPipelineDescription pipelineDescription;
 };
 
 struct ShaderGraphsHolder
 {
 	PoolAllocator<ShaderGraph> shaderGraphPtrs{};
-	PoolAllocator<EntryHandle> shaders{};
-	ShaderDetails* shaderDetails{};
+	PoolAllocator<ShaderDetails> shaderDetails{};
 
 	ShaderGraphsHolder() = default;
 
 	void Create(Allocator* shaderGraphAllocator, uint32_t maxShaderGraphs, uint32_t maxShaderHandles, StringView shadersGraphsAllocatorName, StringView shadersAllocatorName, Logger* loggerForBoth)
 	{
 		shaderGraphPtrs.Create(shaderGraphAllocator, maxShaderGraphs, shadersGraphsAllocatorName, loggerForBoth);
-		
-		shaders.Create(shaderGraphAllocator, maxShaderHandles, shadersAllocatorName, loggerForBoth);
 
-		shaderDetails = (ShaderDetails*)shaderGraphAllocator->Allocate(sizeof(ShaderDetails) * maxShaderHandles, alignof(ShaderDetails));
+		shaderDetails.Create(shaderGraphAllocator, maxShaderHandles, shadersAllocatorName, loggerForBoth);
 	}
 };
 

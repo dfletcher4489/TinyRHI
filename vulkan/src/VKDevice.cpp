@@ -3230,7 +3230,7 @@ MemoryTypeInfo VKDevice::FindImageMemoryIndexForPool(uint32_t width,
 	if ((vkRes = vkCreateImage(device, &imageInfo, nullptr, &image)) != VK_SUCCESS) 
 	{
 		AddDeviceErrorCode(MINOR_CODE_PACK(DEVICE_VK_TYPE_IMAGE_HANDLE_FAILED) | DEVICE_VK_TYPE_CREATION_FAILED, vkRes);
-		return { 0, 0 };
+		return { ~0ul, (VkDeviceSize)~0 };
 	}
 
 	VkMemoryRequirements memRequirements;

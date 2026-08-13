@@ -149,15 +149,15 @@ struct RenderInstance
 
 	int CreateDriverSwapChainData(RHIDevice* rhiDevice, EntryHandle swapChainIndex, uint32_t width, uint32_t height, bool recreate);
 
-	void UploadHostTransfers(int deviceSelection);
+	void UploadHostTransfers(RHIDevice* rhiDevice);
 
-	void UploadDescriptorsUpdates(int deviceSelection);
+	void UploadDescriptorsUpdates(RHIDevice* rhiDevice);
 
-	void InvokeTransferCommands(int deviceSelection, RecordingBufferObject* rbo, BarrierAccumulator* accum);
+	void InvokeTransferCommands(RHIDevice* rhiDevice, RecordingBufferObject* rbo, BarrierAccumulator* accum);
 
-	void UploadImageMemoryTransfers(int deviceSelection, RecordingBufferObject* rbo, BarrierAccumulator* accum);
+	void UploadImageMemoryTransfers(RHIDevice* rhiDevice, RecordingBufferObject* rbo, BarrierAccumulator* accum);
 
-	void UploadDeviceLocalTransfers(int deviceSelection, RecordingBufferObject* rbo, BarrierAccumulator* accum);
+	void UploadDeviceLocalTransfers(RHIDevice* rhiDevice, RecordingBufferObject* rbo, BarrierAccumulator* accum);
 
 	int GetAllocFromBuffer(int deviceSelection, int bufferHandle, size_t structureSize, size_t copiesOfStructure, size_t alignment, AllocationType allocType, ComponentFormatType formatType, BufferAlignmentType bufferAlignmentType, int parentIndex, DeviceSlabAllocator* allocator);
 
@@ -235,7 +235,7 @@ struct RenderInstance
 	ImageFormat FindSupportedBackBufferColorFormat(int physicalDeviceIndex, int surfaceLevel, ImageFormat* requestedFormats, uint32_t requestSize);
 	ImageFormat FindSupportedDepthFormat(int deviceSelection, ImageFormat* requestedFormats, uint32_t requestSize);
 
-	int CreateAttachmentGraph(int deviceSelection, StringView* attachmentLayout, int* subAttachCount);
+	int CreateAttachmentGraph(int deviceSelection, StringView* attachmentLayout);
 
 	int CreateSwapChainHandle(int deviceSelection, int surfaceIndex, ImageFormat mainBackBufferColorFormat, uint32_t width, uint32_t height);
 
@@ -262,7 +262,7 @@ struct RenderInstance
 
 	int CreateUniversalBuffer(int deviceSelection, size_t size, MemoryType bufferMemoryType);
 
-	void GetGPURequestedImageSizeAndAlignment(int deviceSelection, uint32_t width, uint32_t height, uint32_t mipLevels, uint32_t layers, ImageFormat type, ImageUsageFlags usageFlags, size_t* actualImageSize, size_t* actualAlignment);
+	int GetGPURequestedImageSizeAndAlignment(int deviceSelection, uint32_t width, uint32_t height, uint32_t mipLevels, uint32_t layers, ImageFormat type, ImageUsageFlags usageFlags, size_t* actualImageSize, size_t* actualAlignment);
 
 	int CreateDescriptorHeap(int deviceSelection, DescriptorTypes* types, uint32_t* descriptorCountPerFrame, uint32_t numDescriptorTypesCount, uint32_t maxDescriptorSets, uint32_t maxShaderResourceSets);
 

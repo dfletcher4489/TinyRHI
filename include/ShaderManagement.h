@@ -25,19 +25,21 @@ struct ShaderMap
 	int shaderReference;
 };
 
+#define MAX_FRAME_GRAPHS_RENDER_PASS_COMBOS 4
+
 struct PipelineInstanceData
 {
-	int frameGraphIndices[4];
-	int frameGraphRenderPasses[4];
-	int frameGraphPipelineIndices[4];
+	int frameGraphIndices[MAX_FRAME_GRAPHS_RENDER_PASS_COMBOS];
+	int frameGraphRenderPasses[MAX_FRAME_GRAPHS_RENDER_PASS_COMBOS];
+	int frameGraphPipelineIndices[MAX_FRAME_GRAPHS_RENDER_PASS_COMBOS];
 	int frameGraphCount;
 	int pipelineCount;
 };
 
 struct GraphPipelineDescription
 {
+	EntryHandle pipelineIndices[MAX_SAMPLE_COUNT_LEVEL * MAX_FRAME_GRAPHS_RENDER_PASS_COMBOS];
 	PipelineInstanceData instanceData;
-	EntryHandle pipelineIndices[MAX_SAMPLE_COUNT_LEVEL];
 };
 
 struct ShaderGraph

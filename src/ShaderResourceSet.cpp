@@ -133,11 +133,11 @@ constexpr int ASCIIToInt(char* str)
 	return out;
 }
 
-int CreateShaderGraph(StringView filename, Allocator* readerMemory, ShaderGraph* graph, ShaderDetails* details, int* shaderDetailCount, Logger* outputLogger)
+int CreateShaderGraph(StringView filename, RingAllocator* readerMemory, ShaderGraph* graph, ShaderDetails* details, int* shaderDetailCount, Logger* outputLogger)
 {
-	uintptr_t* TreeNodes = (uintptr_t*)readerMemory->Allocate(sizeof(uintptr_t) * 50);
+	uintptr_t* TreeNodes = (uintptr_t*)readerMemory->CAllocate(sizeof(uintptr_t) * 50);
 	
-	int* SetNodes = (int*)readerMemory->Allocate(sizeof(int) * 20);
+	int* SetNodes = (int*)readerMemory->CAllocate(sizeof(int) * 20);
 	
 	int* ShaderRefs = SetNodes + 15;
 
@@ -147,7 +147,7 @@ int CreateShaderGraph(StringView filename, Allocator* readerMemory, ShaderGraph*
 
 	int dataSize = fileHandle.fileLength;
 	
-	void* fileData = readerMemory->Allocate(dataSize);
+	void* fileData = readerMemory->CAllocate(dataSize);
 
 	OSReadFile(&fileHandle, dataSize, (char*)fileData);
 
@@ -2908,6 +2908,11 @@ void ShaderResourceManager::Create(Allocator* shaderResourceMemoryAllocator, uin
 int ShaderResourceManager::AddShaderToSets(ShaderResourceSet* location)
 {
 	int indexRet = descriptorSetHandles.Allocate();
+
+	if (indexRet < 0)
+	{
+		return indexRet;
+	}
 
 	descriptorSets[indexRet] = location;
 

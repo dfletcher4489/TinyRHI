@@ -308,7 +308,6 @@ int OSCreateWindow(const char* name, int requestedDimensionX, int requestDimensi
     }
 
     SetWindowText(hwnd, TEXT(name));
-    ShowWindow(hwnd, 1);
     UpdateWindow(hwnd);
 
     windowPtrs[windowIndex] = hwnd;
@@ -657,6 +656,22 @@ int OSWindowSetText(OSWindow* window, const char* text)
     HWND hWndMain = windowPtrs[windowIndex];
 
     SetWindowText(hWndMain, TEXT(text));
+
+    return OS_WINDOW_SUCCESS;
+}
+
+int OSWindowShow(OSWindow* window)
+{
+    int windowIndex = window->internalOSHandle;
+
+    if (windowIndex < 0 || windowIndex >= maxFreeListEntry)
+    {
+        return OS_WINDOW_HANDLE_OUT_OF_BOUNDS;
+    }
+
+    HWND hWndMain = windowPtrs[windowIndex];
+
+    ShowWindow(hWndMain, 1);
 
     return OS_WINDOW_SUCCESS;
 }

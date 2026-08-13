@@ -1086,6 +1086,8 @@ void ApplicationLoop::Execute()
 
 		bool checkCursor = false;
 
+		OSWindowShow(&mainWindow.windowData);
+
 		while (running)
 		{
 			mainWindow.PollEvents();
@@ -3925,8 +3927,8 @@ void ApplicationLoop::InitializeRuntime()
 		ImageUsageFlagBits::STENCIL_ATTACHMENT,
 		MemoryTypeBits::DEVICE_MEMORY_TYPE);
 
-	BasicShadow = GlobalRenderer::gRenderInstance.CreateAttachmentGraph(mainLogicalDevice, &mainLayoutAttachments[0], nullptr);
-	MSAAShadowMapping = GlobalRenderer::gRenderInstance.CreateAttachmentGraph(mainLogicalDevice, &mainLayoutAttachments[1], nullptr);
+	BasicShadow = GlobalRenderer::gRenderInstance.CreateAttachmentGraph(mainLogicalDevice, &mainLayoutAttachments[0]);
+	MSAAShadowMapping = GlobalRenderer::gRenderInstance.CreateAttachmentGraph(mainLogicalDevice, &mainLayoutAttachments[1]);
 
 	currentFrameGraphIndex = MSAAShadowMapping;
 

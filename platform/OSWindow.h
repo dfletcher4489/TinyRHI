@@ -182,3 +182,5 @@ int OSWindowSetText(OSWindow* window, const char* text);
 int OSWindowClose(OSWindow* window);
 
 int OSWindowSeedEventBuffer(OSWindow* window, void* bufferMemory, size_t bufferSize);
+
+int OSWindowShow(OSWindow* window);

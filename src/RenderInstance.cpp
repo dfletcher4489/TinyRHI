@@ -2962,7 +2962,7 @@ void RenderInstance::UploadImageMemoryTransfers(RHIDevice* rhiDevice, RecordingB
 
 		ResourceStatus* resourceStatus = resourceStatuses.Get(textureResourceHandles[region->textureIndex].resourceStatusIndex);
 
-		TransitionImageLayout(dev, rbo, handle, region->mipStart, region->mipLevels,
+		TransitionImageLayout(dev, handle, region->mipStart, region->mipLevels,
 			desc->mipLayers, region->layerStart, region->layerCount,
 			region->transferMask, ImageLayout::TRANSFER_DEST_OPTIMAL,
 			resourceStatus, TRANSFER_BARRIER, TRANSFER_WRITE_DATA_RESOURCE, accum, -1);
@@ -3060,7 +3060,7 @@ void RenderInstance::UploadDeviceLocalTransfers(RHIDevice* rhiDevice, RecordingB
 
 		EntryHandle index = bufferHandles[bufferHandle].bufferHandle;
 
-		InsertBufferBarrier(dev, rbo, handle, BarrierStageBits::TRANSFER_BARRIER, BarrierActionBits::TRANSFER_WRITE_DATA_RESOURCE, accum);
+		InsertBufferBarrier(dev, handle, BarrierStageBits::TRANSFER_BARRIER, BarrierActionBits::TRANSFER_WRITE_DATA_RESOURCE, accum);
 	
 		if (index != previousBuffer)
 		{
@@ -3675,6 +3675,12 @@ int RenderInstance::CreatePhysicalDeviceAdapter(GPUFeatureRequest* requestedPhys
 
 int RenderInstance::OpenPhysicalDevicePicker()
 {
+	if (physicalDeviceCounter == maxPhysicalDevices)
+	{
+		internalRendererLogger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("OpenPhysicalDevicePicker: Too many GPUs allocated based on CreateInfo"));
+		return -1;
+	}
+
 	int gpuCount = vkInstance->GetNumberOfGPUDevices();
 
 	if (gpuCount <= 0)
@@ -4515,9 +4521,9 @@ void RenderInstance::DrawScene(int deviceSelection, int commandStreamIndex, uint
 
 				PipelineHandle* handle = pipelineHandles.Get(pipelineIndex);
 
-				GeneratePipelineDescriptorBarriers(deviceSelection, &rcb, handle->resourceSets, handle->resourceSetCount, accumulator, pipelineIndex);
+				GeneratePipelineDescriptorBarriers(deviceSelection, handle->resourceSets, handle->resourceSetCount, accumulator, pipelineIndex);
 
-				GenerateComputeDispatchBindingsBarriers(deviceSelection, &rcb, handle, pipelineIndex, accumulator);
+				GenerateComputeDispatchBindingsBarriers(deviceSelection, handle, pipelineIndex, accumulator);
 			}
 
 			InsertAccumulatedBarriers(&rcb, accumulator);
@@ -4645,17 +4651,13 @@ void RenderInstance::DrawScene(int deviceSelection, int commandStreamIndex, uint
 
 						PipelineHandle* handle = pipelineHandles.Get(pipelineIndex);
 
-						GeneratePipelineDescriptorBarriers(deviceSelection, &rcb, handle->resourceSets, handle->resourceSetCount, accumulator, pipelineIndex);
+						GeneratePipelineDescriptorBarriers(deviceSelection, handle->resourceSets, handle->resourceSetCount, accumulator, pipelineIndex);
 
-						GenerateDrawBindingsBarriers(deviceSelection, &rcb, handle, accumulator);
-
-						//InsertIntraPassBarrier(&rcb, accumulator, pipelineIndex);
+						GenerateDrawBindingsBarriers(deviceSelection, handle, accumulator);
 					}
 
 					InsertAccumulatedBarriers(&rcb, accumulator);
 				}
-
-
 
 				rcb.BeginRenderPassCommand(mainRenderTargets[absoluteRenderTargetIndex], SubRenderTargetSelection, VK_SUBPASS_CONTENTS_INLINE, { {0, 0}, {renderTarget->width, renderTarget->height} }, clears, clearCount);
 
@@ -5532,7 +5534,7 @@ int RenderInstance::CreateDescriptorHeap(int deviceSelection, DescriptorTypes* t
 	return descriptorManagerIndex;
 }
 
-void RenderInstance::GeneratePipelineDescriptorBarriers(int deviceSelection, RecordingBufferObject* rcb, ShaderResourceSetHandle* descriptorid, int descriptorcount, BarrierAccumulator* accumulator, int pipelineIndex)
+void RenderInstance::GeneratePipelineDescriptorBarriers(int deviceSelection, ShaderResourceSetHandle* descriptorid, int descriptorcount, BarrierAccumulator* accumulator, int pipelineIndex)
 {
 	RHIDevice* rhiDevice = GetDeviceHandle(deviceSelection);
 
@@ -5567,7 +5569,7 @@ void RenderInstance::GeneratePipelineDescriptorBarriers(int deviceSelection, Rec
 
 					int viewIndex = imageBarrier->textureDetails[imageIndex].viewIndex;
 
-					TransitionImageLayout(dev, rcb, currImageIndex, viewIndex, ConvertShaderStageToBarrierStage(header->stage), READ_SHADER_RESOURCE, accumulator, pipelineIndex);
+					TransitionImageLayout(dev, currImageIndex, viewIndex, ConvertShaderStageToBarrierStage(header->stage), READ_SHADER_RESOURCE, accumulator, pipelineIndex);
 				}
 				break;
 			}
@@ -5583,7 +5585,7 @@ void RenderInstance::GeneratePipelineDescriptorBarriers(int deviceSelection, Rec
 
 					int viewIndex = imageBarrier->textureDetails[imageIndex].viewIndex;
 
-					TransitionImageLayout(dev, rcb, currImageIndex, viewIndex, ConvertShaderStageToBarrierStage(header->stage), READ_SHADER_RESOURCE, accumulator, pipelineIndex);
+					TransitionImageLayout(dev, currImageIndex, viewIndex, ConvertShaderStageToBarrierStage(header->stage), READ_SHADER_RESOURCE, accumulator, pipelineIndex);
 				}
 				break;
 			}
@@ -5599,7 +5601,7 @@ void RenderInstance::GeneratePipelineDescriptorBarriers(int deviceSelection, Rec
 
 					int viewIndex = imageBarrier->textureDetails[imageIndex].viewIndex;
 
-					TransitionImageLayout(dev, rcb, currImageIndex, viewIndex, COMPUTE_BARRIER, WRITE_SHADER_RESOURCE, accumulator, pipelineIndex);
+					TransitionImageLayout(dev, currImageIndex, viewIndex, COMPUTE_BARRIER, WRITE_SHADER_RESOURCE, accumulator, pipelineIndex);
 				}
 				break;
 			}
@@ -5615,7 +5617,7 @@ void RenderInstance::GeneratePipelineDescriptorBarriers(int deviceSelection, Rec
 				{
 					int allocationIndex = bufferBarrier->allocationIndex[g];
 
-					InsertBufferBarrier(dev, rcb, allocationIndex, ConvertShaderStageToBarrierStage(header->stage), header, pipelineIndex, accumulator);
+					InsertBufferBarrier(dev, allocationIndex, ConvertShaderStageToBarrierStage(header->stage), header, pipelineIndex, accumulator);
 				}
 				break;
 			}
@@ -5665,23 +5667,23 @@ void RenderInstance::InsertAccumulatedBarriers(RecordingBufferObject* rcb, Barri
 	}
 }
 
-void RenderInstance::GenerateDrawBindingsBarriers(int deviceSelection, RecordingBufferObject* rcb, PipelineHandle* handle, BarrierAccumulator* accumulator)
+void RenderInstance::GenerateDrawBindingsBarriers(int deviceSelection, PipelineHandle* handle, BarrierAccumulator* accumulator)
 {
 	RHIDevice* rhiDevice = GetDeviceHandle(deviceSelection);
 
 	VKDevice* dev = rhiDevice->device;
 
 	if (handle->vertexBufferHandle != -1)
-		InsertBufferBarrier(dev, rcb, handle->vertexBufferHandle, BarrierStageBits::VERTEX_INPUT_BARRIER, BarrierActionBits::READ_VERTEX_INPUT, accumulator);
+		InsertBufferBarrier(dev, handle->vertexBufferHandle, BarrierStageBits::VERTEX_INPUT_BARRIER, BarrierActionBits::READ_VERTEX_INPUT, accumulator);
 
 	if (handle->indirectBufferHandle != -1)
-		InsertBufferBarrier(dev, rcb, handle->indirectBufferHandle, BarrierStageBits::INDIRECT_DRAW_BARRIER, BarrierActionBits::READ_INDIRECT_COMMAND, accumulator);
+		InsertBufferBarrier(dev, handle->indirectBufferHandle, BarrierStageBits::INDIRECT_DRAW_BARRIER, BarrierActionBits::READ_INDIRECT_COMMAND, accumulator);
 
 	if (handle->indirectCountBufferHandle != -1)
-		InsertBufferBarrier(dev, rcb, handle->indirectCountBufferHandle, BarrierStageBits::INDIRECT_DRAW_BARRIER, BarrierActionBits::READ_INDIRECT_COMMAND, accumulator);
+		InsertBufferBarrier(dev, handle->indirectCountBufferHandle, BarrierStageBits::INDIRECT_DRAW_BARRIER, BarrierActionBits::READ_INDIRECT_COMMAND, accumulator);
 }
 
-void RenderInstance::GenerateComputeDispatchBindingsBarriers(int deviceSelection, RecordingBufferObject* rcb, PipelineHandle* handle, int pipelineIndex, BarrierAccumulator* accumulator)
+void RenderInstance::GenerateComputeDispatchBindingsBarriers(int deviceSelection, PipelineHandle* handle, int pipelineIndex, BarrierAccumulator* accumulator)
 {
 	RHIDevice* rhiDevice = GetDeviceHandle(deviceSelection);
 
@@ -5755,7 +5757,7 @@ void RenderInstance::GenerateComputeDispatchBindingsBarriers(int deviceSelection
 	}
 }
 
-void RenderInstance::TransitionImageLayout(VKDevice* dev, RecordingBufferObject* rcb, int imageIndex, int perImageViewIndex, BarrierStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator, int pipelineIndex)
+void RenderInstance::TransitionImageLayout(VKDevice* dev,  int imageIndex, int perImageViewIndex, BarrierStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator, int pipelineIndex)
 {
 	RenderTextureDescription* desc = textureResourceHandles.Get(imageIndex);
 
@@ -5774,10 +5776,10 @@ void RenderInstance::TransitionImageLayout(VKDevice* dev, RecordingBufferObject*
 	int viewLayerCount = viewDesc->layerCount;
 	int totalLayerCount = desc->arrayLayers;
 
-	TransitionImageLayout(dev, rcb, desc->textureIndex, viewMipStart, viewMipCount, totalMipCount, viewLayerStart, viewLayerCount, viewDesc->mask, viewDesc->desiredLayoutForView, status, destBarrierStage, destBarrierAction, accumulator, pipelineIndex);
+	TransitionImageLayout(dev,  desc->textureIndex, viewMipStart, viewMipCount, totalMipCount, viewLayerStart, viewLayerCount, viewDesc->mask, viewDesc->desiredLayoutForView, status, destBarrierStage, destBarrierAction, accumulator, pipelineIndex);
 }
 
-void RenderInstance::TransitionImageLayout(VKDevice* dev, RecordingBufferObject* rcb, EntryHandle imageIndex, int mipStart, int mipCount, int totalMipCount, int layerStart, int layerCount,
+void RenderInstance::TransitionImageLayout(VKDevice* dev, EntryHandle imageIndex, int mipStart, int mipCount, int totalMipCount, int layerStart, int layerCount,
 	ImageViewAspectMask mask, ImageLayout requestedLayout, ResourceStatus* status,
 	BarrierStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator, int pipelineIndex)
 {
@@ -5980,7 +5982,7 @@ IntraPassBarrier* RenderInstance::GetIntraPassBarrier(BarrierAccumulator* accum,
 	return intraPassBarrier;
 }
 
-void RenderInstance::InsertBufferBarrier(VKDevice* dev, RecordingBufferObject* rcb, int allocationIndex, BarrierStage destBarrierStage, ShaderResourceHeader* header, int pipelineIndex, BarrierAccumulator* accumulator)
+void RenderInstance::InsertBufferBarrier(VKDevice* dev, int allocationIndex, BarrierStage destBarrierStage, ShaderResourceHeader* header, int pipelineIndex, BarrierAccumulator* accumulator)
 {
 	size_t size = 0, offset = 0, align = 0;
 
@@ -6076,7 +6078,7 @@ void RenderInstance::InsertBufferBarrier(VKDevice* dev, RecordingBufferObject* r
 	status->currAction[bufferLastAccessFrame] = newAction;
 }
 
-void RenderInstance::InsertBufferBarrier(VKDevice* dev, RecordingBufferObject* rcb, int allocationIndex, BarrierStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator)
+void RenderInstance::InsertBufferBarrier(VKDevice* dev, int allocationIndex, BarrierStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator)
 {
 	RenderAllocation* bufferAlloc = allocations.Get(allocationIndex);
 

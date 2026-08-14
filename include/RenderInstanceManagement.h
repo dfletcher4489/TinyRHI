@@ -732,6 +732,8 @@ struct ResourceStatus
 	ImageLayout* currentLayout;
 };
 
+#define MAX_QUEUE_ENTRIES 63
+
 struct ComputeQueue
 {
 	int pipelines[63];
@@ -750,6 +752,8 @@ struct RenderTimelineSync
 	uint64_t currentValue;
 };
 
+#define MAX_INSTANCE_FRAME_IN_FLIGHT 4
+
 #define MAX_SWC_IMAGE_COUNT 4
 
 struct RenderSwapchainData
@@ -757,8 +761,8 @@ struct RenderSwapchainData
 	EntryHandle swapChainIdx;
 	uint32_t width;
 	uint32_t height;
-	EntryHandle* rendererWaitSemaphores;
-	EntryHandle* rendererFinishedSemaphores;
+	EntryHandle rendererWaitSemaphores[MAX_INSTANCE_FRAME_IN_FLIGHT];
+	EntryHandle rendererFinishedSemaphores[MAX_SWC_IMAGE_COUNT];
 	int textureIds[MAX_SWC_IMAGE_COUNT];
 	uint32_t imageCount;
 };
@@ -790,6 +794,8 @@ struct RenderPhysicalDeviceContainer
 	int internalDriverDeviceListIdentifier;
 };
 
+#define MAX_QUERY_RESULTS 32
+
 struct RenderLogicalDeviceContainer
 {
 	EntryHandle logicalDeviceIndex;
@@ -797,12 +803,12 @@ struct RenderLogicalDeviceContainer
 	EntryHandle presentQueue;
 	EntryHandle queryPoolIndex; 
 	RenderTimelineSync deviceTimelineSyncObject;
-	EntryHandle* currentCommandBufferIndex;
-	EntryHandle* stagingBuffers;
+	EntryHandle currentCommandBufferIndex[MAX_INSTANCE_FRAME_IN_FLIGHT];
+	EntryHandle stagingBuffers[MAX_INSTANCE_FRAME_IN_FLIGHT];
 	RenderPhysicalDeviceInformation* relatedPhysDeviceInfo;
-	DeviceSlabAllocator* stagingBufferAllocators;
-	uint32_t* queryResults;
-	uint32_t* queryCounts;
+	DeviceSlabAllocator stagingBufferAllocators[MAX_INSTANCE_FRAME_IN_FLIGHT];
+	uint32_t queryResults[MAX_QUERY_RESULTS];
+	uint32_t queryCounts[MAX_QUERY_RESULTS];
 	int maxQueryResults = 0;
 };
 

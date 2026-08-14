@@ -1530,7 +1530,10 @@ int VKDevice::CreateLogicalDevice(
 
 VKGraphicsPipelineBuilder* VKDevice::CreateGraphicsPipelineBuilder(EntryHandle renderPassIndex, uint32_t colorCount, uint32_t descLayoutCount, uint32_t dynamicStateCount, uint32_t pushConstantRangeCount)
 {
-	VkRenderPass renderPass = GetRenderPass(renderPassIndex);
+	VkRenderPass renderPass = VK_NULL_HANDLE;
+
+	if (EntryHandle() != renderPassIndex)
+		renderPass = GetRenderPass(renderPassIndex);
 
 	VKGraphicsPipelineBuilder* graphicsPipelineData = reinterpret_cast<VKGraphicsPipelineBuilder*>(AllocFromDeviceCache(sizeof(VKGraphicsPipelineBuilder)));
 
@@ -1876,7 +1879,7 @@ EntryHandle VKDevice::CreateSampler(
 	VkFilter minFilter, VkFilter magFilter,
 	VkSamplerAddressMode addressModeU, VkSamplerAddressMode addressModeV,
 	VkSamplerAddressMode addressModeW, VkCompareOp compareOp, 
-	VkSamplerMipmapMode samplerMode, float maxLod, float minLod
+	VkSamplerMipmapMode samplerMode, float minLod, float maxLod
 )
 {
 	VkSampler sampler = VK_NULL_HANDLE;

@@ -193,7 +193,7 @@ struct RenderInstance
 
 	ShaderResourceSetBuilder AllocateShaderResourceSet(int descriptorManagerIndex, int shaderGraphIndex, int targetSet, int setCount);
 
-	EntryHandle CreateShaderResourceSet(ShaderResourceManager* descriptorManager, int deviceSelection, int descriptorSet);
+	int CreateShaderResourceSet(ShaderResourceManager* descriptorManager, int deviceSelection, int descriptorSet);
 
 	void GeneratePipelineDescriptorBarriers(int deviceSelection, ShaderResourceSetHandle* descriptorid, int descriptorcount, BarrierAccumulator* accumulator, int pipelineIndex);
 
@@ -205,23 +205,23 @@ struct RenderInstance
 
 	void EndFrame(int deviceSelection, int commandStreamIndex);
 
-	void AddPipelineToRPGraphicsQueue(int psoIndex, int frameGraphIndex, int renderPass);
+	int AddPipelineToRPGraphicsQueue(int psoIndex, int frameGraphIndex, int renderPass);
 
-	void AddPipelineToComputeQueue(int queueIndex, int psoIndex);
+	int AddPipelineToComputeQueue(int queueIndex, int psoIndex);
 
-	void ReadData(int deviceSelection, int handle, void* dest, int size, int offset);
+	int ReadData(int deviceSelection, int handle, void* dest, int size, int offset);
 
 	int CreatePipelineFromGraphAndSpec(int deviceSelection, GenericPipelineStateInfo* stateInfo, ShaderGraph* graph, EntryHandle* outHandles, uint32_t outHandlePointer, AttachmentGraphInstance* graphInstance, uint32_t graphRenderPassIndex);
 
-	void UpdateDriverMemory(void* data, int allocationIndex, int size, int allocOffset, TransferType transferType);
+	int UpdateDriverMemory(void* data, int allocationIndex, int size, int allocOffset, TransferType transferType);
 
-	void UpdateImageMemory(void* data, int textureIndex, size_t totalSize, int width, int height, int mipLevels, int mipStart, int layerCount, int layerStart, ImageViewAspectMask mask);
+	int UpdateImageMemory(void* data, int textureIndex, size_t totalSize, int width, int height, int mipLevels, int mipStart, int layerCount, int layerStart, ImageViewAspectMask mask);
 
-	void InsertTransferCommand(int allocationIndex, int size, int allocOffset, uint32_t fillValue);
+	int InsertTransferCommand(int allocationIndex, int size, int allocOffset, uint32_t fillValue);
 
-	void UpdateShaderResourceArray(ShaderResourceSetHandle handle, int bindingindex, ShaderResourceType type, DeviceHandleArrayUpdate* resourceArrayData);
+	int UpdateShaderResourceArray(ShaderResourceSetHandle handle, int bindingindex, ShaderResourceType type, DeviceHandleArrayUpdate* resourceArrayData);
 
-	void UpdateBufferResourceArray(ShaderResourceSetHandle handle, int bindingindex, ShaderResourceType type, BufferArrayUpdate* resourceArrayData);
+	int UpdateBufferResourceArray(ShaderResourceSetHandle handle, int bindingindex, ShaderResourceType type, BufferArrayUpdate* resourceArrayData);
 
 	void SwapUpdateCommands();
 
@@ -331,7 +331,9 @@ struct RenderInstance
 
 	RHIDevice* GetDeviceHandle(int deviceSelection);
 
-	void GetLastDriverError(RHIDevice* device, StringView headerMessage);
+	void GetLastDeviceDriverError(RHIDevice* device, StringView messageHeader);
+
+	void GetLastInstanceDriverError(StringView messageHeader);
 
 	size_t GetNecessaryMemoryUsage(RenderInstanceCreateInfo* info);
 	

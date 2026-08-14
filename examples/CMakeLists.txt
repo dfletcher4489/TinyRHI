@@ -4,4 +4,6 @@ if(WIN32)
     add_subdirectory(SMBReader)
 endif()
 
-add_subdirectory(LinuxTest)
+if(UNIX)
+    add_subdirectory(LinuxTest)
+endif()

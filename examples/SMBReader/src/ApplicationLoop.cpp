@@ -49,7 +49,6 @@ enum DIRS {
 enum ShaderResourceLayoutIdentifiers
 {
 	GENERIC = 0,
-	TEXT,
 	INTERPOLATE,
 	POLYNOMIAL,
 	RENDEROBJCULL,
@@ -97,9 +96,8 @@ static std::array<StringView, 12> pds = {
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("UITextPipeline.pld")
 };
 
-static std::array<StringView, 32> layouts = {
+static std::array<StringView, 31> layouts = {
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("3DTexturedLayout.sgr"),
-	STRING_VIEW_FROM_LITERAL_INIT_LIST("TextLayout.sgr"),
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("InterpolateMeshLayout.sgr"),
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("PolynomialLayout.sgr"),
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("IndirectCull.sgr"),
@@ -3983,7 +3981,7 @@ void ApplicationLoop::InitializeRuntime()
 	std::array fullScreenFrameGraphs = { BasicShadow };
 
 	GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, GENERIC, 0, frameGraphs.data(), frameRenderPassSelection.data()+1,  1);
-	GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, TEXT, 1, frameGraphs.data(), frameRenderPassSelection.data()+1, 1);
+	//GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, TEXT, 1, frameGraphs.data(), frameRenderPassSelection.data()+1, 1);
 	GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, DEBUGDRAW, 2, frameGraphs.data(), frameRenderPassSelection.data()+1, 1);
 	GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, NORMALDEBUGDRAW, 3, frameGraphs.data(), frameRenderPassSelection.data()+1, 1);
 	GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, SKYBOX, 4, frameGraphs.data(), frameRenderPassSelection.data()+1, 1);

@@ -361,8 +361,8 @@ struct RenderInstance
 	void DestroyGpuCommandStream(int mainLogicalDevice, int handle);
 	void DestroyShaderGraph(int mainLogicalDevice, int handle);
 
-	void CleanInitializePhysicalDeviceIndices(RenderPhysicalDeviceContainer* physicalDeviceIndice);
-	void CleanInitializeRHIDevice(RHIDevice* logicalDeviceIndice);
+	void CleanInitializePhysicalDeviceIndices(RenderPhysicalDeviceContainer* physicalDevice);
+	void CleanInitializeRHIDevice(RHIDevice* logicalDevice);
 	void CleanInitializeWindowsSurface(RenderWindowSpecificData* windowsSurface);
 	void CleanInitializeSwapChain(RenderSwapchainData* swapChain);
 	void CleanInitializeBufferHandle(RenderBufferDescription* bufferHandle);
@@ -374,10 +374,8 @@ struct RenderInstance
 	void CleanInitializeComputeQueue(ComputeQueue* computeQueue);
 	void CleanInitializeTextureResourceHandle(RenderTextureDescription* textureResourceHandle);
 	void CleanInitializeTextureViewsResourceHandle(RenderImageViewDescription* textureViewsResourceHandle);
-	void CleanInitializeSamplerResourceHandle(EntryHandle samplerResourceHandle);
 	void CleanInitializeResourceStatus(ResourceStatus* resourceStatus);
 	void CleanInitializePipelineInfo(GenericPipelineStateInfo* pipelineInfo);
-	void CleanInitializeShaderResourceTemplate(EntryHandle shaderResourceTemplate);
 	void CleanInitializeAllocation(RenderAllocation* allocation);
 	void CleanInitializeDescriptorManager(ShaderResourceManager* descriptorManager);
 	void CleanInitializeGpuCommandStream(GPUCommandStreamAllocator* gpuCommandStream);

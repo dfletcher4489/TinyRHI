@@ -7129,74 +7129,161 @@ void RenderInstance::DestroyShaderGraph(int mainLogicalDevice, int handle)
 	shaderGraphs.shaderGraphPtrs.Free(handle);
 }
 
-void RenderInstance::CleanInitializePhysicalDeviceIndices(RenderPhysicalDeviceContainer* physicalDeviceIndice)
+void RenderInstance::CleanInitializePhysicalDeviceIndices(RenderPhysicalDeviceContainer* physicalDevice)
 {
-
+	physicalDevice->physicalDeviceIndex = EntryHandle();
+	physicalDevice->internalDriverDeviceListIdentifier = -1;
+	physicalDevice->information = {};
 }
 
-void RenderInstance::CleanInitializeRHIDevice(RHIDevice* logicalDeviceIndice)
+void RenderInstance::CleanInitializeRHIDevice(RHIDevice* logicalDevice)
 {
+	logicalDevice->device = nullptr;
 
+	for (int i = 0; i < MAX_INSTANCE_FRAME_IN_FLIGHT; i++)
+	{
+		logicalDevice->container.currentCommandBufferIndex[i] = EntryHandle();
+		logicalDevice->container.stagingBuffers[i] = EntryHandle();
+		logicalDevice->container.stagingBufferAllocators[i].dataSize = 0;
+		logicalDevice->container.stagingBufferAllocators[i].dataAllocator = 0;
+	}
+
+	logicalDevice->container.logicalDeviceIndex = EntryHandle();
+	logicalDevice->container.presentQueue = EntryHandle();
+	logicalDevice->container.queryPoolIndex = EntryHandle();
+	logicalDevice->container.graphicsComputeTransfer = EntryHandle();
+	logicalDevice->container.deviceTimelineSyncObject.currentValue = 0;
+	logicalDevice->container.deviceTimelineSyncObject.driverTimelineObject = EntryHandle();
+	logicalDevice->container.relatedPhysDeviceInfo = nullptr;
+	logicalDevice->container.maxQueryResults = 0;
 }
 
-void RenderInstance::CleanInitializeWindowsSurface(RenderWindowSpecificData* windowsSurface)
+void RenderInstance::CleanInitializeWindowsSurface(RenderWindowSpecificData* windowSurface)
 {
-
+	*windowSurface = {};
 }
 
 void RenderInstance::CleanInitializeSwapChain(RenderSwapchainData* swapChain)
 {
+	swapChain->swapChainIdx = EntryHandle();
+	swapChain->width = 0;
+	swapChain->height = 0;
+	swapChain->imageCount = 0;
 
+	for (int i = 0; i < MAX_INSTANCE_FRAME_IN_FLIGHT; i++)
+	{
+		swapChain->rendererFinishedSemaphores[i] = EntryHandle();
+	}
+
+	for (int i = 0; i < MAX_SWC_IMAGE_COUNT; i++)
+	{
+		swapChain->rendererWaitSemaphores[i] = EntryHandle();
+		swapChain->textureIds[i] = -1;
+	}
 }
 
 void RenderInstance::CleanInitializeBufferHandle(RenderBufferDescription* bufferHandle)
 {
-
+	bufferHandle->bufferHandle = EntryHandle();
+	bufferHandle->type = 0;
+	bufferHandle->resourceStatus = -1;
 }
 
 void RenderInstance::CleanInitializeImagePool(ImagePoolDescription* imagePool)
 {
-
+	imagePool->generationCounter = 0;
+	imagePool->imagePoolType = 0;
+	imagePool->imagePoolHandle = EntryHandle();
+	imagePool->imagePoolSize = 0;
 }
 
 void RenderInstance::CleanInitializePipelineHandle(PipelineHandle* pipelineHandle)
 {
 	*pipelineHandle = {};
+	pipelineHandle->pipelineIdentifierGroup = -1;
+	pipelineHandle->vertexBufferHandle = -1;
+	pipelineHandle->indirectBufferHandle = -1;
+	pipelineHandle->indirectCountBufferHandle = -1;
+	pipelineHandle->indirectDispatchCommandHandle = -1;
+	pipelineHandle->indirectBufferHandle = -1;
+	for (int i = 0; i < 16; i++)
+	{
+		pipelineHandle->resourceSets[i].descriptorManagerIndex = -1;
+		pipelineHandle->resourceSets[i].descriptorSetIndex = -1;
+	}
 }
 
 void RenderInstance::CleanInitializeAttachmentGraph(AttachmentGraph* attachmentGraph)
 {
-	*attachmentGraph = {};
+	attachmentGraph->passesCount = 0;
+	attachmentGraph->resourceCount = 0;
+
+	for (int i = 0; i < 12; i++)
+	{
+		attachmentGraph->resources[i].format = ImageFormat::IMAGE_UNKNOWN;
+		attachmentGraph->resources[i].msaa = 0;
+		attachmentGraph->resources[i].viewType = AttachmentViewType::STATIC;
+	}
+
+	for (int i = 0; i < 4; i++)
+	{
+		attachmentGraph->holders[i].attachmentCount = 0;
+		attachmentGraph->holders[i].colorCount = 0;
+		attachmentGraph->holders[i].depthStencilCount = 0;
+		attachmentGraph->holders[i].resolveCount = 0;
+
+		for (int j = 0; j < 8; j++)
+		{
+			attachmentGraph->holders[i].descs[j].attachType = 0;
+			attachmentGraph->holders[i].descs[j].dstLayout = ImageLayout::UNDEFINED;
+			attachmentGraph->holders[i].descs[j].srcLayout = ImageLayout::UNDEFINED;
+			attachmentGraph->holders[i].descs[j].resourceIndex = -1;
+			attachmentGraph->holders[i].descs[j].loadOp = AttachmentLoadUsage::ATTACHNOCARE;
+			attachmentGraph->holders[i].descs[j].storeOp = AttachmentStoreUsage::ATTACHDISCARD;
+		}
+	}
 }
 
-void RenderInstance::CleanInitializeAttachmentGraphsInstance(AttachmentGraphInstance* attachmentGraphsInstance)
+void RenderInstance::CleanInitializeAttachmentGraphsInstance(AttachmentGraphInstance* attachmentGraphInstance)
 {
-	*attachmentGraphsInstance = {};
+	attachmentGraphInstance->consecutiveRenderPassBase = -1;
+	attachmentGraphInstance->consecutiveRenderTargetsBase = -1;
+	attachmentGraphInstance->graphLayout = nullptr;
+	attachmentGraphInstance->passes = nullptr;
+	attachmentGraphInstance->resources = nullptr;
 }
 
 void RenderInstance::CleanInitializeRenderTargetQueue(RenderQueue* renderTargetQueue)
 {
-	*renderTargetQueue = {};
+	renderTargetQueue->queueCount = 0;
+	memset(renderTargetQueue->pipelines, -1, sizeof(int) * 63);
 }
 
 void RenderInstance::CleanInitializeComputeQueue(ComputeQueue* computeQueue)
 {
-	*computeQueue = {};
+	computeQueue->queueCount = 0;
+	memset(computeQueue->pipelines, -1, sizeof(int) * 63);
 }
 
 void RenderInstance::CleanInitializeTextureResourceHandle(RenderTextureDescription* textureResourceHandle)
 {
 	*textureResourceHandle = {};
+	
+	textureResourceHandle->textureIndex = EntryHandle();
+	
+	textureResourceHandle->resourceStatusIndex = -1;
+
+	textureResourceHandle->format = ImageFormat::IMAGE_UNKNOWN;
+	
+	for (int i = 0; i<MAX_VIEWS_ATTACHED_TO_TEXTURE; i++)
+		textureResourceHandle->viewIndex[i] = -1;
 }
 
 void RenderInstance::CleanInitializeTextureViewsResourceHandle(RenderImageViewDescription* textureViewsResourceHandle)
 {
 	*textureViewsResourceHandle = {};
-}
-
-void RenderInstance::CleanInitializeSamplerResourceHandle(EntryHandle samplerResourceHandle)
-{
-	samplerResourceHandle = {};
+	textureViewsResourceHandle->desiredLayoutForView = ImageLayout::UNDEFINED;
+	textureViewsResourceHandle->viewIndex = EntryHandle();
 }
 
 void RenderInstance::CleanInitializeResourceStatus(ResourceStatus* resourceStatus)
@@ -7207,21 +7294,25 @@ void RenderInstance::CleanInitializeResourceStatus(ResourceStatus* resourceStatu
 void RenderInstance::CleanInitializePipelineInfo(GenericPipelineStateInfo* pipelineInfo)
 {
 	*pipelineInfo = {};
-}
-
-void RenderInstance::CleanInitializeShaderResourceTemplate(EntryHandle shaderResourceTemplate)
-{
-	shaderResourceTemplate = {};
+	pipelineInfo->depthFormat = ImageFormat::IMAGE_UNKNOWN;
+	pipelineInfo->colorFormat = ImageFormat::IMAGE_UNKNOWN;
 }
 
 void RenderInstance::CleanInitializeAllocation(RenderAllocation* allocation)
 {
 	*allocation = {};
+	allocation->viewIndex = EntryHandle();
+	allocation->memIndex = -1;
+	allocation->parentAllocation = -1;
+	allocation->resourceStatus = -1;
+	allocation->formatType = ComponentFormatType::NO_BUFFER_FORMAT;
 }
 
 void RenderInstance::CleanInitializeDescriptorManager(ShaderResourceManager* descriptorManager)
 {
 	*descriptorManager = {};
+	descriptorManager->deviceResourceHeap = EntryHandle();
+	//descriptorManager->descriptorSetHandles.Reset();
 }
 
 void RenderInstance::CleanInitializeGpuCommandStream(GPUCommandStreamAllocator* gpuCommandStream)

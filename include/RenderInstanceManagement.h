@@ -808,7 +808,7 @@ struct RenderLogicalDeviceContainer
 	RenderPhysicalDeviceInformation* relatedPhysDeviceInfo;
 	DeviceSlabAllocator stagingBufferAllocators[MAX_INSTANCE_FRAME_IN_FLIGHT];
 	uint32_t queryResults[MAX_QUERY_RESULTS];
-	uint32_t queryCounts[MAX_QUERY_RESULTS];
+	uint32_t queryCounts[MAX_INSTANCE_FRAME_IN_FLIGHT];
 	int maxQueryResults = 0;
 };
 

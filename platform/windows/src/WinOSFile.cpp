@@ -10,9 +10,9 @@ static HANDLE stdInputHandle = INVALID_HANDLE_VALUE;
 static HANDLE stdOutputHandle = INVALID_HANDLE_VALUE;
 static HANDLE stdErrorHandle = INVALID_HANDLE_VALUE;
 
-ALIGNAS(64) static std::atomic<int> boundedLinearAllocator{ 0 };
-ALIGNAS(64) static std::atomic<size_t> enqueuePos{ 0 };
-ALIGNAS(64) static std::atomic<size_t> dequeuePos{ 0 };
+ALIGNAS(128) static std::atomic<int> boundedLinearAllocator{ 0 };
+ALIGNAS(128) static std::atomic<size_t> enqueuePos{ 0 };
+ALIGNAS(128) static std::atomic<size_t> dequeuePos{ 0 };
 
 
 

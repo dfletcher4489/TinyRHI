@@ -337,22 +337,52 @@ struct RenderInstance
 
 	size_t GetNecessaryMemoryUsage(RenderInstanceCreateInfo* info);
 	
-	void DeletePhysicalDevice(int physicalDeviceIndex);
+	void DestroyPhysicalDeviceIndices(int handle);
+	void DestroyLogicalDeviceIndices(int handle);
+	void DestroyWindowsSurfaces(int handle);
+	void DestroySwapChains(int mainLogicalDevice, int handle);
+	void DestroyBufferHandles(int mainLogicalDevice, int handle);
+	void DestroyImagePool(int mainLogicalDevice, int handle);
+	void DestroyPipelineHandle(int mainLogicalDevice, int handle);
+	void DestroyAttachmentGraph(int mainLogicalDevice, int handle);
+	void DestroyAttachmentGraphsInstance(int mainLogicalDevice, int handle);
+	void DestroyRenderTargetQueue(int mainLogicalDevice, int handle);
+	void DestroyComputeQueue(int mainLogicalDevice, int handle);
+	void DestroyTextureResourceHandle(int mainLogicalDevice, int handle);
+	void DestroyTextureViewsResourceHandle(int mainLogicalDevice, int handle);
+	void DestroySamplerResourceHandle(int mainLogicalDevice, int handle);
+	void DestroyResourceStatus(int mainLogicalDevice, int handle);
+	void DestroyPipelineInfo(int mainLogicalDevice, int handle);
+	void DestroyRenderPass(int mainLogicalDevice, int handle);
+	void DestroyRenderTarget(int mainLogicalDevice, int handle);
+	void DestroyShaderResourceTemplate(int mainLogicalDevice, int handle);
+	void DestroyAllocation(int mainLogicalDevice, int handle);
+	void DestroyDescriptorManager(int mainLogicalDevice, int handle);
+	void DestroyGpuCommandStream(int mainLogicalDevice, int handle);
+	void DestroyShaderGraph(int mainLogicalDevice, int handle);
 
-	void DeleteLogicalDevice(int logicalDeviceIndex);
+	void CleanInitializePhysicalDeviceIndices(RenderPhysicalDeviceContainer* physicalDeviceIndice);
+	void CleanInitializeRHIDevice(RHIDevice* logicalDeviceIndice);
+	void CleanInitializeWindowsSurface(RenderWindowSpecificData* windowsSurface);
+	void CleanInitializeSwapChain(RenderSwapchainData* swapChain);
+	void CleanInitializeBufferHandle(RenderBufferDescription* bufferHandle);
+	void CleanInitializeImagePool(ImagePoolDescription* imagePool);
+	void CleanInitializePipelineHandle(PipelineHandle* pipelineHandle);
+	void CleanInitializeAttachmentGraph(AttachmentGraph* attachmentGraph);
+	void CleanInitializeAttachmentGraphsInstance(AttachmentGraphInstance* attachmentGraphsInstance);
+	void CleanInitializeRenderTargetQueue(RenderQueue* renderTargetQueue);
+	void CleanInitializeComputeQueue(ComputeQueue* computeQueue);
+	void CleanInitializeTextureResourceHandle(RenderTextureDescription* textureResourceHandle);
+	void CleanInitializeTextureViewsResourceHandle(RenderImageViewDescription* textureViewsResourceHandle);
+	void CleanInitializeSamplerResourceHandle(EntryHandle samplerResourceHandle);
+	void CleanInitializeResourceStatus(ResourceStatus* resourceStatus);
+	void CleanInitializePipelineInfo(GenericPipelineStateInfo* pipelineInfo);
+	void CleanInitializeShaderResourceTemplate(EntryHandle shaderResourceTemplate);
+	void CleanInitializeAllocation(RenderAllocation* allocation);
+	void CleanInitializeDescriptorManager(ShaderResourceManager* descriptorManager);
+	void CleanInitializeGpuCommandStream(GPUCommandStreamAllocator* gpuCommandStream);
+	void CleanInitializeShaderGraph(ShaderGraph* shaderGraph);
 
-	void DeleteWindowSurface(int windowSurfaceIndex);
-
-	void DeleteSwapChain(int swapChainIndex);
-
-	void DeleteBufferHandle(int bufferHandleIndex);
-
-	void DeleteImagePools(int imagePoolIndex);
-
-	void DeleteRenderPass(RHIDevice* device, int renderPassIndex);
-
-	void DeleteShaderGraph(RHIDevice* device, int shaderGraphIndex);
-	
 	static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 3;
 
 	VKInstance *vkInstance = nullptr;
@@ -445,9 +475,20 @@ namespace GlobalRenderer
 	extern RenderInstance gRenderInstance;
 }
 
-int DestroyDriverImageView(RHIDevice* device, EntryHandle viewIndex);
-
-int DestroyDriverImage(RHIDevice* device, EntryHandle imageIndex);
-
-int DestroyOldStyleRenderPass(RHIDevice* device, EntryHandle renderPass);
-
+int DestroyDriverPhysicalDevice(VKInstance* instance, EntryHandle handle);
+int DestroyDriverLogicalDevice(VKInstance* instance, EntryHandle handle);
+int DestroyDriverWindowsSurface(VKInstance* device, EntryHandle handle);
+int DestroyDriverSwapChain(RHIDevice* device, EntryHandle handle);
+int DestroyDriverBufferHandle(RHIDevice* device, EntryHandle handle);
+int DestroyDriverImagePool(RHIDevice* device, EntryHandle handle);
+int DestroyDriverPipelineHandle(RHIDevice* device, EntryHandle handle);
+int DestroyDriverImage(RHIDevice* device, EntryHandle handle);
+int DestroyDriverImageView(RHIDevice* device, EntryHandle handle);
+int DestroyDriverSamplerResourceHandle(RHIDevice* device, EntryHandle handle);
+int DestroyOldStyleRenderPass(RHIDevice* device, EntryHandle handle);
+int DestroyDriverMainRenderTarget(RHIDevice* device, EntryHandle handle);
+int DestroyDriverShaderResourceLayout(RHIDevice* device, EntryHandle handle);
+int DestroyDriverDescriptorHeap(RHIDevice* device, EntryHandle handle);
+int DestroyDriverShader(RHIDevice* device, EntryHandle handle);
+int DestoryDriverBufferView(RHIDevice* device, EntryHandle handle);
+int DestroyDriverSemaphore(RHIDevice* device, EntryHandle handle);

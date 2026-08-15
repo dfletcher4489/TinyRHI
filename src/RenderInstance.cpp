@@ -1246,19 +1246,6 @@ int RenderInstance::CreateAttachmentGraphInstance(int deviceSelection, Attachmen
 	return attachmentInstanceIndex;
 }
 
-void RenderInstance::DeleteRenderPass(RHIDevice* device, int renderPassIndex)
-{
-	EntryHandle* rp = renderPasses.Get(renderPassIndex);
-
-	if (*rp != EntryHandle())
-	{
-		DestroyOldStyleRenderPass(device, *rp);
-	}
-
-	*rp = EntryHandle();
-
-	renderPasses.Free(renderPassIndex);
-}
 
 int RenderInstance::CreateRenderPass(int deviceSelection, AttachmentGraphInstance* graphInstance)
 {
@@ -1388,7 +1375,7 @@ int RenderInstance::CreateRenderPass(int deviceSelection, AttachmentGraphInstanc
 			{
 				for (int rp = headRenderPassIndex; rp < headRenderPassIndex + totalRenderPassesCreated; rp++)
 				{
-					DeleteRenderPass(logicalDeviceIndices, rp);
+					DestroyRenderPass(deviceSelection, rp);
 				}
 				
 				GetLastDeviceDriverError(logicalDeviceIndices, STRING_VIEW_FROM_LITERAL("RenderPass Creation Failed:"));
@@ -2090,45 +2077,6 @@ int RenderInstance::CreateShaderResourceMap(RHIDevice* device, ShaderGraph* grap
 	return success;
 }
 
-void RenderInstance::DeleteShaderGraph(RHIDevice* device, int shaderGraphIndex)
-{
-	ShaderGraph* graph = shaderGraphs.shaderGraphPtrs.Get(shaderGraphIndex);
-
-	if (graph)
-	{
-		int shaderCount = graph->shaderMapCount;
-
-		for (int i = 0; i < shaderCount; i++)
-		{
-			int index = -1;
-			if ((index = graph->shaderMaps[i].shaderReference) >= 0)
-			{
-				EntryHandle handle = shaderGraphs.shaderDetails.Get(index)->shaderHandle;
-
-				if (handle != EntryHandle())
-				{
-					device->device->DestroyShader(handle);
-				}
-
-				shaderGraphs.shaderDetails.Free(index);
-			}
-		}
-
-		int resourceCount = graph->resourceSetCount;
-
-		for (int i = 0; i < resourceCount; i++)
-		{
-			ShaderResourceSetTemplate* set = &graph->shaderResourceSetTemplates[i];
-
-			if (set->vulkanDescLayout >= 0)
-			{
-				device->device->DestroyDescriptorLayout(shaderResourceTemplates.pool[set->vulkanDescLayout]);
-
-				set->vulkanDescLayout = -1;
-			}
-		}
-	}
-}
 
 int RenderInstance::CreateShaderGraphs(int deviceSelection, StringView* shaderGraphLayouts, int shaderGraphLayoutsCount)
 {
@@ -2279,7 +2227,7 @@ int RenderInstance::CreateShaderGraphs(int deviceSelection, StringView* shaderGr
 		{
 			if (g < createdShaderGraph)
 			{
-				DeleteShaderGraph(rhiDevice, shaderGraphIndex + g);
+				DestroyShaderGraph(deviceSelection, shaderGraphIndex + g);
 			}
 		}
 	}
@@ -6693,4 +6641,595 @@ void RenderInstance::InsertIntraPassBarrier(RecordingBufferObject* rbo, BarrierA
 
 		ipb = &accum->intraPassBarriers[accum->intraPassTop];
 	}
+}
+
+void RenderInstance::DestroyPhysicalDeviceIndices(int handle)
+{
+	if (handle >= maxPhysicalDevices || handle >= physicalDeviceCounter)
+	{
+		return;
+	}
+
+	RenderPhysicalDeviceContainer* container = &physicalDeviceIndices[handle];
+
+	DestroyDriverPhysicalDevice(vkInstance, container->physicalDeviceIndex);
+
+	CleanInitializePhysicalDeviceIndices(container);
+
+	physicalDeviceCounter--;
+}
+
+void RenderInstance::DestroyLogicalDeviceIndices(int handle)
+{
+	if (handle >= maxLogicalDevices || handle >= logicalDeviceCounter)
+	{
+		return;
+	}
+
+	RHIDevice* container = GetDeviceHandle(handle);
+
+	DestroyDriverLogicalDevice(vkInstance, container->container.logicalDeviceIndex);
+
+	CleanInitializeRHIDevice(container);
+
+	logicalDeviceCounter--;
+}
+
+void RenderInstance::DestroyWindowsSurfaces(int handle)
+{
+	RenderWindowSpecificData* data = windowsSurfaces.Get(handle);
+
+	if (!data)
+	{
+		return;
+	}
+
+	DestroyDriverWindowsSurface(vkInstance, data->vkRenderSurface);
+
+	CleanInitializeWindowsSurface(data);
+
+	windowsSurfaces.Free(handle);
+}
+
+
+void RenderInstance::DestroySwapChains(int mainLogicalDevice, int handle)
+{
+	RHIDevice* container = GetDeviceHandle(mainLogicalDevice);
+
+	RenderSwapchainData* swcData = swapChains.Get(handle);
+
+	if (!swcData)
+	{
+		return;
+	}
+
+	for (int i = 0; i < swcData->imageCount; i++)
+	{
+		RenderTextureDescription* texDesc = textureResourceHandles.Get(swcData->textureIds[i]);
+	
+		for (int j = 0; j < texDesc->viewCount; j++)
+		{
+			int viewHandle = texDesc->viewIndex[j];
+
+			RenderImageViewDescription* viewDesc = textureViewsResourceHandles.Get(viewHandle);
+
+			CleanInitializeTextureViewsResourceHandle(viewDesc);
+
+			textureViewsResourceHandles.Free(viewHandle);
+		}
+
+		CleanInitializeResourceStatus(resourceStatuses.Get(texDesc->resourceStatusIndex));
+		
+		resourceStatuses.Free(texDesc->resourceStatusIndex);
+
+		CleanInitializeTextureResourceHandle(texDesc);
+
+		textureResourceHandles.Free(swcData->textureIds[i]);
+
+		DestroyDriverSemaphore(container, swcData->rendererFinishedSemaphores[i]);
+	}
+
+	for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+	{
+		DestroyDriverSemaphore(container, swcData->rendererWaitSemaphores[i]);
+	}
+
+	DestroyDriverSwapChain(container, swcData->swapChainIdx);
+
+	CleanInitializeSwapChain(swcData);
+
+	swapChains.Free(handle);
+}
+
+void RenderInstance::DestroyBufferHandles(int mainLogicalDevice, int handle)
+{
+	RHIDevice* container = GetDeviceHandle(mainLogicalDevice);
+
+	RenderBufferDescription* bufferHandle = bufferHandles.Get(handle);
+
+	if (!bufferHandle)
+	{
+		return;
+	}
+	
+	DestroyDriverBufferHandle(container, bufferHandle->bufferHandle);
+
+	CleanInitializeBufferHandle(bufferHandle);
+
+	bufferHandles.Free(handle);
+}
+
+void RenderInstance::DestroyImagePool(int mainLogicalDevice, int handle)
+{
+	RHIDevice* container = GetDeviceHandle(mainLogicalDevice);
+	
+	ImagePoolDescription* imagePool = imagePools.Get(handle);
+	
+	if (!imagePool)
+	{
+		return;
+	}
+
+	DestroyDriverImagePool(container, imagePool->imagePoolHandle);
+	
+	CleanInitializeImagePool(imagePool);
+
+	imagePools.Free(handle);
+}
+
+void RenderInstance::DestroyPipelineHandle(int mainLogicalDevice, int handle)
+{
+	RHIDevice* container = GetDeviceHandle(mainLogicalDevice);
+	
+	PipelineHandle* pipelineHandle = pipelineHandles.Get(handle);
+	
+	if (!pipelineHandle)
+	{
+		return;
+	}
+
+	CleanInitializePipelineHandle(pipelineHandle);
+
+	pipelineHandles.Free(handle);
+}
+
+void RenderInstance::DestroyAttachmentGraph(int mainLogicalDevice, int handle)
+{
+	RHIDevice* container = GetDeviceHandle(mainLogicalDevice);
+	
+	AttachmentGraph* attachmentGraph = attachmentGraphs.Get(handle);
+	
+	if (!attachmentGraph)
+	{
+		return;
+	}
+
+	CleanInitializeAttachmentGraph(attachmentGraph);
+
+	attachmentGraphs.Free(handle);
+}
+
+void RenderInstance::DestroyAttachmentGraphsInstance(int mainLogicalDevice, int handle)
+{
+	RHIDevice* container = GetDeviceHandle(mainLogicalDevice);
+	
+	AttachmentGraphInstance* attachmentGraphInstance = attachmentGraphsInstances.Get(handle);
+	
+	if (!attachmentGraphInstance)
+	{
+		return;
+	}
+
+	int resourceCount = attachmentGraphInstance->graphLayout->resourceCount;
+
+	int passesCount = attachmentGraphInstance->graphLayout->passesCount;
+
+	for (int i = 0; i < resourceCount; i++)
+	{
+		int sampleCount = RENDER_MAX(findMSB(attachmentGraphInstance->resources[i].sampHi), 1);
+
+		for (int j = 0; j < sampleCount; j++)
+		{
+			for (int g = 0; g < attachmentGraphInstance->resources[i].imageCount; g++)
+			{
+				textureResourceHandles.Free(attachmentGraphInstance->resources[i].textureIds[j][g]);
+			}
+		}
+	}
+
+	for (int i = 0; i < passesCount; i++)
+	{
+		DestroyRenderPass(mainLogicalDevice, attachmentGraphInstance->consecutiveRenderPassBase + i);
+		DestroyRenderTarget(mainLogicalDevice, attachmentGraphInstance->consecutiveRenderTargetsBase + i);
+	}
+
+	CleanInitializeAttachmentGraphsInstance(attachmentGraphInstance);
+	
+	attachmentGraphsInstances.Free(handle);
+}
+
+void RenderInstance::DestroyRenderTargetQueue(int mainLogicalDevice, int handle)
+{
+	RHIDevice* container = GetDeviceHandle(mainLogicalDevice);
+	
+	RenderQueue* renderTargetQueue = renderTargetQueues.Get(handle);
+	
+	if (!renderTargetQueue)
+	{
+		return;
+	}
+
+	CleanInitializeRenderTargetQueue(renderTargetQueue);
+
+	renderTargetQueues.Free(handle);
+}
+
+void RenderInstance::DestroyComputeQueue(int mainLogicalDevice, int handle)
+{
+	RHIDevice* container = GetDeviceHandle(mainLogicalDevice);
+	
+	ComputeQueue* computeQueue = computeQueues.Get(handle);
+	
+	if (!computeQueue)
+	{
+		return;
+	}
+
+	CleanInitializeComputeQueue(computeQueue);
+
+	computeQueues.Free(handle);
+}
+
+void RenderInstance::DestroyTextureResourceHandle(int mainLogicalDevice, int handle)
+{
+	RHIDevice* container = GetDeviceHandle(mainLogicalDevice);
+	
+	RenderTextureDescription* textureResourceHandle = textureResourceHandles.Get(handle);
+	
+	if (!textureResourceHandle)
+	{
+		return;
+	}
+
+	for (int i = 0; i < textureResourceHandle->viewCount; i++)
+	{
+		DestroyTextureViewsResourceHandle(mainLogicalDevice, textureResourceHandle->viewIndex[i]);
+	}
+
+	DestroyResourceStatus(mainLogicalDevice, textureResourceHandle->resourceStatusIndex);
+
+	DestroyDriverImage(container, textureResourceHandle->textureIndex);
+
+	CleanInitializeTextureResourceHandle(textureResourceHandle);
+
+	textureResourceHandles.Free(handle);
+}
+
+void RenderInstance::DestroyTextureViewsResourceHandle(int mainLogicalDevice, int handle)
+{
+	RHIDevice* container = GetDeviceHandle(mainLogicalDevice);
+	
+	RenderImageViewDescription* textureViewsResourceHandle = textureViewsResourceHandles.Get(handle);
+	
+	if (!textureViewsResourceHandle)
+	{
+		return;
+	}
+
+	DestroyDriverImageView(container, textureViewsResourceHandle->viewIndex);
+
+	CleanInitializeTextureViewsResourceHandle(textureViewsResourceHandle);
+
+	textureViewsResourceHandles.Free(handle);
+}
+
+void RenderInstance::DestroySamplerResourceHandle(int mainLogicalDevice, int handle)
+{
+	RHIDevice* container = GetDeviceHandle(mainLogicalDevice);
+	
+	EntryHandle samplerResourceHandle = samplerResourceHandles[handle];
+	
+	if (EntryHandle() == samplerResourceHandle)
+	{
+		return;
+	}
+
+	DestroyDriverSamplerResourceHandle(container, samplerResourceHandle);
+
+	samplerResourceHandles.pool[handle] = EntryHandle();
+	samplerResourceHandles.Free(handle);
+}
+
+void RenderInstance::DestroyResourceStatus(int mainLogicalDevice, int handle)
+{
+	RHIDevice* container = GetDeviceHandle(mainLogicalDevice);
+	
+	ResourceStatus* resourceStatus = resourceStatuses.Get(handle);
+	
+	if (!resourceStatus)
+	{
+		return;
+	}
+
+	storageAllocator->Free(resourceStatus->currAction);
+	storageAllocator->Free(resourceStatus->currentLayout);
+	storageAllocator->Free(resourceStatus->currStage);
+
+	CleanInitializeResourceStatus(resourceStatus);
+	
+	resourceStatuses.Free(handle);
+}
+
+void RenderInstance::DestroyPipelineInfo(int mainLogicalDevice, int handle)
+{
+	RHIDevice* container = GetDeviceHandle(mainLogicalDevice);
+	
+	GenericPipelineStateInfo* pipelineInfo = pipelineInfos.Get(handle);
+	
+	if (!pipelineInfo)
+	{
+		return;
+	}
+
+	CleanInitializePipelineInfo(pipelineInfo);
+
+	pipelineInfos.Free(handle);
+}
+
+void RenderInstance::DestroyRenderPass(int mainLogicalDevice, int handle)
+{
+	RHIDevice* container = GetDeviceHandle(mainLogicalDevice);
+	
+	EntryHandle renderPass = renderPasses[handle];
+	
+	if (EntryHandle() == renderPass)
+	{
+		return;
+	}
+
+	DestroyOldStyleRenderPass(container, renderPass);
+	
+	renderPasses.pool[handle] = EntryHandle();
+	renderPasses.Free(handle);
+}
+
+void RenderInstance::DestroyRenderTarget(int mainLogicalDevice, int handle)
+{
+	RHIDevice* container = GetDeviceHandle(mainLogicalDevice);
+	
+	EntryHandle mainRenderTarget = mainRenderTargets[handle];
+	
+	if (EntryHandle() == mainRenderTarget)
+	{
+		return;
+	}
+
+	DestroyDriverMainRenderTarget(container, mainRenderTarget);
+
+	mainRenderTargets.pool[handle] = EntryHandle();
+
+	mainRenderTargets.Free(handle);
+}
+
+void RenderInstance::DestroyShaderResourceTemplate(int mainLogicalDevice, int handle)
+{
+	RHIDevice* container = GetDeviceHandle(mainLogicalDevice);
+	
+	EntryHandle shaderResourceTemplate = shaderResourceTemplates[handle];
+	
+	if (EntryHandle() == shaderResourceTemplate)
+	{
+		return;
+	}
+
+	DestroyDriverShaderResourceLayout(container, shaderResourceTemplate);
+	shaderResourceTemplates.pool[handle] = EntryHandle();
+	shaderResourceTemplates.Free(handle);
+}
+
+void RenderInstance::DestroyAllocation(int mainLogicalDevice, int handle)
+{
+	RHIDevice* container = GetDeviceHandle(mainLogicalDevice);
+	
+	RenderAllocation* allocation = allocations.Get(handle);
+	
+	if (!allocation)
+	{
+		return;
+	}
+
+	DestroyResourceStatus(mainLogicalDevice, allocation->resourceStatus);
+
+	if (EntryHandle() == allocation->viewIndex)
+	{
+		DestoryDriverBufferView(container, allocation->viewIndex);
+	}
+
+	CleanInitializeAllocation(allocation);
+	allocations.Free(handle);
+}
+
+void RenderInstance::DestroyDescriptorManager(int mainLogicalDevice, int handle)
+{
+	RHIDevice* container = GetDeviceHandle(mainLogicalDevice);
+
+	ShaderResourceManager* descriptorManager = descriptorManagers.Get(handle);
+
+	if (!descriptorManager)
+	{
+		return;
+	}
+
+	DestroyDriverDescriptorHeap(container, descriptorManager->deviceResourceHeap);
+
+	CleanInitializeDescriptorManager(descriptorManager);
+
+	descriptorManagers.Free(handle);
+}
+
+void RenderInstance::DestroyGpuCommandStream(int mainLogicalDevice, int handle)
+{
+	RHIDevice* container = GetDeviceHandle(mainLogicalDevice);
+	
+	GPUCommandStreamAllocator* gpuCommandStream = gpuCommandStreams.Get(handle);
+
+	if (!gpuCommandStream)
+	{
+		return;
+	}
+
+	CleanInitializeGpuCommandStream(gpuCommandStream);
+	gpuCommandStreams.Free(handle);
+}
+
+void RenderInstance::DestroyShaderGraph(int mainLogicalDevice, int handle)
+{
+	RHIDevice* container = GetDeviceHandle(mainLogicalDevice);
+	
+	ShaderGraph* graph = shaderGraphs.shaderGraphPtrs.Get(handle);
+	
+	if (!graph)
+	{
+		return;
+	}
+
+	int shaderCount = graph->shaderMapCount;
+
+	for (int i = 0; i < shaderCount; i++)
+	{
+		int index = -1;
+
+		if ((index = graph->shaderMaps[i].shaderReference) >= 0)
+		{
+			EntryHandle handle = shaderGraphs.shaderDetails.Get(index)->shaderHandle;
+
+			if (EntryHandle() != handle)
+			{
+				DestroyDriverShader(container, handle);
+			}
+
+			shaderGraphs.shaderDetails.Free(index);
+		}
+	}
+
+	int resourceCount = graph->resourceSetCount;
+
+	for (int i = 0; i < resourceCount; i++)
+	{
+		ShaderResourceSetTemplate* set = &graph->shaderResourceSetTemplates[i];
+
+		if (set->vulkanDescLayout >= 0)
+		{
+			DestroyShaderResourceTemplate(mainLogicalDevice, set->vulkanDescLayout);
+		}
+	}
+
+	CleanInitializeShaderGraph(graph);
+
+	shaderGraphs.shaderGraphPtrs.Free(handle);
+}
+
+void RenderInstance::CleanInitializePhysicalDeviceIndices(RenderPhysicalDeviceContainer* physicalDeviceIndice)
+{
+
+}
+
+void RenderInstance::CleanInitializeRHIDevice(RHIDevice* logicalDeviceIndice)
+{
+
+}
+
+void RenderInstance::CleanInitializeWindowsSurface(RenderWindowSpecificData* windowsSurface)
+{
+
+}
+
+void RenderInstance::CleanInitializeSwapChain(RenderSwapchainData* swapChain)
+{
+
+}
+
+void RenderInstance::CleanInitializeBufferHandle(RenderBufferDescription* bufferHandle)
+{
+
+}
+
+void RenderInstance::CleanInitializeImagePool(ImagePoolDescription* imagePool)
+{
+
+}
+
+void RenderInstance::CleanInitializePipelineHandle(PipelineHandle* pipelineHandle)
+{
+	*pipelineHandle = {};
+}
+
+void RenderInstance::CleanInitializeAttachmentGraph(AttachmentGraph* attachmentGraph)
+{
+	*attachmentGraph = {};
+}
+
+void RenderInstance::CleanInitializeAttachmentGraphsInstance(AttachmentGraphInstance* attachmentGraphsInstance)
+{
+	*attachmentGraphsInstance = {};
+}
+
+void RenderInstance::CleanInitializeRenderTargetQueue(RenderQueue* renderTargetQueue)
+{
+	*renderTargetQueue = {};
+}
+
+void RenderInstance::CleanInitializeComputeQueue(ComputeQueue* computeQueue)
+{
+	*computeQueue = {};
+}
+
+void RenderInstance::CleanInitializeTextureResourceHandle(RenderTextureDescription* textureResourceHandle)
+{
+	*textureResourceHandle = {};
+}
+
+void RenderInstance::CleanInitializeTextureViewsResourceHandle(RenderImageViewDescription* textureViewsResourceHandle)
+{
+	*textureViewsResourceHandle = {};
+}
+
+void RenderInstance::CleanInitializeSamplerResourceHandle(EntryHandle samplerResourceHandle)
+{
+	samplerResourceHandle = {};
+}
+
+void RenderInstance::CleanInitializeResourceStatus(ResourceStatus* resourceStatus)
+{
+	*resourceStatus = {};
+}
+
+void RenderInstance::CleanInitializePipelineInfo(GenericPipelineStateInfo* pipelineInfo)
+{
+	*pipelineInfo = {};
+}
+
+void RenderInstance::CleanInitializeShaderResourceTemplate(EntryHandle shaderResourceTemplate)
+{
+	shaderResourceTemplate = {};
+}
+
+void RenderInstance::CleanInitializeAllocation(RenderAllocation* allocation)
+{
+	*allocation = {};
+}
+
+void RenderInstance::CleanInitializeDescriptorManager(ShaderResourceManager* descriptorManager)
+{
+	*descriptorManager = {};
+}
+
+void RenderInstance::CleanInitializeGpuCommandStream(GPUCommandStreamAllocator* gpuCommandStream)
+{
+	*gpuCommandStream = {};
+}
+
+void RenderInstance::CleanInitializeShaderGraph(ShaderGraph* shaderGraph)
+{
+	*shaderGraph = {};
 }

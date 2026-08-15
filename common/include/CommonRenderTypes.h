@@ -85,7 +85,7 @@ enum BarrierActionBits
 	READ_INDEX_INPUT = 64,
 };
 
-enum BarrierStageBits
+enum StageBits
 {
 	VERTEX_SHADER_BARRIER = 1,
 	VERTEX_INPUT_BARRIER = 2,
@@ -95,11 +95,12 @@ enum BarrierStageBits
 	INDIRECT_DRAW_BARRIER = 32,
 	TRANSFER_BARRIER = 64,
 	INDEX_INPUT_BARRIER = 128,
+	END_OF_PIPE = 256
 };
 
 typedef int BarrierAction;
 
-typedef int BarrierStage;
+typedef int PipelineStage;
 
 enum class ShaderResourceType
 {
@@ -452,21 +453,25 @@ enum class RenderPassType
 	PER_FRAME_IMAGE_COUNT = 2
 };
 
+#define MAX_RENDER_PASS_DESCRIPTIONS 8
+#define MAX_GRAPH_RENDER_PASSES 4
+#define MAX_GRAPH_RESOURCES 12
+
 struct AttachmentRenderPass
 {
 	int attachmentCount;
 	int resolveCount;
 	int depthStencilCount;
 	int colorCount;
-	AttachmentDescription descs[8];
+	AttachmentDescription descs[MAX_RENDER_PASS_DESCRIPTIONS];
 };
 
 struct AttachmentGraph
 {
 	int passesCount;
 	int resourceCount;
-	AttachmentRenderPass holders[4];
-	AttachmentResource resources[12];
+	AttachmentRenderPass holders[MAX_GRAPH_RENDER_PASSES];
+	AttachmentResource resources[MAX_GRAPH_RESOURCES];
 };
 
 #define MAX_SAMPLE_COUNT_LEVEL 4
@@ -515,7 +520,7 @@ struct AttachmentInstance
 
 struct AttachmentRenderPassInstance
 {
-	AttachmentInstance* attachInst;
+	AttachmentInstance attachInst[MAX_RENDER_PASS_DESCRIPTIONS];
 	int attachInstCount;
 	int maxSampleCount;
 	int baseRenderTargetData;
@@ -529,8 +534,8 @@ struct AttachmentRenderPassInstance
 struct AttachmentGraphInstance
 {
 	AttachmentGraph* graphLayout;
-	AttachmentResourceInstance* resources;
-	AttachmentRenderPassInstance* passes;
+	AttachmentResourceInstance resources[MAX_GRAPH_RESOURCES];
+	AttachmentRenderPassInstance passes[MAX_GRAPH_RENDER_PASSES];
 	int consecutiveRenderPassBase;
 	int consecutiveRenderTargetsBase;
 };

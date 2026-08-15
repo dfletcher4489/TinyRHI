@@ -98,9 +98,9 @@ static int HandleAttachment(char* fileData, int size, int currentLocation, Image
 static int HandleAttachmentDesc(char* fileData, int size, int currentLocation, AttachmentRenderPass* holder, Logger* scratchLogger);
 static int HandleAttachmentResource(char* fileData, int size, int currentLocation, AttachmentResource* resource, Logger* scratchLogger);
 
-BarrierStage ConvertShaderStageToBarrierStage(ShaderStageType type)
+PipelineStage ConvertShaderStageToBarrierStage(ShaderStageType type)
 {
-	BarrierStage flags = 0;
+	PipelineStage flags = 0;
 	flags |= (VERTEX_SHADER_BARRIER) * ((type & VERTEXSHADERSTAGE) != 0);
 	flags |= (FRAGMENT_BARRIER) * ((type & FRAGMENTSHADERSTAGE) != 0);
 	flags |= (COMPUTE_BARRIER) * ((type & COMPUTESHADERSTAGE) != 0);

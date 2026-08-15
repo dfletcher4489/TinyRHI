@@ -267,7 +267,7 @@ namespace API
 		return flags;
 	}
 
-	VkPipelineStageFlags ConvertBarrierStageToVulkanPipelineStage(BarrierStage sourceStage)
+	VkPipelineStageFlags ConvertBarrierStageToVulkanPipelineStage(PipelineStage sourceStage)
 	{
 		VkPipelineStageFlags flags = 0;
 		flags |= (VK_PIPELINE_STAGE_VERTEX_SHADER_BIT) * ((sourceStage & VERTEX_SHADER_BARRIER) != 0);
@@ -278,6 +278,7 @@ namespace API
 		flags |= (VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT) * ((sourceStage & INDIRECT_DRAW_BARRIER) != 0);
 		flags |= (VK_PIPELINE_STAGE_TRANSFER_BIT) * ((sourceStage & TRANSFER_BARRIER) != 0);
 		flags |= (VK_PIPELINE_STAGE_VERTEX_INPUT_BIT) * ((sourceStage & INDEX_INPUT_BARRIER) != 0);
+		flags |= (VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT) * ((sourceStage & END_OF_PIPE) != 0);
 		return flags;
 	}
 
@@ -926,9 +927,9 @@ void RenderInstance::CreateDriverSpecificBarrierArenas(BarrierAccumulator* barri
 	barrierAccumulator->accumulators[BUFFER_BARRIER_ACCUMULATOR].allocator = (SlabAllocator*)AllocateFromStorageAllocator(sizeof(SlabAllocator), alignof(SlabAllocator));
 	barrierAccumulator->accumulators[IMAGE_BARRIER_ACCUMULATOR].allocator = (SlabAllocator*)AllocateFromStorageAllocator(sizeof(SlabAllocator), alignof(SlabAllocator));
 
-	int imageSize = (sizeof(VkImageMemoryBarrier) * MAX_ARRAYS_FOR_BARRIER * MAX_MIPS_FOR_BARRIER * maxTextures) + sizeof(BarrierStage) * 2;
+	int imageSize = (sizeof(VkImageMemoryBarrier) * MAX_ARRAYS_FOR_BARRIER * MAX_MIPS_FOR_BARRIER * maxTextures) + sizeof(PipelineStage) * 2;
 
-	int bufferSize = (sizeof(VkBufferMemoryBarrier) * maxAllocations) + sizeof(BarrierStage) * 2;
+	int bufferSize = (sizeof(VkBufferMemoryBarrier) * maxAllocations) + sizeof(PipelineStage) * 2;
 
 	barrierAccumulator->intraPassCount = 0;
 	barrierAccumulator->intraPassTop = 0;
@@ -1114,15 +1115,6 @@ int RenderInstance::CreateAttachmentGraphInstance(int deviceSelection, Attachmen
 {
 	RHIDevice* rhiDevice = GetDeviceHandle(deviceSelection);
 
-	AttachmentRenderPassInstance* passes = (AttachmentRenderPassInstance*)AllocateFromStorageAllocator(sizeof(AttachmentRenderPassInstance) * graph->passesCount);
-
-	AttachmentResourceInstance* resourceInstances = (AttachmentResourceInstance*)AllocateFromStorageAllocator(sizeof(AttachmentResourceInstance) * graph->resourceCount);
-
-	if (!passes || !resourceInstances)
-	{
-		return -1;
-	}
-
 	int totalAttachmentCount = 0;
 
 	int totalRenderTargetsCreated = 0;
@@ -1160,13 +1152,6 @@ int RenderInstance::CreateAttachmentGraphInstance(int deviceSelection, Attachmen
 		return renderTargetBaseAddress;
 	}
 
-	AttachmentInstance* passesInstances = (AttachmentInstance*)AllocateFromStorageAllocator(sizeof(AttachmentInstance) * totalAttachmentCount);
-
-	if (!passesInstances)
-	{
-		return -1;
-	}
-
 	int attachmentInstanceIndex = attachmentGraphsInstances.Allocate();
 
 	if (attachmentInstanceIndex < 0)
@@ -1177,10 +1162,6 @@ int RenderInstance::CreateAttachmentGraphInstance(int deviceSelection, Attachmen
 	AttachmentGraphInstance* graphInstance = attachmentGraphsInstances.Get(attachmentInstanceIndex);
 
 	graphInstance->graphLayout = graph;
-
-	graphInstance->passes = passes;
-
-	graphInstance->resources = resourceInstances;
 
 	totalRenderTargetsCreated = 0;
 
@@ -1193,8 +1174,6 @@ int RenderInstance::CreateAttachmentGraphInstance(int deviceSelection, Attachmen
 		int attachmentCount = currentPassDesc->attachmentCount;
 
 		AttachmentRenderPassInstance* rpInst = &graphInstance->passes[b];
-
-		rpInst->attachInst = &passesInstances[totalAttachmentCount];
 
 		rpInst->attachInstCount = attachmentCount;
 
@@ -1245,7 +1224,6 @@ int RenderInstance::CreateAttachmentGraphInstance(int deviceSelection, Attachmen
 
 	return attachmentInstanceIndex;
 }
-
 
 int RenderInstance::CreateRenderPass(int deviceSelection, AttachmentGraphInstance* graphInstance)
 {
@@ -1535,7 +1513,7 @@ int RenderInstance::CreateResourceStatusActions(ResourceStatus* status, int numb
 
 	if (status->currAction)
 	{
-		status->currStage = (BarrierStage*)AllocateFromStorageAllocator(sizeof(BarrierStage) * numberOfCurrentStages);
+		status->currStage = (PipelineStage*)AllocateFromStorageAllocator(sizeof(PipelineStage) * numberOfCurrentStages);
 
 		if (status->currStage)
 		{
@@ -1557,7 +1535,7 @@ int RenderInstance::CreateResourceStatusActions(ResourceStatus* status, int numb
 	return -1;
 }
 
-void RenderInstance::InitializeResourceStatus(ResourceStatus* status, int numberOfCurrentActions, int numberOfCurrentStages, int numberOfCurrentLayouts, BarrierAction action, BarrierStage stage, ImageLayout imageLayout)
+void RenderInstance::InitializeResourceStatus(ResourceStatus* status, int numberOfCurrentActions, int numberOfCurrentStages, int numberOfCurrentLayouts, BarrierAction action, PipelineStage stage, ImageLayout imageLayout)
 {
 	for (int i = 0; i < numberOfCurrentActions; i++)
 		status->currAction[i] = action;
@@ -3019,7 +2997,7 @@ void RenderInstance::UploadDeviceLocalTransfers(RHIDevice* rhiDevice, RecordingB
 
 		EntryHandle index = bufferHandles[bufferHandle].bufferHandle;
 
-		InsertBufferBarrier(dev, handle, BarrierStageBits::TRANSFER_BARRIER, BarrierActionBits::TRANSFER_WRITE_DATA_RESOURCE, accum);
+		InsertBufferBarrier(dev, handle, StageBits::TRANSFER_BARRIER, BarrierActionBits::TRANSFER_WRITE_DATA_RESOURCE, accum);
 	
 		if (index != previousBuffer)
 		{
@@ -4028,6 +4006,8 @@ int RenderInstance::CreateLogicalDevice(LogicalDeviceCreateInfo* createInfo)
 
 	rhiDevice->container.queryPoolIndex = majorDevice->CreateQueryPool(VK_QUERY_TYPE_TIMESTAMP, MAX_FRAMES_IN_FLIGHT * createInfo->maxQueries);
 
+	rhiDevice->container.queriesAreActive = 0;
+
 	if (createInfo->requestedPhysicalFeatures->requireTimelineSemaphores)
 	{
 		rhiDevice->container.deviceTimelineSyncObject.currentValue = 0;
@@ -4743,10 +4723,6 @@ void RenderInstance::DrawScene(int deviceSelection, int commandStreamIndex, uint
 
 	int commandCountIter = 0;
 
-	int queryCountBaseIndex = rhiDevice->container.maxQueryResults * currentFrame;
-
-	int queryCountIndex = queryCountBaseIndex;
-
 	GPUCommandStreamAllocator* stream = gpuCommandStreams.Get(commandStreamIndex);
 
 	while (commandCountIter < stream->commandCount)
@@ -4755,7 +4731,7 @@ void RenderInstance::DrawScene(int deviceSelection, int commandStreamIndex, uint
 
 		if (command->streamType == GPUCommandStreamType::COMPUTE_QUEUE_COMMANDS)
 		{
-			rcb.WriteTimestamp(rhiDevice->container.queryPoolIndex, queryCountIndex, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+			WriteDeviceQuery(rhiDevice, &rcb, StageBits::COMPUTE_BARRIER);
 			
 			ComputeQueue* queue = computeQueues.Get(command->indexForStreamType);
 
@@ -4833,9 +4809,7 @@ void RenderInstance::DrawScene(int deviceSelection, int commandStreamIndex, uint
 
 			ResetIntraBarrierAccumulator(accumulator);
 			
-			rcb.WriteTimestamp(rhiDevice->container.queryPoolIndex, queryCountIndex+1, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-
-			queryCountIndex += 2;
+			WriteDeviceQuery(rhiDevice, &rcb, StageBits::COMPUTE_BARRIER);
 		}
 		else if (command->streamType == GPUCommandStreamType::ATTACHMENT_COMMANDS)
 		{
@@ -4843,7 +4817,7 @@ void RenderInstance::DrawScene(int deviceSelection, int commandStreamIndex, uint
 
 			for (int i = 0; i < currentGraphInstance->graphLayout->passesCount; i++)
 			{
-				rcb.WriteTimestamp(rhiDevice->container.queryPoolIndex, queryCountIndex, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
+				WriteDeviceQuery(rhiDevice, &rcb, StageBits::BEGINNING_OF_PIPE);
 
 				AttachmentRenderPassInstance* rpInst = &currentGraphInstance->passes[i];
 
@@ -5084,18 +5058,12 @@ void RenderInstance::DrawScene(int deviceSelection, int commandStreamIndex, uint
 
 				rcb.EndRenderPassCommand();
 
-				ResetIntraBarrierAccumulator(accumulator);
-
-				rcb.WriteTimestamp(rhiDevice->container.queryPoolIndex, queryCountIndex+1, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
-			
-				queryCountIndex += 2;
+				WriteDeviceQuery(rhiDevice, &rcb, StageBits::END_OF_PIPE);
 			}
 		}
 
 		commandCountIter++;
 	}
-
-	rhiDevice->container.queryCounts[currentFrame] = (queryCountIndex - queryCountBaseIndex);
 
 	ReturnBarrierAccumulator(accumulatorIndex);
 
@@ -5223,27 +5191,81 @@ void RenderInstance::EndFrame(int commandStreamIndex, int deviceSelection)
 
 	int commandCountIter = 0;
 
-	int queryOffset = 0;
-
 	GPUCommandStreamAllocator* stream = gpuCommandStreams.Get(commandStreamIndex);
+
+	if (rhiDevice->container.queriesAreActive)
+	{
+		int queryOffset = 0;
+
+		while (commandCountIter < stream->commandCount)
+		{
+			GPUCommand* command = &stream->commands[commandCountIter];
+
+			const char* passDesc = "Undefined pass : ";
+
+			int queryCount = 0;
+
+			if (command->streamType == GPUCommandStreamType::COMPUTE_QUEUE_COMMANDS)
+			{
+				passDesc = "Compute Pass : ";
+
+				queryCount = 2;
+			}
+			else if (command->streamType == GPUCommandStreamType::ATTACHMENT_COMMANDS)
+			{
+				AttachmentGraphInstance* currentGraphInstance = attachmentGraphsInstances.Get(command->indexForStreamType);
+
+				queryCount = (2 * currentGraphInstance->graphLayout->passesCount);
+
+				passDesc = "Render Pass : ";
+			}
+
+			if (previousFrame < MAX_FRAMES_IN_FLIGHT && (rhiDevice->container.queryCounts[previousFrame] >= queryOffset + queryCount))
+			{
+				dev->ReadbackResultsFromQueries(
+					rhiDevice->container.queryPoolIndex,
+					(rhiDevice->container.maxQueryResults * previousFrame) + queryOffset,
+					queryCount,
+					rhiDevice->container.queryResults,
+					sizeof(uint32_t) * rhiDevice->container.maxQueryResults,
+					sizeof(uint32_t),
+					VK_QUERY_RESULT_WAIT_BIT
+				);
+
+				for (uint32_t i = 0; i < queryCount; i += 2)
+				{
+					double timeNs = (rhiDevice->container.queryResults[i + 1] - rhiDevice->container.queryResults[i]) * rhiDevice->container.relatedPhysDeviceInfo->deviceTimeStampPeriodNS;
+
+					double timeMs = timeNs / 1e6;
+
+					int actualSize = snprintf(StringBuffer, 512, "%s Time to run pass: %lf", passDesc, timeMs);
+
+					internalRendererLogger->AddLogMessage(LOGINFO, StringBuffer, actualSize);
+				}
+			}
+
+			queryOffset += queryCount;
+
+			commandCountIter++;
+		}
+
+		if (previousFrame < MAX_FRAMES_IN_FLIGHT)
+		{
+			rhiDevice->container.queryCounts[previousFrame] = 0;
+		}
+
+		commandCountIter = 0;
+	}
 
 	while (commandCountIter < stream->commandCount)
 	{
-		GPUCommand* command = &stream->commands[commandCountIter];
-
-		const char* passDesc = "Undefined pass : ";
-
-		int queryCount = 0;
+		GPUCommand* command = &stream->commands[commandCountIter++];
 
 		if (command->streamType == GPUCommandStreamType::COMPUTE_QUEUE_COMMANDS)
 		{
 			ComputeQueue* computeQueue = computeQueues.Get(command->indexForStreamType);
 
 			computeQueue->queueCount = 0;
-
-			passDesc = "Compute Pass : ";
-
-			queryCount = 2;
 		}
 		else if (command->streamType == GPUCommandStreamType::ATTACHMENT_COMMANDS)
 		{
@@ -5251,53 +5273,39 @@ void RenderInstance::EndFrame(int commandStreamIndex, int deviceSelection)
 
 			for (int i = 0; i < currentGraphInstance->graphLayout->passesCount; i++)
 			{
-			
 				if (currentGraphInstance->passes[i].graphicsOTQIndex >= 0)
 				{
 					RenderQueue* queue = renderTargetQueues.Get(currentGraphInstance->passes[i].graphicsOTQIndex);
 
 					queue->queueCount = 0;
 				}
-
-				queryCount += 2;
-			}
-
-			passDesc = "Render Pass : ";
-		}
-
-		if (previousFrame < MAX_FRAMES_IN_FLIGHT && (rhiDevice->container.queryCounts[previousFrame] >= queryOffset + queryCount))
-		{
-			dev->ReadbackResultsFromQueries(
-				rhiDevice->container.queryPoolIndex,
-				(rhiDevice->container.maxQueryResults * previousFrame) + queryOffset,
-				queryCount,
-				rhiDevice->container.queryResults,
-				sizeof(uint32_t) * rhiDevice->container.maxQueryResults,
-				sizeof(uint32_t), 
-				VK_QUERY_RESULT_WAIT_BIT
-			);
-
-			for (uint32_t i = 0; i < queryCount; i += 2)
-			{
-				double timeNs = (rhiDevice->container.queryResults[i + 1] - rhiDevice->container.queryResults[i]) * rhiDevice->container.relatedPhysDeviceInfo->deviceTimeStampPeriodNS;
-				
-				double timeMs = timeNs / 1e6;
-
-				int actualSize = snprintf(StringBuffer, 512, "%s Time to run pass: %lf", passDesc, timeMs);
-
-				internalRendererLogger->AddLogMessage(LOGINFO, StringBuffer, actualSize);
 			}
 		}
-
-		queryOffset += queryCount;
-
-		commandCountIter++;
 	}
 
 	cacheAllocator->Reset();
 
 	previousFrame = currentFrame;
 	currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+}
+
+void RenderInstance::WriteDeviceQuery(RHIDevice* device, RecordingBufferObject* rcbo, PipelineStage stage)
+{
+	if (device->container.queriesAreActive)
+	{
+		int queryBase = device->container.maxQueryResults * currentFrame;
+
+		rcbo->WriteTimestamp(device->container.queryPoolIndex, device->container.queryCounts[currentFrame] + queryBase, (VkPipelineStageFlagBits)API::ConvertBarrierStageToVulkanPipelineStage(stage));
+
+		device->container.queryCounts[currentFrame] += 1;
+	}
+}
+
+void RenderInstance::ToggleDeviceQueries(int mainDeviceSelection)
+{
+	RHIDevice* device = GetDeviceHandle(mainDeviceSelection);
+
+	device->container.queriesAreActive ^= 1;
 }
 
 int RenderInstance::AddPipelineToRPGraphicsQueue(int psoIndex, int frameGraphIndex, int renderPass)
@@ -6150,13 +6158,13 @@ void RenderInstance::GenerateDrawBindingsBarriers(int deviceSelection, PipelineH
 	VKDevice* dev = rhiDevice->device;
 
 	if (handle->vertexBufferHandle != -1)
-		InsertBufferBarrier(dev, handle->vertexBufferHandle, BarrierStageBits::VERTEX_INPUT_BARRIER, BarrierActionBits::READ_VERTEX_INPUT, accumulator);
+		InsertBufferBarrier(dev, handle->vertexBufferHandle, StageBits::VERTEX_INPUT_BARRIER, BarrierActionBits::READ_VERTEX_INPUT, accumulator);
 
 	if (handle->indirectBufferHandle != -1)
-		InsertBufferBarrier(dev, handle->indirectBufferHandle, BarrierStageBits::INDIRECT_DRAW_BARRIER, BarrierActionBits::READ_INDIRECT_COMMAND, accumulator);
+		InsertBufferBarrier(dev, handle->indirectBufferHandle, StageBits::INDIRECT_DRAW_BARRIER, BarrierActionBits::READ_INDIRECT_COMMAND, accumulator);
 
 	if (handle->indirectCountBufferHandle != -1)
-		InsertBufferBarrier(dev, handle->indirectCountBufferHandle, BarrierStageBits::INDIRECT_DRAW_BARRIER, BarrierActionBits::READ_INDIRECT_COMMAND, accumulator);
+		InsertBufferBarrier(dev, handle->indirectCountBufferHandle, StageBits::INDIRECT_DRAW_BARRIER, BarrierActionBits::READ_INDIRECT_COMMAND, accumulator);
 }
 
 void RenderInstance::GenerateComputeDispatchBindingsBarriers(int deviceSelection, PipelineHandle* handle, int pipelineIndex, BarrierAccumulator* accumulator)
@@ -6188,7 +6196,7 @@ void RenderInstance::GenerateComputeDispatchBindingsBarriers(int deviceSelection
 		if (allocType == AllocationType::PERFRAME)
 			bufferLastAccessFrame = currentFrame;
 
-		if (BarrierStageBits::INDIRECT_DRAW_BARRIER & status->currStage[bufferLastAccessFrame] && BarrierActionBits::READ_INDIRECT_COMMAND & status->currAction[bufferLastAccessFrame])
+		if (StageBits::INDIRECT_DRAW_BARRIER & status->currStage[bufferLastAccessFrame] && BarrierActionBits::READ_INDIRECT_COMMAND & status->currAction[bufferLastAccessFrame])
 			return;
 
 		memIndex = alloc->memIndex;
@@ -6210,7 +6218,7 @@ void RenderInstance::GenerateComputeDispatchBindingsBarriers(int deviceSelection
 
 		IntraPassBarrier* intraBarrier = GetIntraPassBarrier(accumulator, BarrierType::BUFFER_BARRIER, pipelineIndex, vkBarrier);
 
-		intraBarrier->destStage |= BarrierStageBits::INDIRECT_DRAW_BARRIER;
+		intraBarrier->destStage |= StageBits::INDIRECT_DRAW_BARRIER;
 		intraBarrier->srcStage |= status->currStage[bufferLastAccessFrame];
 		intraBarrier->barrierCount++;
 		
@@ -6228,12 +6236,12 @@ void RenderInstance::GenerateComputeDispatchBindingsBarriers(int deviceSelection
 		vkBarrier->offset = offset;
 		vkBarrier->size = size;
 
-		status->currStage[bufferLastAccessFrame] = BarrierStageBits::INDIRECT_DRAW_BARRIER;
+		status->currStage[bufferLastAccessFrame] = StageBits::INDIRECT_DRAW_BARRIER;
 		status->currAction[bufferLastAccessFrame] = newAction;
 	}
 }
 
-void RenderInstance::TransitionImageLayout(VKDevice* dev,  int imageIndex, int perImageViewIndex, BarrierStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator, int pipelineIndex)
+void RenderInstance::TransitionImageLayout(VKDevice* dev,  int imageIndex, int perImageViewIndex, PipelineStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator, int pipelineIndex)
 {
 	RenderTextureDescription* desc = textureResourceHandles.Get(imageIndex);
 
@@ -6257,7 +6265,7 @@ void RenderInstance::TransitionImageLayout(VKDevice* dev,  int imageIndex, int p
 
 void RenderInstance::TransitionImageLayout(VKDevice* dev, EntryHandle imageIndex, int mipStart, int mipCount, int totalMipCount, int layerStart, int layerCount,
 	ImageViewAspectMask mask, ImageLayout requestedLayout, ResourceStatus* status,
-	BarrierStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator, int pipelineIndex)
+	PipelineStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator, int pipelineIndex)
 {
 	VkImageMemoryBarrier barrier{};
 
@@ -6276,7 +6284,7 @@ void RenderInstance::TransitionImageLayout(VKDevice* dev, EntryHandle imageIndex
 		int trackedMipStart;
 		int trackedMipCount;
 		BarrierAction actions;
-		BarrierStage stages;
+		PipelineStage stages;
 		ImageLayout layout;
 		int coalesced;
 		struct MipArrayLevel* nextInLevel;
@@ -6299,7 +6307,7 @@ void RenderInstance::TransitionImageLayout(VKDevice* dev, EntryHandle imageIndex
 			int currentMipArrayIndex = (j * totalMipCount) + i;
 
 			BarrierAction currAction = status->currAction[currentMipArrayIndex];
-			BarrierStage currStage = status->currStage[currentMipArrayIndex];
+			PipelineStage currStage = status->currStage[currentMipArrayIndex];
 			ImageLayout currLayout = status->currentLayout[currentMipArrayIndex];;
 
 			if ((currLayout != requestedLayout)
@@ -6458,7 +6466,7 @@ IntraPassBarrier* RenderInstance::GetIntraPassBarrier(BarrierAccumulator* accum,
 	return intraPassBarrier;
 }
 
-void RenderInstance::InsertBufferBarrier(VKDevice* dev, int allocationIndex, BarrierStage destBarrierStage, ShaderResourceHeader* header, int pipelineIndex, BarrierAccumulator* accumulator)
+void RenderInstance::InsertBufferBarrier(VKDevice* dev, int allocationIndex, PipelineStage destBarrierStage, ShaderResourceHeader* header, int pipelineIndex, BarrierAccumulator* accumulator)
 {
 	size_t size = 0, offset = 0, align = 0;
 
@@ -6554,7 +6562,7 @@ void RenderInstance::InsertBufferBarrier(VKDevice* dev, int allocationIndex, Bar
 	status->currAction[bufferLastAccessFrame] = newAction;
 }
 
-void RenderInstance::InsertBufferBarrier(VKDevice* dev, int allocationIndex, BarrierStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator)
+void RenderInstance::InsertBufferBarrier(VKDevice* dev, int allocationIndex, PipelineStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator)
 {
 	RenderAllocation* bufferAlloc = allocations.Get(allocationIndex);
 
@@ -7156,6 +7164,7 @@ void RenderInstance::CleanInitializeRHIDevice(RHIDevice* logicalDevice)
 	logicalDevice->container.deviceTimelineSyncObject.driverTimelineObject = EntryHandle();
 	logicalDevice->container.relatedPhysDeviceInfo = nullptr;
 	logicalDevice->container.maxQueryResults = 0;
+	logicalDevice->container.queriesAreActive = 0;
 }
 
 void RenderInstance::CleanInitializeWindowsSurface(RenderWindowSpecificData* windowSurface)
@@ -7218,21 +7227,21 @@ void RenderInstance::CleanInitializeAttachmentGraph(AttachmentGraph* attachmentG
 	attachmentGraph->passesCount = 0;
 	attachmentGraph->resourceCount = 0;
 
-	for (int i = 0; i < 12; i++)
+	for (int i = 0; i < MAX_GRAPH_RESOURCES; i++)
 	{
 		attachmentGraph->resources[i].format = ImageFormat::IMAGE_UNKNOWN;
 		attachmentGraph->resources[i].msaa = 0;
 		attachmentGraph->resources[i].viewType = AttachmentViewType::STATIC;
 	}
 
-	for (int i = 0; i < 4; i++)
+	for (int i = 0; i < MAX_GRAPH_RENDER_PASSES; i++)
 	{
 		attachmentGraph->holders[i].attachmentCount = 0;
 		attachmentGraph->holders[i].colorCount = 0;
 		attachmentGraph->holders[i].depthStencilCount = 0;
 		attachmentGraph->holders[i].resolveCount = 0;
 
-		for (int j = 0; j < 8; j++)
+		for (int j = 0; j < MAX_RENDER_PASS_DESCRIPTIONS; j++)
 		{
 			attachmentGraph->holders[i].descs[j].attachType = 0;
 			attachmentGraph->holders[i].descs[j].dstLayout = ImageLayout::UNDEFINED;
@@ -7249,8 +7258,36 @@ void RenderInstance::CleanInitializeAttachmentGraphsInstance(AttachmentGraphInst
 	attachmentGraphInstance->consecutiveRenderPassBase = -1;
 	attachmentGraphInstance->consecutiveRenderTargetsBase = -1;
 	attachmentGraphInstance->graphLayout = nullptr;
-	attachmentGraphInstance->passes = nullptr;
-	attachmentGraphInstance->resources = nullptr;
+	for (int i = 0; i < MAX_GRAPH_RESOURCES; i++)
+	{
+		for (int g = 0; g< MAX_SAMPLE_COUNT_LEVEL; g++)
+			for (int k = 0; k<MAX_RESOURCE_IMAGES; k++)
+			attachmentGraphInstance->resources[i].textureIds[g][k] = -1;
+
+		attachmentGraphInstance->resources[i].imageCount = 0;
+		attachmentGraphInstance->resources[i].sampHi = 0;
+		attachmentGraphInstance->resources[i].sampLo = 0;
+		attachmentGraphInstance->resources[i].usage = 0;
+		
+	}
+
+	for (int i = 0; i < MAX_GRAPH_RENDER_PASSES; i++)
+	{
+		attachmentGraphInstance->passes[i].attachInstCount = 0;
+		attachmentGraphInstance->passes[i].baseRenderPassData = -1;
+		attachmentGraphInstance->passes[i].baseRenderTargetData = -1;
+		attachmentGraphInstance->passes[i].maxSampleCount = 0;
+		attachmentGraphInstance->passes[i].graphicsOTQIndex = -1;
+		attachmentGraphInstance->passes[i].rpType = RenderPassType::SWAPCHAIN_IMAGE_COUNT;
+		attachmentGraphInstance->passes[i].currentSampleCount = 0;
+
+		for (int j = 0; j < MAX_RENDER_PASS_DESCRIPTIONS; j++)
+		{
+			attachmentGraphInstance->passes[i].attachInst[j].attachmentResource = -1;
+			attachmentGraphInstance->passes[i].attachInst[j].clear = {};
+			attachmentGraphInstance->passes[i].attachInst[j].descLayout = nullptr;
+		}
+	}
 }
 
 void RenderInstance::CleanInitializeRenderTargetQueue(RenderQueue* renderTargetQueue)

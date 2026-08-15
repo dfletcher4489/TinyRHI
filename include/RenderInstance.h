@@ -23,7 +23,7 @@ namespace API
 
 	VkAccessFlags ConvertBarrierActionToVulkanAccessFlags(BarrierAction action);
 
-	VkPipelineStageFlags ConvertBarrierStageToVulkanPipelineStage(BarrierStage sourceStage);
+	VkPipelineStageFlags ConvertBarrierStageToVulkanPipelineStage(PipelineStage sourceStage);
 
 	VkShaderStageFlags ConvertShaderStageToVulkanShaderStage(ShaderStageType type);
 
@@ -282,17 +282,17 @@ struct RenderInstance
 
 	int CreateResourceStatusActions(ResourceStatus* status, int numberOfCurrentActions, int numberOfCurrentStages, int numberOfCurrentLayouts);
 
-	void InitializeResourceStatus(ResourceStatus* status, int numberOfCurrentActions, int numberOfCurrentStages, int numberOfCurrentLayouts, BarrierAction action, BarrierStage stage, ImageLayout imageLayout);
+	void InitializeResourceStatus(ResourceStatus* status, int numberOfCurrentActions, int numberOfCurrentStages, int numberOfCurrentLayouts, BarrierAction action, PipelineStage stage, ImageLayout imageLayout);
 
-	void TransitionImageLayout(VKDevice* dev, int imageIndex, int perImageViewIndex, BarrierStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator, int pipelineIndex);
+	void TransitionImageLayout(VKDevice* dev, int imageIndex, int perImageViewIndex, PipelineStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator, int pipelineIndex);
 
 	void TransitionImageLayout(VKDevice* dev, EntryHandle imageIndex, int mipStart, int mipCount, int totalMipCount, int layerStart, int layerCount,
 		ImageViewAspectMask mask, ImageLayout requestedLayout, ResourceStatus* status,
-		BarrierStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator, int pipelineIndex);
+		PipelineStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator, int pipelineIndex);
 
-	void InsertBufferBarrier(VKDevice* dev, int allocationIndex, BarrierStage destBarrierStage, ShaderResourceHeader* header, int pipelineIndex, BarrierAccumulator* accumulator);
+	void InsertBufferBarrier(VKDevice* dev, int allocationIndex, PipelineStage destBarrierStage, ShaderResourceHeader* header, int pipelineIndex, BarrierAccumulator* accumulator);
 
-	void InsertBufferBarrier(VKDevice* dev, int allocationIndex, BarrierStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator);
+	void InsertBufferBarrier(VKDevice* dev, int allocationIndex, PipelineStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator);
 
 	int CreateAttachmentImage(
 		uint32_t width, uint32_t height,
@@ -336,6 +336,10 @@ struct RenderInstance
 	void GetLastInstanceDriverError(StringView messageHeader);
 
 	size_t GetNecessaryMemoryUsage(RenderInstanceCreateInfo* info);
+
+	void WriteDeviceQuery(RHIDevice* device, RecordingBufferObject* rcbo, PipelineStage stage);
+
+	void ToggleDeviceQueries(int mainDeviceSelection);
 	
 	void DestroyPhysicalDeviceIndices(int handle);
 	void DestroyLogicalDeviceIndices(int handle);

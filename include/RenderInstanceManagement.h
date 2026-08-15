@@ -727,7 +727,7 @@ enum ResourceStatusType
 struct ResourceStatus
 {
 	ResourceStatusType resourceType;
-	BarrierStage* currStage;
+	PipelineStage* currStage;
 	BarrierAction* currAction;
 	ImageLayout* currentLayout;
 };
@@ -810,6 +810,7 @@ struct RenderLogicalDeviceContainer
 	uint32_t queryResults[MAX_QUERY_RESULTS];
 	uint32_t queryCounts[MAX_INSTANCE_FRAME_IN_FLIGHT];
 	int maxQueryResults = 0;
+	int queriesAreActive = 0;
 };
 
 struct RenderBufferDescription
@@ -859,8 +860,8 @@ struct GPUCommandStreamAllocator
 
 struct DriverSpecificBarrierAllocator
 {
-	BarrierStage srcStage;
-	BarrierStage dstStage;
+	PipelineStage srcStage;
+	PipelineStage dstStage;
 	int barrierCount;
 	SlabAllocator* allocator;
 };
@@ -869,8 +870,8 @@ struct IntraPassBarrier
 {
 	int pipelineInst;
 	BarrierType barrierType;
-	BarrierStage srcStage;
-	BarrierStage destStage;
+	PipelineStage srcStage;
+	PipelineStage destStage;
 	uint32_t barrierCount;
 	uint32_t pad1;
 	void* driverSpecificBarriers;

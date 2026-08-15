@@ -7,7 +7,7 @@
 
 #include <string.h>
 
-BarrierStage ConvertShaderStageToBarrierStage(ShaderStageType type);
+PipelineStage ConvertShaderStageToBarrierStage(ShaderStageType type);
 
 struct ShaderResourceSetContext
 {

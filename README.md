@@ -1,27 +1,52 @@
 # Vulkan/DX12 RHI & Renderer
 
-A backend-agnostic rendering hardware interface with Vulkan and DirectX 12 implementations, built around a GPU-driven indirect rendering pipeline. Currently focused on parsing and rendering SMB archives from **Oddworld: Stranger's Wrath HD** (PC) and the original Xbox release.
+A backend-agnostic rendering hardware interface with Vulkan and DirectX 12 implementations. This project is mostly serving as a base layer for any future GPU driven projects of mine in the future. I will be using some modern features of each graphics API, but the current Vulkan architecture is mostly 1.2 with some extensions standardized in 1.3. The example projects are mostly using compute and graphic techniques popularized 5-10 years ago. 
 
 ---
 
-## Features
+## Features and Architecture
 
 ### Rendering Hardware Interface (WIP)
 - Dual backend support: Vulkan and DirectX 12, selectable at compile time
-- GPU-driven indirect rendering pipeline with compute-based culling
+- Support for GPU-driven indirect rendering pipeline with compute-based decision making support
 - Double-buffered command update system for low-latency CPU/GPU synchronization
-- Custom linear allocator stack with per-frame, static, and per-draw allocation tiers
+- Custom linear allocator stack with per-frame or static allocation tiers
 - Backend-agnostic resource descriptions translated to native API barriers in the hot loop
 - Enhanced Barriers (DX12) and explicit pipeline barriers (Vulkan) for correct synchronization
 - Typed handle pool with runtime validation for all driver/COM objects
+- Data driven layouts for shader resource usage, attachment graphs and generic pipeline states
+- Bring your own shader mentality, define your own layouts and no preconceived notions of how data will be submitted to the GPU and used by your shaders.
 
-### GPU Culling & Scene Management
+### Backend Abstraction
+Resource descriptions are expressed in a backend-agnostic layer. Barrier semantics, pipeline states, and shader resource layouts are described once and translated to native API calls at submission time. Resource management is handled automatically during runtime and optimized to reduce command recording and driver command processing while retaining high accuracy. 
+
+### Render Graph
+Attachment graphs express render pass dependencies and resource lifetimes. Pipeline state objects and shader resource layouts are declared separately from draw submission, allowing the renderer to manage resource transitions automatically.
+
+### Current Status
+
+| System | Status |
+|---|---|
+| Vulkan backend | Working |
+| DX12 backend | In progress |
+| Backend unification | In progress |
+| Windows platform code | Working |
+| Linux platform code | In progress |
+
+---
+
+## Examples
+
+### SMBReader
+This project is an editor for SMB archives used to store data for the game Oddworld: Stranger's Wrath. Right now, it supports loading character mesh, texture and animation data and not much else. Most of my time has been spent building the compute shader system that manages the rendering of these and other type of meshes (along with building the RHI). Still a WIP, but here are the features:
+
+#### GPU Culling & Scene Management
 - Compute shader frustum culling 
 - Atomic compaction of draw commands into indirect draw buffers
 - Uniform grid spatial partitioning for per-mesh light assignment
 - Per-mesh point light, spot light, and directional light culling in a single compute pass
 
-### Vertex Pipeline
+#### Vertex Pipeline
 - Programmable vertex pulling via raw byte buffer with no fixed vertex layout
 - Runtime vertex format decoding supporting multiple vertex format variations without PSO explosion
 - Use vertex compression formats fully reversed and implemented from OddWorld:
@@ -32,46 +57,32 @@ A backend-agnostic rendering hardware interface with Vulkan and DirectX 12 imple
   - 8-bit per channel vertex colors
 - Separate compressed and uncompressed decode paths with shared decompressor functions
 
-### Shadow Mapping
+#### Shadow Mapping
 - Atlas-based shadow mapping with viewport transform baked into vertex shader
 - Per-mesh shadow map assignment via renderable index indirection
 - NDC-to-atlas tile transform for multi-light shadow atlases
 
-### Asset Pipeline
+#### Asset Pipeline
 - SMB archive parsing for Oddworld: Stranger's Wrath HD and original Xbox
 - GR2 (Granny) skeleton data extraction 
 - Generic vertex description system with compression metadata
 - AABB and bounding sphere per mesh for culling
-
 ---
 
-## Architecture
-
-### Backend Abstraction
-Resource descriptions are expressed in a backend-agnostic layer. Barrier semantics, pipeline states, and shader resource layouts are described once and translated to native API calls at submission time. This keeps barrier management correct across both backends without duplicating logic.
-
-### Render Graph
-Attachment graphs express render pass dependencies and resource lifetimes. Pipeline state objects and shader resource layouts are declared separately from draw submission, allowing the renderer to manage resource transitions automatically.
-
----
-
-## Current Status
+#### Current Status
 
 | System | Status |
 |---|---|
-| Vulkan backend | Working |
-| DX12 backend | In progress |
 | GPU frustum culling | Working |
 | Atlas shadow mapping | Working |
 | Vertex decompression | Working |
 | SMB archive parsing | Working |
 | GR2 skeleton parsing | Working |
 | GPU skinning | Planned |
-| Backend unification | In progress |
 
 ---
 
-## Technical Notes
+#### Technical Notes
 
 **Why programmable vertex pulling over fixed layouts?**
 The Oddworld data contains 125+ distinct vertex format variants. PSO permutation per format is not feasible. Runtime branching on a uniform `vertexComponents` flag per draw call avoids warp divergence within a draw while handling the full format space.

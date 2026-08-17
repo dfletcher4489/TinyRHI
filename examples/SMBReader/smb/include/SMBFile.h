@@ -32,11 +32,11 @@ enum SMBImageFormat : uint32_t
 
 typedef struct pospack6_cnorm_c16tex1_bone2_type_h
 {
-	Vector4f POSITION;
-	Vector2f TEXTURE;
-	Vector3f NORMAL;
 	Vector2i BONES;
 	Vector2f WEIGHTS;
+	Vector2f TEXTURE;
+	Vector3f NORMAL;
+	Vector4f POSITION;
 
 	pospack6_cnorm_c16tex1_bone2_type_h() = default;
 	pospack6_cnorm_c16tex1_bone2_type_h(const Vector4f& _p, const Vector2f& _t, const Vector3f& _n, const Vector2i& _b, const Vector2f& _w);
@@ -47,10 +47,10 @@ typedef struct pospack6_cnorm_c16tex1_bone2_type_h
 
 typedef struct pospack6_c16tex1_bone2_type_h
 {
-	Vector4f POSITION;
-	Vector2f TEXTURE;
 	Vector2i BONES;
 	Vector2f WEIGHTS;
+	Vector2f TEXTURE;
+	Vector4f POSITION;
 
 	pospack6_c16tex1_bone2_type_h() = default;
 	pospack6_c16tex1_bone2_type_h(const Vector4f& _p, const Vector2f& _t, const Vector2i& _b, const Vector2f& _w);
@@ -61,11 +61,11 @@ typedef struct pospack6_c16tex1_bone2_type_h
 
 typedef struct pospack6_c16tex2_bone2_type_h
 {
-	Vector4f POSITION;
-	Vector2f TEXTURE;
-	Vector2f TEXTURE2;
 	Vector2i BONES;
 	Vector2f WEIGHTS;
+	Vector2f TEXTURE;
+	Vector2f TEXTURE2;
+	Vector4f POSITION;
 
 	pospack6_c16tex2_bone2_type_h() = default;
 	pospack6_c16tex2_bone2_type_h(
@@ -99,7 +99,6 @@ typedef struct cpospack6_cnorm_c16tex1_bone2_type_h
 	bool operator==(const cpospack6_cnorm_c16tex1_bone2_type_h& v) const;
 
 } CVertex_PosPack6_CNorm_C16Tex1_Bone2;
-#pragma pack(pop)
 
 typedef struct cpospack6_c16tex1_bone2_type_h
 {
@@ -140,6 +139,7 @@ typedef struct cpospack6_c16tex2_bone2_type_h
 	bool operator==(const cpospack6_c16tex2_bone2_type_h& v);
 
 } CVertex_PosPack6_C16Tex2_Bone2;
+#pragma pack(pop)
 
 #define MaterialDefSize 136 //bytes
 #define GeometryBaseDefSize 72 //bytes

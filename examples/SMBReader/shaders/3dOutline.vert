@@ -79,7 +79,7 @@ void main()
 
     if ((comp&COMPRESSED)==COMPRESSED)
     {
-        if ((comp&BONES2)==BONES2)
+          if ((comp&BONES2)==BONES2)
         {
             offset += 4;
         }
@@ -111,7 +111,6 @@ void main()
 
         if ((comp&COLOR)==COLOR)
         {
-       
             offset += 4;
         }
 
@@ -119,12 +118,46 @@ void main()
         {
             mat4 VP = gs.proj * gs.view;
             vec4 intPos = vec4(pack6decomp(offset, lGeomDetails.minMaxBox), 1.0f);
-            gl_Position = VP  * meshWorld * intPos;
+            gl_Position = VP * meshWorld * intPos;
         }
-
     } 
     else 
     {
+        if ((comp&BONES2) == BONES2)
+        {
+            offset += 16;
+        }
+
+        if ((comp & TEXTURES1) == TEXTURES1)
+        {
+            offset += 8;
+        }
+
+        if ((comp & TEXTURES2) == TEXTURES2)
+        {
+            offset += 8;
+        }
+
+        if ((comp & TEXTURES3) == TEXTURES3)
+        {
+            offset += 8;
+        }
+
+        if ((comp&NORMAL) == NORMAL)
+        {
+            offset += 12;
+        }
+
+        if ((comp&TANGENT) == TANGENT)
+        {
+            offset += 16;
+        }
+
+        if ((comp&COLOR)==COLOR)
+        {
+            offset += 16;
+        }
+
         if ((comp & POSITION) == POSITION)
         {
             mat4 MVP = gs.proj * gs.view * meshWorld;

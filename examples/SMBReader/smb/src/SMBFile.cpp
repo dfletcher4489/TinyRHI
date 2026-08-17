@@ -438,7 +438,7 @@ void SMBCopyVertexData(SMBGeoChunk* geoDefinition, int renderableIndex, SMBFile*
 
 				vertex->POSITION = { pos.x, pos.y, pos.z, 1.0f };
 
-				g += sizeof(CVertex_PosPack6_C16Tex2_Bone2);
+				g += sizeof(CVertex_PosPack6_CNorm_C16Tex1_Bone2);
 
 			}
 			break;
@@ -454,8 +454,6 @@ void SMBCopyVertexData(SMBGeoChunk* geoDefinition, int renderableIndex, SMBFile*
 				vertex->BONES.y = g[1];
 				vertex->WEIGHTS.x = ((float)l) * 0.00392156f;
 				vertex->WEIGHTS.y = ((float)h) * 0.00392156f;
-
-
 
 				int16_t t[2];
 				t[0] = (((int16_t)g[5] & 0xff) << 8) | g[4];
@@ -478,7 +476,7 @@ void SMBCopyVertexData(SMBGeoChunk* geoDefinition, int renderableIndex, SMBFile*
 
 				vertex->POSITION = { pos.x, pos.y, pos.z, 1.0f };
 
-				g += sizeof(CVertex_PosPack6_CNorm_C16Tex1_Bone2);
+				g +=  sizeof(CVertex_PosPack6_C16Tex2_Bone2);
 			}
 			break;
 		}

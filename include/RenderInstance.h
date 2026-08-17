@@ -362,6 +362,7 @@ struct RenderInstance
 	void DestroyDescriptorManager(int mainLogicalDevice, int handle);
 	void DestroyGpuCommandStream(int handle);
 	void DestroyShaderGraph(int mainLogicalDevice, int handle);
+	void DestroyGraphPipelineDescription(int mainLogicalDevice, int handle);
 
 	void CleanInitializePhysicalDeviceIndices(RenderPhysicalDeviceContainer* physicalDevice);
 	void CleanInitializeRHIDevice(RHIDevice* logicalDevice);

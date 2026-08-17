@@ -75,7 +75,7 @@ void main()
 
     uint stride = modelData.vertexStride;
 
-    uint offset = ((stride * (gl_VertexIndex+1)) + modelData.vertexByteOffset) - 6;
+    uint offset = (stride * gl_VertexIndex) + modelData.vertexByteOffset;
 
     vec2 viewBase = 2.0 * vec2(viewSize.xOff, viewSize.yOff) - 1.0;
 
@@ -85,6 +85,41 @@ void main()
 
     if ((comp&COMPRESSED)==COMPRESSED)
     {
+        if ((comp&BONES2)==BONES2)
+        {
+            offset += 4;
+        }
+
+        if ((comp & TEXTURES1) == TEXTURES1)
+        {
+            offset += 4;
+        }
+
+        if ((comp & TEXTURES2) == TEXTURES2)
+        {
+            offset += 4;
+        }
+
+        if ((comp & TEXTURES3) == TEXTURES3)
+        {
+            offset += 4;
+        }
+
+        if ((comp&NORMAL)==NORMAL)
+        {
+            offset += 4;
+        }
+
+        if ((comp&TANGENT)==TANGENT)
+        {
+            offset += 4;
+        }
+
+        if ((comp&COLOR)==COLOR)
+        {
+            offset += 4;
+        }
+
         if ((comp & POSITION) == POSITION)
         {
             mat4 MVP = viewProj.shadowMapProj * viewProj.shadowMapView * meshWorld;
@@ -104,11 +139,56 @@ void main()
     } 
     else 
     {
+        if ((comp&BONES2) == BONES2)
+        {
+            offset += 16;
+        }
+
+        if ((comp & TEXTURES1) == TEXTURES1)
+        {
+            offset += 8;
+        }
+
+        if ((comp & TEXTURES2) == TEXTURES2)
+        {
+            offset += 8;
+        }
+
+        if ((comp & TEXTURES3) == TEXTURES3)
+        {
+            offset += 8;
+        }
+
+        if ((comp&NORMAL) == NORMAL)
+        {
+            offset += 12;
+        }
+
+        if ((comp&TANGENT) == TANGENT)
+        {
+            offset += 16;
+        }
+
+        if ((comp&COLOR)==COLOR)
+        {
+            offset += 16;
+        }
+
         if ((comp & POSITION) == POSITION)
         {
             mat4 MVP = viewProj.shadowMapProj * viewProj.shadowMapView * meshWorld;
             vec4 intPos = ReconstructVEC4(offset);
-            //gl_Position = (scale * ((MVP * intPos) + ndcOff)) + vec4(viewBase, 0.0, 0.0);
+
+            vec4 outPos = (MVP * intPos);
+
+            outPos = vec4(outPos.xyz / outPos.w, 1.0);
+
+            vec4 ndcScale = vec4(0.5, 0.5, 1.0, 1.0);
+            vec4 ndcOffset = vec4(0.5, 0.5, 0.0, 0.0);
+
+            vec4 outPosNormalize = ndcScale * outPos + ndcOffset;
+
+            gl_Position = scale * outPosNormalize + vec4(viewBase, 0.0, 0.0);
         }
     }
 }

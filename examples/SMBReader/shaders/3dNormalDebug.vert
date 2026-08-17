@@ -74,7 +74,7 @@ void main() {
 
     if ((comp&COMPRESSED)==COMPRESSED)
     {
-        if ((comp&BONES2)==BONES2)
+         if ((comp&BONES2)==BONES2)
         {
             offset += 4;
         }
@@ -96,48 +96,73 @@ void main() {
 
         if ((comp&NORMAL)==NORMAL)
         {
-           // normal = normalize(convertnormal(offset));
+            normal = convertnormal(offset);
 
-          //  normal = normalize(transpose(inverse(mat3(modelData.m))) * normal);
+            offset += 4;
+        }
 
+        if ((comp&TANGENT)==TANGENT)
+        {
+            offset += 4;
+        }
+
+        if ((comp&COLOR)==COLOR)
+        {
             offset += 4;
         }
 
         if ((comp & POSITION) == POSITION)
         {
-            mat4 MVP = gs.proj * gs.view;
+            mat4 VP = gs.proj * gs.view;
             vec4 intPos = vec4(pack6decomp(offset, lGeomDetails.minMaxBox), 1.0f);
-
-            intPos = meshWorld * intPos;
-
-            if ((gl_VertexIndex & 1) == 1)
-            {
-                intPos += (vec4(normal, 0));
-            }
-
-            gl_Position = MVP * intPos;
-          
+            gl_Position = VP * meshWorld * intPos;
         }
-
     } 
     else 
     {
-        if ((comp & POSITION) == POSITION)
+         if ((comp&BONES2) == BONES2)
         {
-            mat4 MVP = gs.proj * gs.view * currentRenderable.transform;
-            vec4 intPos = ReconstructVEC4(offset);
-            gl_Position = MVP * intPos;
+            offset += 16;
         }
 
         if ((comp & TEXTURES1) == TEXTURES1)
         {
-           
+            offset += 8;
         }
 
         if ((comp & TEXTURES2) == TEXTURES2)
         {
-            
+            offset += 8;
+        }
 
+        if ((comp & TEXTURES3) == TEXTURES3)
+        {
+            offset += 8;
+        }
+
+        if ((comp&NORMAL) == NORMAL)
+        {
+            normal = ReconstructVEC4(offset).xyz;
+
+            offset += 12;
+        }
+
+        if ((comp&TANGENT) == TANGENT)
+        {
+            offset += 16;
+        }
+
+        if ((comp&COLOR)==COLOR)
+        {
+            offset += 16;
+        }
+
+        if ((comp & POSITION) == POSITION)
+        {
+            mat4 MVP = gs.proj * gs.view * meshWorld;
+            vec4 intPos = ReconstructVEC4(offset);
+            gl_Position = MVP * intPos;
+            offset += 16;
         }
     }
 }

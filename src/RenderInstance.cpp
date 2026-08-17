@@ -1430,7 +1430,7 @@ int RenderInstance::SubmitFrame(int deviceSelection, int swapChainIndex, uint32_
 
 	int res = -1;
 	
-	if (rhiDevice->container.deviceTimelineSyncObject.driverTimelineObject == EntryHandle())
+	if (EntryHandle() == rhiDevice->container.deviceTimelineSyncObject.driverTimelineObject)
 	{
 		res = dev->SubmitCommandBuffer(&swcData->rendererWaitSemaphores[currentFrame], &waitStages[0], &swcData->rendererFinishedSemaphores[imageIndex], 1, 1, rhiDevice->container.currentCommandBufferIndex[currentFrame]);
 	}
@@ -1857,7 +1857,6 @@ int RenderInstance::CreateAttachmentResources(
 		}
 	}
 
-	
 	if (!success)
 	{
 		for (int sampleCount = 0; sampleCount < currentRenderPass->maxSampleCount; sampleCount++)
@@ -2238,24 +2237,24 @@ int RenderInstance::CreateShaderGraphs(int deviceSelection, StringView* shaderGr
 
 int RenderInstance::CreateGraphicRenderStateObject(int deviceSelection, int shaderGraphIndex, int pipelineDescriptionIndex, int* frameGraphAttachments, int* perFrameRenderPassSelection, int frameGraphCount)
 {
-	int success = -1;
+	int pipelineInstIndex = -1;
 
 	ShaderGraph* graph = shaderGraphs.shaderGraphPtrs.Get(shaderGraphIndex);
 
 	if (!graph)
 	{
-		return success;
+		return pipelineInstIndex;
 	}
 
 	ShaderMap* map = &graph->shaderMaps[0];
-
-	int pipelineInstIndex = -1;
 
 	if (map->type != COMPUTESHADERSTAGE)
 	{
 		uint32_t pipelineVariationsCounter = 0;
 
 		uint32_t totalPiplineVariations = 0;
+
+		int success = 0;
 
 		pipelineInstIndex = graphPipelineDescriptions.Allocate();
 
@@ -2278,7 +2277,7 @@ int RenderInstance::CreateGraphicRenderStateObject(int deviceSelection, int shad
 
 			EntryHandle* pipelineHandles = &desc->pipelineIndices[0];
 
-			instData->pipelineCount = totalPiplineVariations;
+			instData->pipelineCount = 0;
 
 			for (int i = 0; i < frameGraphCount; i++)
 			{
@@ -2292,7 +2291,20 @@ int RenderInstance::CreateGraphicRenderStateObject(int deviceSelection, int shad
 					attachmentGraphsInstances.Get(frameGraphAttachments[i]), perFrameRenderPassSelection[i]
 				);
 
+				if (count <= 0)
+				{
+					success = -1;
+					break;
+				}
+
 				pipelineVariationsCounter += count;
+
+				instData->pipelineCount += count;
+			}
+
+			if (success)
+			{
+				DestroyGraphPipelineDescription(deviceSelection, pipelineInstIndex);
 			}
 		}
 	}
@@ -2330,6 +2342,8 @@ int RenderInstance::CreateComputePipelineStateObject(int deviceSelection, int sh
 			EntryHandle pipelineID = CreateVulkanComputePipelineTemplate(deviceSelection, graph);
 
 			desc->pipelineIndices[0] = pipelineID;
+
+			desc->instanceData.pipelineCount = 1;
 		}
 	}
 	else
@@ -2485,7 +2499,7 @@ int RenderInstance::CreatePipelineFromGraphAndSpec(int deviceSelection, GenericP
 
 		 EntryHandle handle = pipelineBuilder->CreateGraphicsPipeline(layoutHandles, graph->resourceSetCount, shaderHandle, graph->shaderMapCount);
 
-		 if (handle == EntryHandle())
+		 if (EntryHandle() == handle)
 		 {
 			 GetLastDeviceDriverError(rhiDevice, STRING_VIEW_FROM_LITERAL("CreatePipelinesFromGraphAndSpec : CreatedGraphicsPipeline failed"));
 
@@ -3225,7 +3239,7 @@ int RenderInstance::GetAllocFromBuffer(int deviceSelection, int bufferHandle, si
 	{
 		alloc->viewIndex = dev->CreateBufferView(bufferHandles[bufferHandle].bufferHandle, API::ConvertComponentFormatTypeToVulkanFormat(formatType), allocSize, location + parentOffset, copies);
 
-		if (alloc->viewIndex == EntryHandle())
+		if (EntryHandle() == alloc->viewIndex)
 		{
 			GetLastDeviceDriverError(rhiDevice, STRING_VIEW_FROM_LITERAL("GetAllocFromBuffer : CreateBufferView failed"));
 			DestroyAllocation(deviceSelection, allocIndex);
@@ -3296,7 +3310,7 @@ int RenderInstance::CreateImageHandle(
 		imagePools[poolIndex].imagePoolHandle
 	);
 
-	if (textureHandle == EntryHandle())
+	if (EntryHandle() == textureHandle)
 	{
 		resourceStatuses.Free(resourceIndex);
 		textureResourceHandles.Free(textureIndex);
@@ -7153,6 +7167,10 @@ void RenderInstance::DestroyDescriptorManager(int mainLogicalDevice, int handle)
 		return;
 	}
 
+	storageAllocator->Free(descriptorManager->descriptorSetHandles.freeList);
+	storageAllocator->Free(descriptorManager->descriptorSetHandles.pool);
+	storageAllocator->Free(descriptorManager->descriptorSets);
+
 	DestroyDriverDescriptorHeap(container, descriptorManager->deviceResourceHeap);
 
 	CleanInitializeDescriptorManager(descriptorManager);
@@ -7172,6 +7190,7 @@ void RenderInstance::DestroyGpuCommandStream(int handle)
 	storageAllocator->Free(gpuCommandStream->commands);
 
 	CleanInitializeGpuCommandStream(gpuCommandStream);
+
 	gpuCommandStreams.Free(handle);
 }
 
@@ -7220,6 +7239,27 @@ void RenderInstance::DestroyShaderGraph(int mainLogicalDevice, int handle)
 	CleanInitializeShaderGraph(graph);
 
 	shaderGraphs.shaderGraphPtrs.Free(handle);
+}
+
+void RenderInstance::DestroyGraphPipelineDescription(int mainLogicalDevice, int handle)
+{
+	RHIDevice* container = GetDeviceHandle(mainLogicalDevice);
+
+	GraphPipelineDescription* desc = graphPipelineDescriptions.Get(handle);
+
+	if (!desc)
+	{
+		return;
+	}
+
+	for (int i = 0; i < desc->instanceData.pipelineCount; i++)
+	{
+		DestroyDriverPipelineHandle(container, desc->pipelineIndices[i]);
+	}
+
+	CleanInitializeGraphPipeline(desc);
+
+	graphPipelineDescriptions.Free(handle);
 }
 
 void RenderInstance::CleanInitializePhysicalDeviceIndices(RenderPhysicalDeviceContainer* physicalDevice)
@@ -7440,7 +7480,6 @@ void RenderInstance::CleanInitializeDescriptorManager(ShaderResourceManager* des
 {
 	*descriptorManager = {};
 	descriptorManager->deviceResourceHeap = EntryHandle();
-	//descriptorManager->descriptorSetHandles.Reset();
 }
 
 void RenderInstance::CleanInitializeGpuCommandStream(GPUCommandStreamAllocator* gpuCommandStream)
@@ -7451,6 +7490,23 @@ void RenderInstance::CleanInitializeGpuCommandStream(GPUCommandStreamAllocator* 
 void RenderInstance::CleanInitializeShaderGraph(ShaderGraph* shaderGraph)
 {
 	*shaderGraph = {};
+
+	for (int i = 0; i < MAX_SHADER_MAPS; ++i)
+	{
+		shaderGraph->shaderMaps[i].shaderReference = -1;
+	}
+
+	for (int i = 0; i < MAX_SHADER_RESOURCES; ++i)
+	{
+		shaderGraph->shaderResources[i].rangeIndex = -1;
+	}
+
+	for (int i = 0; i < MAX_SHADER_RESOURCE_SET_TEMPLATES; ++i)
+	{
+		shaderGraph->shaderResourceSetTemplates[i].vulkanDescLayout = -1;
+		shaderGraph->shaderResourceSetTemplates[i].dx12DescriptorTable = -1;
+		shaderGraph->shaderResourceSetTemplates[i].resourceStart = -1;
+	}
 }
 
 void  RenderInstance::CleanInitializeGraphPipeline(GraphPipelineDescription* desc)
@@ -7461,5 +7517,4 @@ void  RenderInstance::CleanInitializeGraphPipeline(GraphPipelineDescription* des
 	memset(desc->instanceData.frameGraphIndices, -1, sizeof(int) * MAX_FRAME_GRAPHS_RENDER_PASS_COMBOS);
 	memset(desc->instanceData.frameGraphRenderPasses, -1, sizeof(int) * MAX_FRAME_GRAPHS_RENDER_PASS_COMBOS);
 	memset(desc->instanceData.frameGraphPipelineIndices, -1, sizeof(int) * MAX_FRAME_GRAPHS_RENDER_PASS_COMBOS);
-
 }

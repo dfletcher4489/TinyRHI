@@ -78,20 +78,18 @@ void main()
     } 
     else if (debugType == DEBUG_DRAW_TYPE_SPHERE)
     {
-       
        uint sphereIndex = uint(gl_VertexIndex) / 2;
        sphereIndex += uint(gl_VertexIndex) & 1;
     
-        float r = mainStruct.halfExtents.x;
-        uint numSlices = floatBitsToUint(mainStruct.halfExtents.y);
-        float x = r * cos(radians((360/numSlices)*sphereIndex));
-        float y = r * sin(radians((360/numSlices)*sphereIndex));
+       float r = mainStruct.halfExtents.x;
+       uint numSlices = floatBitsToUint(mainStruct.halfExtents.y);
+       float x = r * cos(radians((360/numSlices)*sphereIndex));
+       float y = r * sin(radians((360/numSlices)*sphereIndex));
  
-        vec4 pos = vec4(mainStruct.center.x+x, mainStruct.center.y+y, mainStruct.center.z, 1.0);
+       vec4 pos = vec4(mainStruct.center.x+x, mainStruct.center.y+y, mainStruct.center.z, 1.0);
 
-        mat4 billboardMat = CreateBillboardMatrix(gs.world[3].xyz, pos);
+       mat4 billboardMat = CreateBillboardMatrix(gs.world[3].xyz, pos);
 
-        gl_Position = VP  * pos;
-
+       gl_Position = VP  * pos;
     }
 }

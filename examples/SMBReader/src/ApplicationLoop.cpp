@@ -1464,11 +1464,11 @@ void CreateCornerWall(float width, float height, float xDiv, float yDiv)
 
 	VertexInputDescription inputDescription[2];
 
-	inputDescription[0].byteoffset = 0;
+	inputDescription[0].byteoffset = 12;
 	inputDescription[0].format = ComponentFormatType::R32G32B32A32_SFLOAT;
 	inputDescription[0].vertexusage = VertexUsage::POSITION;
 
-	inputDescription[1].byteoffset = sizeof(Vector4f);
+	inputDescription[1].byteoffset = 0;
 	inputDescription[1].format = ComponentFormatType::R32G32B32_SFLOAT;
 	inputDescription[1].vertexusage = VertexUsage::NORMAL;
 
@@ -1486,8 +1486,8 @@ void CreateCornerWall(float width, float height, float xDiv, float yDiv)
 
 	struct GridVertex
 	{
-		Vector4f pos;
 		Vector3f normal;
+		Vector4f pos;
 	};
 
 	int vertexTotalSize = vertexCount * sizeof(GridVertex);
@@ -1561,11 +1561,11 @@ void CreateCornerWall(float width, float height, float xDiv, float yDiv)
 		}
 	}
 
-	int compressedSize = GetCompressedSize(inputDescription, 2), vertexFlags = 0;
+	int compressedSize = sizeof(GridVertex), vertexFlags = POSITION | NORMAL;
 
-	void* compPoses = (void*)AppInstanceTempAllocator.CAllocate(vertexCount * compressedSize, 16);
+	//void* compPoses = (void*)AppInstanceTempAllocator.CAllocate(vertexCount * compressedSize, 16);
 
-	int totalDataSize = CompressMeshFromVertexStream(inputDescription, 2, sizeof(GridVertex), vertexCount, box, poses, compPoses, &compressedSize, &vertexFlags);
+	//int totalDataSize = CompressMeshFromVertexStream(inputDescription, 2, sizeof(GridVertex), vertexCount, box, poses, compPoses, &compressedSize, &vertexFlags);
 
 	Matrix4f sideFrontPanel = CreateRotationMatrixMat4(Vector3f(0.0f, 0.0f, 1.0), DegToRad(-90.0f));
 
@@ -1634,7 +1634,7 @@ void CreateCornerWall(float width, float height, float xDiv, float yDiv)
 		-1, -1
 	);
 
-	rendInst.UpdateDriverMemory(compPoses, globalVertexBuffer, vertexCount * compressedSize, vertexAlloc, TransferType::CACHED);
+	rendInst.UpdateDriverMemory(poses, globalVertexBuffer, vertexCount * compressedSize, vertexAlloc, TransferType::CACHED);
 	rendInst.UpdateDriverMemory(indices, globalIndexBuffer, indexCount * 2, indexAlloc, TransferType::CACHED);
 
 	CreateMaterial(materialHandleIndex, VERTEXNORMAL, -1, 0, Vector4f(1.0, 0.0, 0.0, 1.0), Vector4f(.25, .25, .25, 1.0), 3.0, Vector4f(.04, .06, 0.08, 1.0));
@@ -1771,31 +1771,31 @@ void CreateCrateObject()
 {
 	VertexInputDescription inputDescription[7];
 
-	inputDescription[0].byteoffset = 0;
+	inputDescription[0].byteoffset = 68;
 	inputDescription[0].format = ComponentFormatType::R32G32B32A32_SFLOAT;
 	inputDescription[0].vertexusage = VertexUsage::POSITION;
 
-	inputDescription[1].byteoffset = 16;
+	inputDescription[1].byteoffset = 52;
 	inputDescription[1].format = ComponentFormatType::R32G32B32A32_SFLOAT;
 	inputDescription[1].vertexusage = VertexUsage::COLOR0;
 
-	inputDescription[2].byteoffset = 32;
+	inputDescription[2].byteoffset = 24;
 	inputDescription[2].format = ComponentFormatType::R32G32B32_SFLOAT;
 	inputDescription[2].vertexusage = VertexUsage::NORMAL;
 
-	inputDescription[3].byteoffset = 44;
+	inputDescription[3].byteoffset = 0;
 	inputDescription[3].format = ComponentFormatType::R32G32_SFLOAT;
 	inputDescription[3].vertexusage = VertexUsage::TEX0;
 
-	inputDescription[4].byteoffset = 52;
+	inputDescription[4].byteoffset = 8;
 	inputDescription[4].format = ComponentFormatType::R32G32_SFLOAT;
 	inputDescription[4].vertexusage = VertexUsage::TEX1;	
 
-	inputDescription[5].byteoffset = 60;
+	inputDescription[5].byteoffset = 16;
 	inputDescription[5].format = ComponentFormatType::R32G32_SFLOAT;
 	inputDescription[5].vertexusage = VertexUsage::TEX2;
 
-	inputDescription[6].byteoffset = 68;
+	inputDescription[6].byteoffset = 36;
 	inputDescription[6].format = ComponentFormatType::R32G32B32A32_SFLOAT;
 	inputDescription[6].vertexusage = VertexUsage::TANGENTS;
 
@@ -1916,13 +1916,13 @@ void CreateCrateObject()
 
 	struct MyVertex
 	{
-		Vector4f pos;
-		Vector4f color;
-		Vector3f normal;
 		Vector2f texCoords;
 		Vector2f texCoords2;
 		Vector2f texCoords3;
+		Vector3f normal;
 		Vector4f tangent;
+		Vector4f color;
+		Vector4f pos;
 	};
 
 	MyVertex compVerts[24];
@@ -1944,11 +1944,11 @@ void CreateCrateObject()
 		compVerts[i].tangent = tangents[i];
 	}
 
-	int compressedSize = GetCompressedSize(inputDescription, 7), vertexFlags = 0;
+	int compressedSize = sizeof(MyVertex), vertexFlags = POSITION | COLOR | NORMAL | TEXTURE0 | TEXTURE1 | TEXTURE2 | TANGENT;
 
-	void* compressedVertexData = AppInstanceTempAllocator.Allocate(compressedSize * 24, 16);
+	//void* compressedVertexData = AppInstanceTempAllocator.Allocate(compressedSize * 24, 16);
 
-	int totalDataSize = CompressMeshFromVertexStream(inputDescription, 7, sizeof(MyVertex), 24, BOX, compVerts, compressedVertexData, &compressedSize, &vertexFlags);
+	//int totalDataSize = CompressMeshFromVertexStream(inputDescription, 7, sizeof(MyVertex), 24, BOX, compVerts, compressedVertexData, &compressedSize, &vertexFlags);
 
 	auto& rendInst = GlobalRenderer::gRenderInstance;
 
@@ -2069,7 +2069,7 @@ void CreateCrateObject()
 
 	CreateRenderable(cpuMeshRenderable, gpuMeshRenderable, Identity4f(), gpuGeomRenderable, materialRangeIndex, materialRangeCount, blendRangesIndex, meshGPUIndex, 1);
 	
-	rendInst.UpdateDriverMemory(compressedVertexData, globalVertexBuffer, compressedSize * 24,  vertexAlloc, TransferType::CACHED);
+	rendInst.UpdateDriverMemory(compVerts, globalVertexBuffer, compressedSize * 24,  vertexAlloc, TransferType::CACHED);
 	rendInst.UpdateDriverMemory(BoxIndices, globalIndexBuffer,  sizeof(BoxIndices),  indexAlloc, TransferType::CACHED);
 
 	mainAppLogger.AddLogMessage(LOGINFO, STRING_VIEW_FROM_LITERAL("Created Crate Object"));
@@ -2164,38 +2164,27 @@ void SMBGeometricalObject(SMBGeoChunk* geoDef, SMBFile* file, int textureBase, i
 		
 		void* vertexData = nullptr;
 
-		bool decompressed = false;
-
 		switch (type)
 		{
 		case PosPack6_CNorm_C16Tex1_Bone2:
-			if (decompressed)
-				vertexSize = sizeof(Vertex_PosPack6_CNorm_C16Tex1_Bone2);
-			else
-				vertexSize = sizeof(CVertex_PosPack6_CNorm_C16Tex1_Bone2);
+			vertexSize = sizeof(CVertex_PosPack6_CNorm_C16Tex1_Bone2);
 			break;
 		case PosPack6_C16Tex2_Bone2:
-			if (decompressed)
-				vertexSize = sizeof(Vertex_PosPack6_C16Tex2_Bone2);
-			else
-				vertexSize = sizeof(CVertex_PosPack6_C16Tex2_Bone2);
+			vertexSize = sizeof(CVertex_PosPack6_C16Tex2_Bone2);
 			break;
 		case PosPack6_C16Tex1_Bone2:
-			if (decompressed)
-				vertexSize = sizeof(Vertex_PosPack6_C16Tex1_Bone2);
-			else
-				vertexSize = sizeof(CVertex_PosPack6_C16Tex1_Bone2);
+			vertexSize = sizeof(CVertex_PosPack6_C16Tex1_Bone2);
 			break;
 		default:
 			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Unhandled vertex type"));
 			break;
 		}
 
-		vertexData = (void*)vertexAndIndicesAlloc.Allocate(vertexSize * vertexCount);
+		vertexData = (void*)vertexAndIndicesAlloc.Allocate(vertexSize * vertexCount, 16);
 
-		SMBCopyVertexData(geoDef, i, file, vertexData, decompressed, &SMBThreadedFileInputAllocators[arenaIndex]);
+		SMBCopyVertexData(geoDef, i, file, vertexData, 0, &SMBThreadedFileInputAllocators[arenaIndex]);
 
-		int vertexFlags = POSITION | TEXTURE0;
+		int vertexFlags = 0;
 
 		switch (type)
 		{
@@ -2216,10 +2205,9 @@ void SMBGeometricalObject(SMBGeoChunk* geoDef, SMBFile* file, int textureBase, i
 		}
 		}
 
-		if (!decompressed)
-		{
-			vertexFlags |= COMPRESSED;
-		}
+		
+		vertexFlags |= COMPRESSED;
+		
 
 		uint16_t* indices = (uint16_t*)vertexAndIndicesAlloc.Allocate(sizeof(uint16_t) * indexCount);
 

@@ -136,12 +136,44 @@ void main()
     } 
     else 
     {
-        if ((comp & POSITION) == POSITION)
+        if ((comp&BONES2) == BONES2)
         {
-            mat4 MVP = gs.proj * gs.view * worldMatrix;
-            vec4 intPos = ReconstructVEC4(offset);
-            gl_Position = MVP * intPos;
-            worldPosition = worldMatrix * intPos;
+            offset += 16;
+        }
+
+        if ((comp & TEXTURES1) == TEXTURES1)
+        {
+            texCoords[0] = vec2(ReconstructVEC3(offset).xy);
+            offset += 8;
+        }
+
+        if ((comp & TEXTURES2) == TEXTURES2)
+        {
+            texCoords[1] = vec2(ReconstructVEC3(offset).xy);
+            offset += 8;
+        }
+
+        if ((comp & TEXTURES3) == TEXTURES3)
+        {
+            texCoords[2] = vec2(ReconstructVEC3(offset).xy);
+            offset += 8;
+        }
+
+        if ((comp&NORMAL) == NORMAL)
+        {
+            normal = normalMatrix * ReconstructVEC3(offset);
+
+            offset += 12;
+        }
+
+        if ((comp&TANGENT) == TANGENT)
+        {
+            vec4 tangentLocal = ReconstructVEC4(offset);
+
+            vec3 tangentCopy = normalMatrix * tangentLocal.xyz;
+            
+            tangent = vec4(tangentCopy, tangentLocal.w);
+
             offset += 16;
         }
 
@@ -151,15 +183,12 @@ void main()
             offset += 16;
         }
 
-        if ((comp & TEXTURES1) == TEXTURES1)
+        if ((comp & POSITION) == POSITION)
         {
-            texCoords[0] = vec2(ReconstructVEC4(offset+16).xy);
-        }
-
-        if ((comp & TEXTURES2) == TEXTURES2)
-        {
-            texCoords[1] = vec2(ReconstructVEC4(offset+16+8).xy);
-
+            mat4 MVP = gs.proj * gs.view;
+            vec4 intPos = ReconstructVEC4(offset);
+            gl_Position = MVP * worldMatrix * intPos;
+            worldPosition = worldMatrix * intPos;
         }
     }
 }

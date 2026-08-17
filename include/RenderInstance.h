@@ -183,8 +183,6 @@ struct RenderInstance
 
 	void DrawScene(int deviceSelection, int commandStreamIndex, uint32_t imageIndex);
 
-	void DestroyTexture(int deviceSelection, EntryHandle handle);
-
 	void IncreaseMSAA(int frameGraph, int renderPassIndex);
 
 	void DecreaseMSAA(int frameGraph, int renderPassIndex);
@@ -344,12 +342,12 @@ struct RenderInstance
 	void DestroyPhysicalDeviceIndices(int handle);
 	void DestroyLogicalDeviceIndices(int handle);
 	void DestroyWindowsSurfaces(int handle);
-	void DestroySwapChains(int mainLogicalDevice, int handle);
+	void DestroySwapChain(int mainLogicalDevice, int handle);
 	void DestroyBufferHandles(int mainLogicalDevice, int handle);
 	void DestroyImagePool(int mainLogicalDevice, int handle);
 	void DestroyPipelineHandle(int mainLogicalDevice, int handle);
 	void DestroyAttachmentGraph(int mainLogicalDevice, int handle);
-	void DestroyAttachmentGraphsInstance(int mainLogicalDevice, int handle);
+	void DestroyAttachmentGraphInstance(int mainLogicalDevice, int handle);
 	void DestroyRenderTargetQueue(int mainLogicalDevice, int handle);
 	void DestroyComputeQueue(int mainLogicalDevice, int handle);
 	void DestroyTextureResourceHandle(int mainLogicalDevice, int handle);
@@ -362,7 +360,7 @@ struct RenderInstance
 	void DestroyShaderResourceTemplate(int mainLogicalDevice, int handle);
 	void DestroyAllocation(int mainLogicalDevice, int handle);
 	void DestroyDescriptorManager(int mainLogicalDevice, int handle);
-	void DestroyGpuCommandStream(int mainLogicalDevice, int handle);
+	void DestroyGpuCommandStream(int handle);
 	void DestroyShaderGraph(int mainLogicalDevice, int handle);
 
 	void CleanInitializePhysicalDeviceIndices(RenderPhysicalDeviceContainer* physicalDevice);
@@ -384,6 +382,7 @@ struct RenderInstance
 	void CleanInitializeDescriptorManager(ShaderResourceManager* descriptorManager);
 	void CleanInitializeGpuCommandStream(GPUCommandStreamAllocator* gpuCommandStream);
 	void CleanInitializeShaderGraph(ShaderGraph* shaderGraph);
+	void CleanInitializeGraphPipeline(GraphPipelineDescription* desc);
 
 	static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 3;
 
@@ -432,6 +431,8 @@ struct RenderInstance
 	PoolAllocator<ShaderResourceManager> descriptorManagers{};
 
 	PoolAllocator<GPUCommandStreamAllocator> gpuCommandStreams{};
+
+	PoolAllocator<GraphPipelineDescription> graphPipelineDescriptions{};
 	
 	ShaderGraphsHolder shaderGraphs;
 

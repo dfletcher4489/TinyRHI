@@ -528,7 +528,6 @@ struct AttachmentRenderPassInstance
 	int currentSampleCount;
 	int graphicsOTQIndex;
 	RenderPassType rpType;
-
 };
 
 struct AttachmentGraphInstance
@@ -642,8 +641,6 @@ enum class DescriptorTypes
 	SAMPLER_DESCRIPTOR = 5,
 	COMBINED_IMAGE_SAMPLER_DESCRIPTOR = 6,
 };
-
-
 
 enum class BarrierType
 {

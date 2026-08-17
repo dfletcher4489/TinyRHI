@@ -817,7 +817,6 @@ struct RenderBufferDescription
 {
 	EntryHandle bufferHandle;
 	MemoryType type;
-	int resourceStatus;
 };
 
 #define MAX_VIEWS_ATTACHED_TO_TEXTURE 4

@@ -79,7 +79,10 @@ enum ShaderResourceLayoutIdentifiers
 	UITEXTCOUNT,
 	UITEXTGENERATION,
 	UITEXTRENDERING,
+	SHADERRESOURCECOUNT
 };
+
+static std::array<uint32_t, SHADERRESOURCECOUNT> pipelineHandles{};
 
 static std::array<StringView, 12> pds = {
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("GenericPipeline.pld"),
@@ -1748,7 +1751,7 @@ void CreateJointVisualObject(int numberOfJoints, uint32_t startingLocation)
 		
 		.vertexBufferHandle = jointMeshVertexAlloc,
 		.vertexCount = 6,
-		.pipelinename = JOINTVISUAL,
+		.pipelinename = pipelineHandles[JOINTVISUAL],
 		.descCount = 2,
 		.descriptorsetid = Descs.data(),
 		.indexBufferHandle = jointMeshIndexAlloc,
@@ -2697,7 +2700,7 @@ int CreateDebugCommandBuffers(int count)
 			.x = count / debugCullDescriptorLayout->x,
 			.y = 1,
 			.z = 1,
-			.pipelinename = DEBUGCULL,
+			.pipelinename = pipelineHandles[DEBUGCULL],
 			.descCount = 1,
 			.indirectDispatchAllocation = -1,
 			.descriptorsetid = debugCullDescriptors.data()
@@ -2737,7 +2740,7 @@ int CreateDebugCommandBuffers(int count)
 		
 		.vertexBufferHandle = ~0,
 		.vertexCount = 0,
-		.pipelinename = DEBUGDRAW,
+		.pipelinename = pipelineHandles[DEBUGDRAW],
 		.descCount = 2,
 		.descriptorsetid = indirectDebugDrawDescriptors.data(),
 		.indexBufferHandle = ~0,
@@ -2831,7 +2834,7 @@ int CreateGenericMeshCommandBuffers(int count)
 		
 		.vertexBufferHandle = ~0,
 		.vertexCount = 0,
-		.pipelinename = GENERIC,
+		.pipelinename = pipelineHandles[GENERIC],
 		.descCount = 3,
 		.descriptorsetid = indirectDrawDescriptors.data(),
 		.indexBufferHandle = globalIndexBuffer,
@@ -2872,7 +2875,7 @@ int CreateGenericMeshCommandBuffers(int count)
 			.x = count / layout->x,
 			.y = 1,
 			.z = 1,
-			.pipelinename = RENDEROBJCULL,
+			.pipelinename = pipelineHandles[RENDEROBJCULL],
 			.descCount = 2,
 			.indirectDispatchAllocation = -1,
 			.descriptorsetid = computeDescriptors.data()
@@ -2911,7 +2914,7 @@ int CreateGenericMeshCommandBuffers(int count)
 		
 		.vertexBufferHandle = ~0,
 		.vertexCount = 0,
-		.pipelinename = OUTLINE,
+		.pipelinename = pipelineHandles[OUTLINE],
 		.descCount = 1,
 		.descriptorsetid = indirectOutline.data(),
 		.indexBufferHandle = globalIndexBuffer,
@@ -2983,7 +2986,7 @@ int CreateMeshWorldAssignment(int count)
 			.x = prefixCount,
 			.y = 1,
 			.z = 1,
-			.pipelinename = PREFIXSUM,
+			.pipelinename = pipelineHandles[PREFIXSUM],
 			.descCount = 1,
 			.indirectDispatchAllocation = -1,
 			.descriptorsetid = prefixSumDescriptor.data()
@@ -3021,7 +3024,7 @@ int CreateMeshWorldAssignment(int count)
 				.x = (uint32_t)worldSpaceAssignment.totalSumsNeeded,
 				.y = 1,
 				.z = 1,
-				.pipelinename = PREFIXSUM,
+				.pipelinename = pipelineHandles[PREFIXSUM],
 				.descCount = 1,
 				.indirectDispatchAllocation = -1,
 				.descriptorsetid = prefixSumOverflowDescriptor.data()
@@ -3055,7 +3058,7 @@ int CreateMeshWorldAssignment(int count)
 				.x = (uint32_t)worldSpaceAssignment.totalSumsNeeded,
 				.y = 1,
 				.z = 1,
-				.pipelinename = PREFIXADD,
+				.pipelinename = pipelineHandles[PREFIXADD],
 				.descCount = 1,
 				.indirectDispatchAllocation = -1,
 				.descriptorsetid = incrementSumsDescriptor.data()
@@ -3100,7 +3103,7 @@ int CreateMeshWorldAssignment(int count)
 			.x = assignmentGroupCount,
 			.y = 1,
 			.z = 1,
-			.pipelinename = WORLDORGANIZE,
+			.pipelinename = pipelineHandles[WORLDORGANIZE],
 			.descCount = 1,
 			.indirectDispatchAllocation = -1,
 			.descriptorsetid = preWorldDivDescriptor.data()
@@ -3139,7 +3142,7 @@ int CreateMeshWorldAssignment(int count)
 			.x = assignmentGroupCount,
 			.y = 1,
 			.z = 1,
-			.pipelinename = WORLDASSIGN,
+			.pipelinename = pipelineHandles[WORLDASSIGN],
 			.descCount = 1,
 			.indirectDispatchAllocation = -1,
 			.descriptorsetid = postWorldDivDescriptor.data()
@@ -3203,7 +3206,7 @@ int CreateLightAssignments(int count)
 			.x = prefixCount,
 			.y = 1,
 			.z = 1,
-			.pipelinename = PREFIXSUM,
+			.pipelinename = pipelineHandles[PREFIXSUM],
 			.descCount = 1,
 			.indirectDispatchAllocation = -1,
 			.descriptorsetid = prefixSumDescriptor.data()
@@ -3234,7 +3237,7 @@ int CreateLightAssignments(int count)
 				.x = (uint32_t)lightAssignment.totalSumsNeeded,
 				.y = 1,
 				.z = 1,
-				.pipelinename = PREFIXSUM,
+				.pipelinename = pipelineHandles[PREFIXSUM],
 				.descCount = 1,
 				.indirectDispatchAllocation = -1,
 				.descriptorsetid = prefixSumOverflowDescriptor.data()
@@ -3274,7 +3277,7 @@ int CreateLightAssignments(int count)
 				.x = (uint32_t)lightAssignment.totalSumsNeeded,
 				.y = 1,
 				.z = 1,
-				.pipelinename = PREFIXADD,
+				.pipelinename = pipelineHandles[PREFIXADD],
 				.descCount = 1,
 				.indirectDispatchAllocation = -1,
 				.descriptorsetid = incrementSumsDescriptor.data()
@@ -3318,7 +3321,7 @@ int CreateLightAssignments(int count)
 			.x = assignmentGroupCount,
 			.y = 1,
 			.z = 1,
-			.pipelinename = LIGHTORGANIZE,
+			.pipelinename = pipelineHandles[LIGHTORGANIZE],
 			.descCount = 1,
 			.indirectDispatchAllocation = -1,
 			.descriptorsetid = preWorldDivDescriptor.data()
@@ -3355,7 +3358,7 @@ int CreateLightAssignments(int count)
 			.x = assignmentGroupCount,
 			.y = 1,
 			.z = 1,
-			.pipelinename = LIGHTASSIGN,
+			.pipelinename = pipelineHandles[LIGHTASSIGN],
 			.descCount = 1,
 			.indirectDispatchAllocation = -1,
 			.descriptorsetid = postWorldDivDescriptor.data()
@@ -3463,7 +3466,7 @@ int CreateShadowMapManager(int maxShadowMapAssignment, int maxObjCount, int shad
 			.x = maxCullInvocations,
 			.y = 1,
 			.z = 1,
-			.pipelinename = SHADOWMAPCULL,
+			.pipelinename = pipelineHandles[SHADOWMAPCULL],
 			.descCount = 2,
 			.indirectDispatchAllocation = -1,
 			.descriptorsetid = shadowClipDesc.data()
@@ -3504,7 +3507,7 @@ int CreateShadowMapManager(int maxShadowMapAssignment, int maxObjCount, int shad
 		
 		.vertexBufferHandle = ~0,
 		.vertexCount = 0,
-		.pipelinename = SHADOWMAPDRAW,
+		.pipelinename = pipelineHandles[SHADOWMAPDRAW],
 		.descCount = 1,
 		.descriptorsetid = indirectShadowMapDraw.data(),
 		.indexBufferHandle = globalIndexBuffer,
@@ -3551,7 +3554,7 @@ int CreateShadowMapManager(int maxShadowMapAssignment, int maxObjCount, int shad
 		
 		.vertexBufferHandle = ~0,
 		.vertexCount = 4,
-		.pipelinename = FULLSCREEN,
+		.pipelinename = pipelineHandles[FULLSCREEN],
 		.descCount = 1,
 		.descriptorsetid = fullScreenDesc.data(),
 		.indexBufferHandle = ~0,
@@ -3633,7 +3636,7 @@ int CreateMSAAPostFullScreen()
 		
 		.vertexBufferHandle = ~0,
 		.vertexCount = 4,
-		.pipelinename = FULLSCREEN,
+		.pipelinename = pipelineHandles[FULLSCREEN],
 		.descCount = 1,
 		.descriptorsetid = mainFullScreenDesc.data(),
 		.indexBufferHandle = ~0,
@@ -3747,7 +3750,7 @@ int CreateSkyBox()
 		
 		.vertexBufferHandle = vertexAlloc,
 		.vertexCount = 24,
-		.pipelinename = SKYBOX,
+		.pipelinename = pipelineHandles[SKYBOX],
 		.descCount = 2,
 		.descriptorsetid = skyboxDescs.data(),
 		.indexBufferHandle = globalIndexBuffer,
@@ -3980,39 +3983,39 @@ void ApplicationLoop::InitializeRuntime()
 
 	std::array fullScreenFrameGraphs = { BasicShadow };
 
-	GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, GENERIC, 0, frameGraphs.data(), frameRenderPassSelection.data()+1,  1);
-	//GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, TEXT, 1, frameGraphs.data(), frameRenderPassSelection.data()+1, 1);
-	GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, DEBUGDRAW, 2, frameGraphs.data(), frameRenderPassSelection.data()+1, 1);
-	GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, NORMALDEBUGDRAW, 3, frameGraphs.data(), frameRenderPassSelection.data()+1, 1);
-	GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, SKYBOX, 4, frameGraphs.data(), frameRenderPassSelection.data()+1, 1);
-	GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, OUTLINE, 5, frameGraphs.data(), frameRenderPassSelection.data()+1, 1);
-	GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, FULLSCREEN, 6, fullScreenFrameGraphs.data(), frameRenderPassSelection.data(), 1);
-	GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, SHADOWMAPDRAW, 7, frameGraphs.data(), frameRenderPassSelection.data(), 1);
-	GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, JOINTVISUAL, 8, frameGraphs.data(), frameRenderPassSelection.data()+1, 1);
-	GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, UIDRAWING, 9, frameGraphs.data(), frameRenderPassSelection.data()+1, 1);
-	GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, UIOBJECTDRAWING, 10, frameGraphs.data(), frameRenderPassSelection.data() + 2, 1);
-	GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, UITEXTRENDERING, 11, frameGraphs.data(), frameRenderPassSelection.data() + 1, 1);
+	pipelineHandles[GENERIC] = GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, GENERIC, 0, frameGraphs.data(), frameRenderPassSelection.data() + 1, 1);
+	//pipelineHandles[TEXT] = GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, TEXT, 1, frameGraphs.data(), frameRenderPassSelection.data()+1, 1);
+	pipelineHandles[DEBUGDRAW] = GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, DEBUGDRAW, 2, frameGraphs.data(), frameRenderPassSelection.data() + 1, 1);
+	pipelineHandles[NORMALDEBUGDRAW] = GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, NORMALDEBUGDRAW, 3, frameGraphs.data(), frameRenderPassSelection.data() + 1, 1);
+	pipelineHandles[SKYBOX] = GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, SKYBOX, 4, frameGraphs.data(), frameRenderPassSelection.data() + 1, 1);
+	pipelineHandles[OUTLINE] = GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, OUTLINE, 5, frameGraphs.data(), frameRenderPassSelection.data() + 1, 1);
+	pipelineHandles[FULLSCREEN] = GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, FULLSCREEN, 6, fullScreenFrameGraphs.data(), frameRenderPassSelection.data(), 1);
+	pipelineHandles[SHADOWMAPDRAW] = GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, SHADOWMAPDRAW, 7, frameGraphs.data(), frameRenderPassSelection.data(), 1);
+	pipelineHandles[JOINTVISUAL] = GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, JOINTVISUAL, 8, frameGraphs.data(), frameRenderPassSelection.data() + 1, 1);
+	pipelineHandles[UIDRAWING] = GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, UIDRAWING, 9, frameGraphs.data(), frameRenderPassSelection.data() + 1, 1);
+	pipelineHandles[UIOBJECTDRAWING] = GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, UIOBJECTDRAWING, 10, frameGraphs.data(), frameRenderPassSelection.data() + 2, 1);
+	pipelineHandles[UITEXTRENDERING] = GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(mainLogicalDevice, UITEXTRENDERING, 11, frameGraphs.data(), frameRenderPassSelection.data() + 1, 1);
 
-	GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, INTERPOLATE);
-	GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, POLYNOMIAL);
-	GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, RENDEROBJCULL);
-	GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, DEBUGCULL);
-	GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, PREFIXSUM);
-	GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, PREFIXADD);
-	GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, WORLDORGANIZE);
-	GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, WORLDASSIGN);
-	GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, LIGHTORGANIZE);
-	GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, LIGHTASSIGN);
-	GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, SHADOWMAPCULL);
-	GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, UICULLING);
-	GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, UIDEPTHCOUNT);
-	GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, UICHILDDEPTHADD);
-	GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, UIINDEXASSIGNMENT);
-	GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, UILAYOUTSIZES);
-	GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, UIABSOLUTEPOSITION);
-	GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, UICURSORPOSITION);
-	GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, UITEXTCOUNT);
-	GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, UITEXTGENERATION);
+	pipelineHandles[INTERPOLATE] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, INTERPOLATE);
+	pipelineHandles[POLYNOMIAL] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, POLYNOMIAL);
+	pipelineHandles[RENDEROBJCULL] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, RENDEROBJCULL);
+	pipelineHandles[DEBUGCULL] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, DEBUGCULL);
+	pipelineHandles[PREFIXSUM] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, PREFIXSUM);
+	pipelineHandles[PREFIXADD] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, PREFIXADD);
+	pipelineHandles[WORLDORGANIZE] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, WORLDORGANIZE);
+	pipelineHandles[WORLDASSIGN] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, WORLDASSIGN);
+	pipelineHandles[LIGHTORGANIZE] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, LIGHTORGANIZE);
+	pipelineHandles[LIGHTASSIGN] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, LIGHTASSIGN);
+	pipelineHandles[SHADOWMAPCULL] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, SHADOWMAPCULL);
+	pipelineHandles[UICULLING] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, UICULLING);
+	pipelineHandles[UIDEPTHCOUNT] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, UIDEPTHCOUNT);
+	pipelineHandles[UICHILDDEPTHADD] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, UICHILDDEPTHADD);
+	pipelineHandles[UIINDEXASSIGNMENT] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, UIINDEXASSIGNMENT);
+	pipelineHandles[UILAYOUTSIZES] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, UILAYOUTSIZES);
+	pipelineHandles[UIABSOLUTEPOSITION] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, UIABSOLUTEPOSITION);
+	pipelineHandles[UICURSORPOSITION] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, UICURSORPOSITION);
+	pipelineHandles[UITEXTCOUNT] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, UITEXTCOUNT);
+	pipelineHandles[UITEXTGENERATION] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(mainLogicalDevice, UITEXTGENERATION);
 
 	mainComputeQueueIndex = GlobalRenderer::gRenderInstance.CreateComputeQueue();
 
@@ -5499,7 +5502,7 @@ void CreateUITools(int maxUIContainers)
 				.x = (uint32_t)std::ceil((float)globalUICount / (float)computeLayout->x),
 				.y = 1,
 				.z = 1,
-				.pipelinename = UICULLING,
+				.pipelinename = pipelineHandles[UICULLING],
 				.descCount = 1,
 				.indirectDispatchAllocation = -1,
 				.descriptorsetid = descriptors.data()
@@ -5530,7 +5533,7 @@ void CreateUITools(int maxUIContainers)
 			
 			.vertexBufferHandle = -1,
 			.vertexCount = 0,
-			.pipelinename = UIDRAWING,
+			.pipelinename = pipelineHandles[UIDRAWING],
 			.descCount = 1,
 			.descriptorsetid = descriptors.data(),
 			.indexBufferHandle = -1,
@@ -5566,7 +5569,7 @@ void CreateUITools(int maxUIContainers)
 			.x = (uint32_t)std::ceil((float)globalUICount / (float)computeLayout->x),
 			.y = 1,
 			.z = 1,
-			.pipelinename = UIDEPTHCOUNT,
+			.pipelinename = pipelineHandles[UIDEPTHCOUNT],
 			.descCount = 1,
 			.indirectDispatchAllocation = -1,
 			.descriptorsetid = descriptors.data()
@@ -5597,7 +5600,7 @@ void CreateUITools(int maxUIContainers)
 			.x = 1,
 			.y = 1,
 			.z = 1,
-			.pipelinename = PREFIXSUM,
+			.pipelinename = pipelineHandles[PREFIXSUM],
 			.descCount = 1,
 			.indirectDispatchAllocation = -1,
 			.descriptorsetid = descriptors.data()
@@ -5628,7 +5631,7 @@ void CreateUITools(int maxUIContainers)
 			.x = 1,
 			.y = 1,
 			.z = 1,
-			.pipelinename = UICHILDDEPTHADD,
+			.pipelinename = pipelineHandles[UICHILDDEPTHADD],
 			.descCount = 1,
 			.indirectDispatchAllocation = -1,
 			.descriptorsetid = uiChildDepthDescriptors.data()
@@ -5661,7 +5664,7 @@ void CreateUITools(int maxUIContainers)
 			.x = 1,
 			.y = 1,
 			.z = 1,
-			.pipelinename = UIINDEXASSIGNMENT,
+			.pipelinename = pipelineHandles[UIINDEXASSIGNMENT],
 			.descCount = 1,
 			.indirectDispatchAllocation = -1,
 			.descriptorsetid = uiIndexDescriptors.data()
@@ -5696,7 +5699,7 @@ void CreateUITools(int maxUIContainers)
 			.x = 1,
 			.y = 1,
 			.z = 1,
-			.pipelinename = UILAYOUTSIZES,
+			.pipelinename = pipelineHandles[UILAYOUTSIZES],
 			.descCount = 1,
 			.indirectDispatchAllocation = -1,
 			.descriptorsetid = descriptors.data()
@@ -5731,7 +5734,7 @@ void CreateUITools(int maxUIContainers)
 			.x = 1,
 			.y = 1,
 			.z = 1,
-			.pipelinename = UIABSOLUTEPOSITION,
+			.pipelinename = pipelineHandles[UIABSOLUTEPOSITION],
 			.descCount = 1,
 			.indirectDispatchAllocation = -1,
 			.descriptorsetid = descriptors.data()
@@ -5762,7 +5765,7 @@ void CreateUITools(int maxUIContainers)
 			
 			.vertexBufferHandle = -1,
 			.vertexCount = 0,
-			.pipelinename = UIOBJECTDRAWING,
+			.pipelinename = pipelineHandles[UIOBJECTDRAWING],
 			.descCount = 1,
 			.descriptorsetid = uiDrawDescriptors.data(),
 			.indexBufferHandle = -1,
@@ -5807,7 +5810,7 @@ void CreateUITools(int maxUIContainers)
 			.x = 1,
 			.y = 1,
 			.z = 1,
-			.pipelinename = UICURSORPOSITION,
+			.pipelinename = pipelineHandles[UICURSORPOSITION],
 			.descCount = 1,
 			.indirectDispatchAllocation = -1,
 			.descriptorsetid = descriptors.data()
@@ -5839,7 +5842,7 @@ void CreateUITools(int maxUIContainers)
 			.x = 1,
 			.y = 1,
 			.z = 1,
-			.pipelinename = UITEXTCOUNT,
+			.pipelinename = pipelineHandles[UITEXTCOUNT],
 			.descCount = 1,
 			.indirectDispatchAllocation = -1,
 			.descriptorsetid = descriptors.data()
@@ -5874,7 +5877,7 @@ void CreateUITools(int maxUIContainers)
 			.x = 1,
 			.y = 1,
 			.z = 1,
-			.pipelinename = UITEXTGENERATION,
+			.pipelinename = pipelineHandles[UITEXTGENERATION],
 			.descCount = 1,
 			.indirectDispatchAllocation = globalUITextIndirectDispatchCommands,
 			.descriptorsetid = descriptors.data()
@@ -5908,7 +5911,7 @@ void CreateUITools(int maxUIContainers)
 			
 			.vertexBufferHandle = -1,
 			.vertexCount = 0,
-			.pipelinename = UITEXTRENDERING,
+			.pipelinename = pipelineHandles[UITEXTRENDERING],
 			.descCount = 1,
 			.descriptorsetid = descriptors.data(),
 			.indexBufferHandle = -1,

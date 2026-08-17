@@ -51,8 +51,6 @@ struct ShaderGraph
 	ShaderMap shaderMaps[MAX_SHADER_MAPS];
 	ShaderResourceTemplate shaderResources[MAX_SHADER_RESOURCES];
 	ShaderResourceSetTemplate shaderResourceSetTemplates[MAX_SHADER_RESOURCE_SET_TEMPLATES];
-
-	GraphPipelineDescription pipelineDescription;
 };
 
 struct ShaderGraphsHolder

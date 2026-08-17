@@ -29,7 +29,7 @@ enum SMBImageFormat : uint32_t
 	
 	SMB_IMAGEUNKNOWN = 0xffffffff
 };
-
+#pragma pack(push, 1)
 typedef struct pospack6_cnorm_c16tex1_bone2_type_h
 {
 	Vector2i BONES;
@@ -79,7 +79,7 @@ typedef struct pospack6_c16tex2_bone2_type_h
 
 } Vertex_PosPack6_C16Tex2_Bone2;
 
-#pragma pack(push, 1)
+
 typedef struct cpospack6_cnorm_c16tex1_bone2_type_h
 {
 	Vector2uc BONES;

@@ -101,13 +101,13 @@ Vector3f DecompressPosition(Vector3s vector, AxisBox& box)
 	int16_t y = vector.y;
 	int16_t z = vector.z;
 
-	float x1 = ((((float)x * dx) + 1.0f) * 0.5);
-	float y1 = ((((float)y * dx) + 1.0f) * 0.5);
-	float z1 = ((((float)z * dx) + 1.0f) * 0.5);
+	float x1 = (((((float)x) * dx) + 1.0f) * 0.5);
+	float y1 = (((((float)y) * dx) + 1.0f) * 0.5);
+	float z1 = (((((float)z) * dx) + 1.0f) * 0.5);
 
 	x1 = ((box.max.x - box.min.x) * x1) + box.min.x;
 	y1 = ((box.max.y - box.min.y) * y1) + box.min.y;
-	z1 = ((box.max.z - box.min.z) * x1) + box.min.z;
+	z1 = ((box.max.z - box.min.z) * z1) + box.min.z;
 
 	return Vector3f(x1, y1, z1);
 }

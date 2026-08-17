@@ -2164,25 +2164,36 @@ void SMBGeometricalObject(SMBGeoChunk* geoDef, SMBFile* file, int textureBase, i
 		
 		void* vertexData = nullptr;
 
+		int decompressed = 0;
+
 		switch (type)
 		{
 		case PosPack6_CNorm_C16Tex1_Bone2:
-			vertexSize = sizeof(CVertex_PosPack6_CNorm_C16Tex1_Bone2);
+			if (decompressed)
+				vertexSize = sizeof(Vertex_PosPack6_CNorm_C16Tex1_Bone2);
+			else
+				vertexSize = sizeof(CVertex_PosPack6_CNorm_C16Tex1_Bone2);
 			break;
 		case PosPack6_C16Tex2_Bone2:
-			vertexSize = sizeof(CVertex_PosPack6_C16Tex2_Bone2);
+			if (decompressed)
+				vertexSize = sizeof(Vertex_PosPack6_C16Tex2_Bone2);
+			else
+				vertexSize = sizeof(CVertex_PosPack6_C16Tex2_Bone2);
 			break;
 		case PosPack6_C16Tex1_Bone2:
-			vertexSize = sizeof(CVertex_PosPack6_C16Tex1_Bone2);
+			if (decompressed)
+				vertexSize = sizeof(Vertex_PosPack6_C16Tex1_Bone2);
+			else
+				vertexSize = sizeof(CVertex_PosPack6_C16Tex1_Bone2);
 			break;
 		default:
 			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Unhandled vertex type"));
 			break;
 		}
 
-		vertexData = (void*)vertexAndIndicesAlloc.Allocate(vertexSize * vertexCount, 16);
+		vertexData = (void*)vertexAndIndicesAlloc.Allocate(vertexSize * vertexCount, 4);
 
-		SMBCopyVertexData(geoDef, i, file, vertexData, 0, &SMBThreadedFileInputAllocators[arenaIndex]);
+		SMBCopyVertexData(geoDef, i, file, vertexData, decompressed, &SMBThreadedFileInputAllocators[arenaIndex]);
 
 		int vertexFlags = 0;
 
@@ -2205,17 +2216,18 @@ void SMBGeometricalObject(SMBGeoChunk* geoDef, SMBFile* file, int textureBase, i
 		}
 		}
 
+		if (!decompressed)
+		{
+			vertexFlags |= COMPRESSED;
+		}
 		
-		vertexFlags |= COMPRESSED;
-		
-
 		uint16_t* indices = (uint16_t*)vertexAndIndicesAlloc.Allocate(sizeof(uint16_t) * indexCount);
 
 		SMBCopyIndices(geoDef, i, file, indices);
 
 		int vertexAlloc = vertexBufferAlloc.Allocate(vertexSize * vertexCount, 16);
 
-		int indexAlloc = indexBufferAlloc.Allocate(sizeof(uint16_t) * indexCount, 1);
+		int indexAlloc = indexBufferAlloc.Allocate(sizeof(uint16_t) * indexCount, 2);
 		
 		rendInst.UpdateDriverMemory(indices, globalIndexBuffer, sizeof(uint16_t) * indexCount,  indexAlloc, TransferType::MEMORY);
 

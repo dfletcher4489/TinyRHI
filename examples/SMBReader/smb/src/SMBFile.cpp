@@ -346,13 +346,13 @@ int GetSMBVertexSize(SMBGeoChunk* geoDef, int renderableIndex)
 	switch (type)
 	{
 	case PosPack6_CNorm_C16Tex1_Bone2:
-		size = sizeof(Vertex_PosPack6_CNorm_C16Tex1_Bone2);
+		size = sizeof(CVertex_PosPack6_CNorm_C16Tex1_Bone2);
 		break;
 	case PosPack6_C16Tex2_Bone2:
-		size = sizeof(Vertex_PosPack6_C16Tex2_Bone2);
+		size = sizeof(CVertex_PosPack6_C16Tex2_Bone2);
 		break;
 	case PosPack6_C16Tex1_Bone2:
-		size = sizeof(Vertex_PosPack6_C16Tex1_Bone2);
+		size = sizeof(CVertex_PosPack6_C16Tex1_Bone2);
 		break;
 	}
 
@@ -392,7 +392,7 @@ void SMBCopyVertexData(SMBGeoChunk* geoDefinition, int renderableIndex, SMBFile*
 
 	if (decompressed)
 	{
-		void* data = tempMemoryPool->Allocate(vertexSize);
+		void* data = tempMemoryPool->Allocate(vertexSize, 16);
 
 		OSReadFile(handle, vertexSize, (char*)data);
 

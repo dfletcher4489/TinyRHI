@@ -110,8 +110,8 @@ struct LogicalDeviceCreateInfo
 	size_t deviceInstHandleSize;
 	size_t deviceInstCacheSize;
 	uint32_t maxQueries;
-	int surfaceIndexForPresent;
-	int physicalDeviceIndex;
+	WindowIndex surfaceIndexForPresent;
+	RenderPhysicalDeviceIndex physicalDeviceIndex;
 };
 
 struct RenderInstance
@@ -122,28 +122,28 @@ struct RenderInstance
 
 	void CreateRenderInstance(RenderInstanceCreateInfo *info, Allocator* instanceStorageAllocator, RingAllocator* instanceCacheAllocator);
 
-	void DestroySwapChainAttachments(int deviceSelection, EntryHandle swapChainIndex);
+	void DestroySwapChainAttachments(RenderDeviceIndex deviceSelection, EntryHandle swapChainIndex);
 
-	int RecreateSwapChain(int deviceSelection, int swapChainIndex, uint32_t width, uint32_t height);
+	int RecreateSwapChain(RenderDeviceIndex deviceSelection, SwapChainIndex swapChainIndex, uint32_t width, uint32_t height);
 
-	int CreateAttachmentResources(int deviceSelection, int graphIndex, int renderPassIndex, int imageCount, int* backBufferTextureIds, uint32_t width, uint32_t height,
-		RenderPassType rpType, AttachmentClear* clears, DeviceSlabAllocator* rsvAllocator, DeviceSlabAllocator* dsvAllocator, int rsvPoolIndex, int dsvPoolIndex);
+	int CreateAttachmentResources(RenderDeviceIndex deviceSelection, AttachmentGraphInstanceIndex graphIndex, int renderPassIndex, int imageCount, int* backBufferTextureIds, uint32_t width, uint32_t height,
+		RenderPassType rpType, AttachmentClear* clears, DeviceSlabAllocator* rsvAllocator, DeviceSlabAllocator* dsvAllocator, ImageMemoryPoolIndex rsvPoolIndex, ImageMemoryPoolIndex dsvPoolIndex);
 
-	int CreateSwapChainAttachment(int deviceSelection, int swapChainIndex, int graphIndex, int renderPassIndex, AttachmentClear* clears, DeviceSlabAllocator* rsvAllocator, DeviceSlabAllocator* dsvAllocator, int rsvPoolIndex, int dsvPoolIndex);
+	int CreateSwapChainAttachment(RenderDeviceIndex deviceSelection, SwapChainIndex swapChainIndex, AttachmentGraphInstanceIndex graphIndex, int renderPassIndex, AttachmentClear* clears, DeviceSlabAllocator* rsvAllocator, DeviceSlabAllocator* dsvAllocator, ImageMemoryPoolIndex rsvPoolIndex, ImageMemoryPoolIndex dsvPoolIndex);
 
-	int CreatePerFrameAttachment(int deviceSelection, int graphIndex, int renderPassIndex, int imageCount, uint32_t width, uint32_t height, AttachmentClear* clears, DeviceSlabAllocator* rsvAllocator, DeviceSlabAllocator* dsvAllocator, int rsvPoolIndex, int dsvPoolIndex);
+	int CreatePerFrameAttachment(RenderDeviceIndex deviceSelection, AttachmentGraphInstanceIndex graphIndex, int renderPassIndex, int imageCount, uint32_t width, uint32_t height, AttachmentClear* clears, DeviceSlabAllocator* rsvAllocator, DeviceSlabAllocator* dsvAllocator, ImageMemoryPoolIndex rsvPoolIndex, ImageMemoryPoolIndex dsvPoolIndex);
 
-	int CreateAttachmentGraphInstance(int deviceSelection, AttachmentGraph* graph);
+	AttachmentGraphInstanceIndex CreateAttachmentGraphInstance(RenderDeviceIndex deviceSelection, AttachmentGraph* graph);
 
-	int CreateRenderPass(int deviceSelection, AttachmentGraphInstance* graph);
+	int CreateRenderPass(RenderDeviceIndex deviceSelection, AttachmentGraphInstance* graph);
 
-	EntryHandle CreateVulkanComputePipelineTemplate(int deviceSelection, ShaderGraph* graph);
+	EntryHandle CreateVulkanComputePipelineTemplate(RenderDeviceIndex deviceSelection, ShaderGraph* graph);
 
-	uint32_t BeginFrame(int deviceSelection, int swapChainIndex);
+	uint32_t BeginFrame(RenderDeviceIndex deviceSelection, SwapChainIndex swapChainIndex);
 
-	int SubmitFrame(int deviceSelection, int swapChainIndex, uint32_t imageIndex);
+	int SubmitFrame(RenderDeviceIndex deviceSelection, SwapChainIndex swapChainIndex, uint32_t imageIndex);
 
-	void WaitOnRender(int deviceSelection);
+	void WaitOnRender(RenderDeviceIndex deviceSelection);
 
 	void CreatePipelines(StringView* pipelineDescriptions, int pipelineDescriptionsCount);
 
@@ -159,57 +159,57 @@ struct RenderInstance
 
 	void UploadDeviceLocalTransfers(RHIDevice* rhiDevice, RecordingBufferObject* rbo, BarrierAccumulator* accum);
 
-	int GetAllocFromBuffer(int deviceSelection, int bufferHandle, size_t structureSize, size_t copiesOfStructure, size_t alignment, AllocationType allocType, ComponentFormatType formatType, BufferAlignmentType bufferAlignmentType, int parentIndex, DeviceSlabAllocator* allocator);
+	int GetAllocFromBuffer(RenderDeviceIndex deviceSelection, BufferMemoryIndex bufferHandle, size_t structureSize, size_t copiesOfStructure, size_t alignment, AllocationType allocType, ComponentFormatType formatType, BufferAlignmentType bufferAlignmentType, int parentIndex, DeviceSlabAllocator* allocator);
 
 	int CreateImageHandle(
-		int deviceSelection,
+		RenderDeviceIndex deviceSelection,
 		size_t gpuMemAddress,
 		uint32_t width, uint32_t height,
-		uint32_t mipLevels, uint32_t arrayLayers, ImageFormat format, ImageType imageType, ImageUsageFlags usageFlags, int poolIndex);
+		uint32_t mipLevels, uint32_t arrayLayers, ImageFormat format, ImageType imageType, ImageUsageFlags usageFlags, ImageMemoryPoolIndex poolIndex);
 
-	int CreateImageView(int deviceSelection, int imageHandle, int firstMip, int mipCount, int firstLayer, int layerCount, ImageViewAspectMask imageAspect, ImageLayout desiredImageLayoutUsage);
+	int CreateImageView(RenderDeviceIndex deviceSelection, int imageHandle, int firstMip, int mipCount, int firstLayer, int layerCount, ImageViewAspectMask imageAspect, ImageLayout desiredImageLayoutUsage);
 
-	int CreateImagePool(int deviceSelection, size_t size, ImageFormat format, int maxWidth, int maxHeight, ImageUsageFlags usageFlags, MemoryType memType);
+	ImageMemoryPoolIndex CreateImagePool(RenderDeviceIndex deviceSelection, size_t size, ImageFormat format, int maxWidth, int maxHeight, ImageUsageFlags usageFlags, MemoryType memType);
 
-	int CreateLogicalDevice(LogicalDeviceCreateInfo* createInfo);
+	RenderDeviceIndex CreateLogicalDevice(LogicalDeviceCreateInfo* createInfo);
 
-	uint32_t GetSwapChainHeight(int swapChainIndex);
+	uint32_t GetSwapChainHeight(SwapChainIndex swapChainIndex);
 
-	uint32_t GetSwapChainWidth(int swapChainIndex);
+	uint32_t GetSwapChainWidth(SwapChainIndex swapChainIndex);
 
-	int CreateGraphicsPipelineObject(int deviceSelection, GraphicsIntermediaryPipelineInfo *info);
+	int CreateGraphicsPipelineObject(RenderDeviceIndex deviceSelection, GraphicsIntermediaryPipelineInfo *info);
 
-	int CreateComputePipelineObject(int deviceSelection, ComputeIntermediaryPipelineInfo* info);
+	int CreateComputePipelineObject(RenderDeviceIndex deviceSelection, ComputeIntermediaryPipelineInfo* info);
 
-	void DrawScene(int deviceSelection, int commandStreamIndex, uint32_t imageIndex);
+	void DrawScene(RenderDeviceIndex deviceSelection, int commandStreamIndex, uint32_t imageIndex);
 
-	void IncreaseMSAA(int frameGraph, int renderPassIndex);
+	void IncreaseMSAA(AttachmentGraphInstanceIndex frameGraph, int renderPassIndex);
 
-	void DecreaseMSAA(int frameGraph, int renderPassIndex);
+	void DecreaseMSAA(AttachmentGraphInstanceIndex frameGraph, int renderPassIndex);
 
 	int CreateShaderResourceMap(RHIDevice* device, ShaderGraph *graph);
 
-	ShaderResourceSetBuilder AllocateShaderResourceSet(int descriptorManagerIndex, int shaderGraphIndex, int targetSet, int setCount);
+	ShaderResourceSetBuilder AllocateShaderResourceSet(ShaderResourceManagerIndex descriptorManagerIndex, int shaderGraphIndex, int targetSet, int setCount);
 
-	int CreateShaderResourceSet(ShaderResourceManager* descriptorManager, int deviceSelection, int descriptorSet);
+	int CreateShaderResourceSet(ShaderResourceManager* descriptorManager, RenderDeviceIndex deviceSelection, int descriptorSet);
 
-	void GeneratePipelineDescriptorBarriers(int deviceSelection, ShaderResourceSetHandle* descriptorid, int descriptorcount, BarrierAccumulator* accumulator, int pipelineIndex);
+	void GeneratePipelineDescriptorBarriers(RenderDeviceIndex deviceSelection, ShaderResourceSetHandle* descriptorid, int descriptorcount, BarrierAccumulator* accumulator, int pipelineIndex);
 
-	void GenerateDrawBindingsBarriers(int deviceSelection, PipelineHandle* pipelineHandle, BarrierAccumulator* accumulator);
+	void GenerateDrawBindingsBarriers(RenderDeviceIndex deviceSelection, PipelineHandle* pipelineHandle, BarrierAccumulator* accumulator);
 
-	void GenerateComputeDispatchBindingsBarriers(int deviceSelection, PipelineHandle* handle, int pipelineIndex, BarrierAccumulator* accumulator);
+	void GenerateComputeDispatchBindingsBarriers(RenderDeviceIndex deviceSelection, PipelineHandle* handle, int pipelineIndex, BarrierAccumulator* accumulator);
 
 	ShaderComputeLayout* GetComputeLayout(int shaderGraphIndex);
 
-	void EndFrame(int deviceSelection, int commandStreamIndex);
+	void EndFrame(RenderDeviceIndex deviceSelection, int commandStreamIndex);
 
-	int AddPipelineToRPGraphicsQueue(int psoIndex, int frameGraphIndex, int renderPass);
+	int AddPipelineToRPGraphicsQueue(int psoIndex, AttachmentGraphInstanceIndex frameGraphIndex, int renderPass);
 
 	int AddPipelineToComputeQueue(int queueIndex, int psoIndex);
 
-	int ReadData(int deviceSelection, int handle, void* dest, int size, int offset);
+	int ReadData(RenderDeviceIndex deviceSelection, int handle, void* dest, int size, int offset);
 
-	int CreatePipelineFromGraphAndSpec(int deviceSelection, GenericPipelineStateInfo* stateInfo, ShaderGraph* graph, EntryHandle* outHandles, uint32_t outHandlePointer, AttachmentGraphInstance* graphInstance, uint32_t graphRenderPassIndex);
+	int CreatePipelineFromGraphAndSpec(RenderDeviceIndex deviceSelection, GenericPipelineStateInfo* stateInfo, ShaderGraph* graph, EntryHandle* outHandles, uint32_t outHandlePointer, AttachmentGraphInstance* graphInstance, uint32_t graphRenderPassIndex);
 
 	int UpdateDriverMemory(void* data, int allocationIndex, int size, int allocOffset, TransferType transferType);
 
@@ -224,33 +224,33 @@ struct RenderInstance
 	void SwapUpdateCommands();
 
 	int CreateSampler(
-		int deviceSelection, uint32_t baseLod, uint32_t maxLod, 
+		RenderDeviceIndex deviceSelection, uint32_t baseLod, uint32_t maxLod, 
 		SamplerFilterMode minFilter, SamplerFilterMode magFilter, 
 		SamplerAddressMode addressMode, SamplerMipmapMode mipmapMode, 
 		CompareOp compareOp
 	);
 
-	ImageFormat FindSupportedBackBufferColorFormat(int physicalDeviceIndex, int surfaceLevel, ImageFormat* requestedFormats, uint32_t requestSize);
-	ImageFormat FindSupportedDepthFormat(int deviceSelection, ImageFormat* requestedFormats, uint32_t requestSize);
+	ImageFormat FindSupportedBackBufferColorFormat(RenderPhysicalDeviceIndex physicalDeviceIndex, WindowIndex surfaceLevel, ImageFormat* requestedFormats, uint32_t requestSize);
+	ImageFormat FindSupportedDepthFormat(RenderDeviceIndex deviceSelection, ImageFormat* requestedFormats, uint32_t requestSize);
 
-	int CreateAttachmentGraph(int deviceSelection, StringView* attachmentLayout);
+	AttachmentGraphInstanceIndex CreateAttachmentGraph(RenderDeviceIndex deviceSelection, StringView* attachmentLayout);
 
-	int CreateSwapChainHandle(int deviceSelection, int surfaceIndex, ImageFormat mainBackBufferColorFormat, uint32_t width, uint32_t height);
+	SwapChainIndex CreateSwapChainHandle(RenderDeviceIndex deviceSelection, WindowIndex surfaceIndex, ImageFormat mainBackBufferColorFormat, uint32_t width, uint32_t height);
 
-	int CreateShaderGraphs(int deviceSelection, StringView* shaderGraphLayouts, int shaderGraphLayoutsCount);
+	int CreateShaderGraphs(RenderDeviceIndex deviceSelection, StringView* shaderGraphLayouts, int shaderGraphLayoutsCount);
 
-	int CreateGraphicRenderStateObject(int deviceSelection, int shaderGraphIndex, int pipelineDescriptionIndex, int* frameGraphAttachments, int* perFrameRenderPassSelection, int frameGraphCount);
-	int CreateComputePipelineStateObject(int deviceSelection, int shaderGraphIndex);
+	int CreateGraphicRenderStateObject(RenderDeviceIndex deviceSelection, int shaderGraphIndex, int pipelineDescriptionIndex, AttachmentGraphInstanceIndex* frameGraphAttachments, int* perFrameRenderPassSelection, int frameGraphCount);
+	int CreateComputePipelineStateObject(RenderDeviceIndex deviceSelection, int shaderGraphIndex);
 
 	void ResetCommandList(int commandStreamIndex);
 
-	void CreateGraphicsQueueForAttachments(int frameGraphIndex, int renderPassIndex, uint32_t pipelineCount);
+	void CreateGraphicsQueueForAttachments(AttachmentGraphInstanceIndex frameGraphIndex, int renderPassIndex, uint32_t pipelineCount);
 
 	int CreateComputeQueue();
 
 	void AddCommandQueue(int commandStreamIndex, int handleIndex, GPUCommandStreamType type);
 
-	int UploadFrameAttachmentResource(int frameGraph, int resourceIndex, int perTextureViewIndex, ShaderResourceSetHandle handle, int bindingIndex, int textureStart);
+	int UploadFrameAttachmentResource(AttachmentGraphInstanceIndex frameGraph, int resourceIndex, int perTextureViewIndex, ShaderResourceSetHandle handle, int bindingIndex, int textureStart);
 
 	void PipelineUpdateIndirectCommandBuffer(int pipelineIndex, int allocationIndex);
 	void PipelineUpdateVertexBuffer(int pipelineIndex, int allocationIndex, uint32_t vertexCount);
@@ -258,25 +258,25 @@ struct RenderInstance
 	void PipelineUpdateIndirectCountBuffer(int pipelineIndex, int allocationIndex);
 	void PipelineUpdateDispatchCommands(int pipelineIndex, uint32_t x, uint32_t y, uint32_t z);
 
-	int CreateUniversalBuffer(int deviceSelection, size_t size, MemoryType bufferMemoryType);
+	BufferMemoryIndex CreateUniversalBuffer(RenderDeviceIndex deviceSelection, size_t size, MemoryType bufferMemoryType);
 
-	int GetGPURequestedImageSizeAndAlignment(int deviceSelection, uint32_t width, uint32_t height, uint32_t mipLevels, uint32_t layers, ImageFormat type, ImageUsageFlags usageFlags, size_t* actualImageSize, size_t* actualAlignment);
+	int GetGPURequestedImageSizeAndAlignment(RenderDeviceIndex deviceSelection, uint32_t width, uint32_t height, uint32_t mipLevels, uint32_t layers, ImageFormat type, ImageUsageFlags usageFlags, size_t* actualImageSize, size_t* actualAlignment);
 
-	int CreateDescriptorHeap(int deviceSelection, DescriptorTypes* types, uint32_t* descriptorCountPerFrame, uint32_t numDescriptorTypesCount, uint32_t maxDescriptorSets, uint32_t maxShaderResourceSets);
+	ShaderResourceManagerIndex CreateDescriptorHeap(RenderDeviceIndex deviceSelection, DescriptorTypes* types, uint32_t* descriptorCountPerFrame, uint32_t numDescriptorTypesCount, uint32_t maxDescriptorSets, uint32_t maxShaderResourceSets);
 
-	int CreateWindowedSurface(OSWindowInternalData* windowData);
+	WindowIndex CreateWindowedSurface(OSWindowInternalData* windowData);
 
 	int CreateHighLevelInstance(uint32_t vkDriverSpecificMemory, uint32_t vkDriverCacheSize, uint32_t instancePermanentSpecificMemory, uint32_t instanceCacheMemory);
 
-	int CreatePhysicalDeviceAdapter(GPUFeatureRequest* requestedPhysicalFeatures, LogicalDeviceFeatures* requestedDeviceFeatures);
+	RenderPhysicalDeviceIndex CreatePhysicalDeviceAdapter(GPUFeatureRequest* requestedPhysicalFeatures, LogicalDeviceFeatures* requestedDeviceFeatures);
 
 	int OpenPhysicalDevicePicker();
 
-	int CreatePhysicalDeviceAdapterWithQuerying(GPUFeatureRequest* requestedPhysicalFeatures, LogicalDeviceFeatures* requestedDeviceFeatures);
+	RenderPhysicalDeviceIndex CreatePhysicalDeviceAdapterWithQuerying(GPUFeatureRequest* requestedPhysicalFeatures, LogicalDeviceFeatures* requestedDeviceFeatures);
 	
 	void ClosePhysicalDevicePicker();
 
-	int CreatePerFrameStagingBuffers(int deviceSelection, uint32_t bufferSize);
+	int CreatePerFrameStagingBuffers(RenderDeviceIndex deviceSelection, uint32_t bufferSize);
 
 	int CreateResourceStatusActions(ResourceStatus* status, int numberOfCurrentActions, int numberOfCurrentStages, int numberOfCurrentLayouts);
 
@@ -298,12 +298,12 @@ struct RenderInstance
 		ImageType imageType, int sampleCount,
 		ImageFormat format, ImageUsageFlags usageFlags,
 		DeviceSlabAllocator* attachmentAllocator, ImageLayout initialLayout,
-		RHIDevice* dev, int imageMemoryPoolIndex, ResourceStatusType resourceType
+		RenderDeviceIndex devSelection, ImageMemoryPoolIndex imageMemoryPoolIndex, ResourceStatusType resourceType
 	);
 
 	int CreateAttachmentImageView(int textureIndex, uint32_t firstMip, uint32_t mipCount, uint32_t firstArrayLayer, uint32_t arrayLayerCount, ImageViewAspectMask mask, ImageLayout desiredLayout, RHIDevice* dev);
 
-	int CreateAttachmentImageView(int deviceSelection, int attachmentGraphInstance, int attachmentResourceIndex, uint32_t firstMip, uint32_t mipCount, uint32_t firstArrayLayer, uint32_t arrayLayerCount, ImageViewAspectMask mask, ImageLayout desiredLayout);
+	int CreateAttachmentImageView(RenderDeviceIndex deviceSelection, AttachmentGraphInstanceIndex attachmentGraphInstance, int attachmentResourceIndex, uint32_t firstMip, uint32_t mipCount, uint32_t firstArrayLayer, uint32_t arrayLayerCount, ImageViewAspectMask mask, ImageLayout desiredLayout);
 
 	int CreateGPUCommandStream(int maxGPUCommandCount);
 
@@ -327,7 +327,7 @@ struct RenderInstance
 
 	void FreeFromStorageAllocator(void* address);
 
-	RHIDevice* GetDeviceHandle(int deviceSelection);
+	RHIDevice* GetDeviceHandle(RenderDeviceIndex deviceSelection);
 
 	void GetLastDeviceDriverError(RHIDevice* device, StringView messageHeader);
 
@@ -337,32 +337,32 @@ struct RenderInstance
 
 	void WriteDeviceQuery(RHIDevice* device, RecordingBufferObject* rcbo, PipelineStage stage);
 
-	void ToggleDeviceQueries(int mainDeviceSelection);
+	void ToggleDeviceQueries(RenderDeviceIndex mainDeviceSelection);
 	
-	void DestroyPhysicalDeviceIndices(int handle);
-	void DestroyLogicalDeviceIndices(int handle);
-	void DestroyWindowsSurfaces(int handle);
-	void DestroySwapChain(int mainLogicalDevice, int handle);
-	void DestroyBufferHandles(int mainLogicalDevice, int handle);
-	void DestroyImagePool(int mainLogicalDevice, int handle);
-	void DestroyPipelineHandle(int mainLogicalDevice, int handle);
-	void DestroyAttachmentGraph(int mainLogicalDevice, int handle);
-	void DestroyAttachmentGraphInstance(int mainLogicalDevice, int handle);
-	void DestroyRenderTargetQueue(int mainLogicalDevice, int handle);
-	void DestroyComputeQueue(int mainLogicalDevice, int handle);
-	void DestroyTextureResourceHandle(int mainLogicalDevice, int handle);
-	void DestroyTextureViewsResourceHandle(int mainLogicalDevice, int handle);
-	void DestroySamplerResourceHandle(int mainLogicalDevice, int handle);
-	void DestroyResourceStatus(int mainLogicalDevice, int handle);
-	void DestroyPipelineInfo(int mainLogicalDevice, int handle);
-	void DestroyRenderPass(int mainLogicalDevice, int handle);
-	void DestroyRenderTarget(int mainLogicalDevice, int handle);
-	void DestroyShaderResourceTemplate(int mainLogicalDevice, int handle);
-	void DestroyAllocation(int mainLogicalDevice, int handle);
-	void DestroyDescriptorManager(int mainLogicalDevice, int handle);
+	void DestroyPhysicalDeviceIndices(RenderPhysicalDeviceIndex handle);
+	void DestroyLogicalDeviceIndices(RenderDeviceIndex handle);
+	void DestroyWindowsSurfaces(WindowIndex handle);
+	void DestroySwapChain(SwapChainIndex handle);
+	void DestroyBufferHandles(BufferMemoryIndex handle);
+	void DestroyImagePool(ImageMemoryPoolIndex handle);
+	void DestroyPipelineHandle(int handle);
+	void DestroyAttachmentGraph(int handle);
+	void DestroyAttachmentGraphInstance(RenderDeviceIndex mainLogicalDevice, AttachmentGraphInstanceIndex handle);
+	void DestroyRenderTargetQueue(int handle);
+	void DestroyComputeQueue(int handle);
+	void DestroyTextureResourceHandle(int handle);
+	void DestroyTextureViewsResourceHandle(RenderDeviceIndex mainLogicalDevice, int handle);
+	void DestroySamplerResourceHandle(RenderDeviceIndex mainLogicalDevice, int handle);
+	void DestroyResourceStatus(int handle);
+	void DestroyPipelineInfo(int handle);
+	void DestroyRenderPass(RenderDeviceIndex mainLogicalDevice, int handle);
+	void DestroyRenderTarget(RenderDeviceIndex mainLogicalDevice, int handle);
+	void DestroyShaderResourceTemplate(RenderDeviceIndex mainLogicalDevice, int handle);
+	void DestroyAllocation(int handle);
+	void DestroyDescriptorManager(ShaderResourceManagerIndex handle);
 	void DestroyGpuCommandStream(int handle);
-	void DestroyShaderGraph(int mainLogicalDevice, int handle);
-	void DestroyGraphPipelineDescription(int mainLogicalDevice, int handle);
+	void DestroyShaderGraph(RenderDeviceIndex mainLogicalDevice, int handle);
+	void DestroyGraphPipelineDescription(int handle);
 
 	void CleanInitializePhysicalDeviceIndices(RenderPhysicalDeviceContainer* physicalDevice);
 	void CleanInitializeRHIDevice(RHIDevice* logicalDevice);

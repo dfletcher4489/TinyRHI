@@ -5,6 +5,7 @@
 #include "allocator/AppAllocator.h"
 #include "imageutils/TextureIO.h"
 #include "IndexTypes.h"
+#include "RenderInstanceHandleTypes.h"
 
 struct TextureDictionary
 {
@@ -16,7 +17,7 @@ struct TextureDictionary
 	std::array<TextureDetails, 50> textureAllocations{};
 	std::array<int, 50> textureHandles{};
 
-	std::array<int, 10> texturePoolHandle{};
+	std::array<ImageMemoryPoolIndex, 10> texturePoolHandle{};
 	std::array<ImageFormat, 10> texturePoolsFormat{};
 	std::array<DeviceSlabAllocator, 10> texturePoolAllocators{};
 

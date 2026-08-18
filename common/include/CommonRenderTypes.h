@@ -669,3 +669,4 @@ enum class SamplerMipmapMode
 	MIPMAP_MODE_NEAREST = 1,
 	MIPMAP_MODE_LINEAR = 2,
 };
+

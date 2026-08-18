@@ -2697,7 +2697,7 @@ int ReadAttributesAttachments(char* fileData, int size, int currentLocation, uns
 }
 
 
-ShaderResourceSetBuilder::ShaderResourceSetBuilder(int _descriptorManagerIndex, int _descriptorSetIndex, ShaderResourceSet* _setPtr)
+ShaderResourceSetBuilder::ShaderResourceSetBuilder(ShaderResourceManagerIndex _descriptorManagerIndex, int _descriptorSetIndex, ShaderResourceSet* _setPtr)
 	:
 	set(_setPtr), handle(_descriptorManagerIndex, _descriptorSetIndex)
 {

@@ -19,8 +19,8 @@ struct ShaderResourceManager
 {
 	PoolAllocator<EntryHandle> descriptorSetHandles{};
 	ShaderResourceSet** descriptorSets{};
-
 	EntryHandle deviceResourceHeap = EntryHandle();
+	RenderDeviceIndex deviceIndex;
 
 	ShaderResourceManager() = default;
 
@@ -37,14 +37,14 @@ struct ShaderResourceSetHandle
 {
 	ShaderResourceSetHandle() = default;
 
-	ShaderResourceSetHandle(int _descriptorManagerIndex, int _descriptorSetIndex)
+	ShaderResourceSetHandle(ShaderResourceManagerIndex _descriptorManagerIndex, int _descriptorSetIndex)
 		:
 		descriptorManagerIndex(_descriptorManagerIndex), descriptorSetIndex(_descriptorSetIndex)
 	{
 
 	}
 
-	int descriptorManagerIndex;
+	ShaderResourceManagerIndex descriptorManagerIndex;
 	int descriptorSetIndex;
 };
 
@@ -53,7 +53,7 @@ struct ShaderResourceSetBuilder
 	ShaderResourceSet* set;
 	ShaderResourceSetHandle handle{};
 
-	ShaderResourceSetBuilder(int _descriptorManagerIndex, int _descriptorSetIndex, ShaderResourceSet* _setPtr);
+	ShaderResourceSetBuilder(ShaderResourceManagerIndex _descriptorManagerIndex, int _descriptorSetIndex, ShaderResourceSet* _setPtr);
 
 	ShaderResourceSetHandle operator()();
 

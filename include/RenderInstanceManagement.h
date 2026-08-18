@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include "allocator/AppAllocator.h"
 #include "CommonRenderTypes.h"
+#include "RenderInstanceHandleTypes.h"
 #include "ShaderResourceSet.h"
 
 enum RenderingBackend
@@ -141,9 +142,11 @@ struct RenderAllocation
 	AllocationType allocType;
 	ComponentFormatType formatType;
 	int structureCopies;
-	int memIndex;
+	BufferMemoryIndex memIndex;
 	int resourceStatus;
 	int parentAllocation;
+	RenderDeviceIndex deviceIndex;
+	int pad;
 };
 
 enum AppPipelineHandleType
@@ -765,6 +768,7 @@ struct RenderSwapchainData
 	EntryHandle rendererFinishedSemaphores[MAX_SWC_IMAGE_COUNT];
 	int textureIds[MAX_SWC_IMAGE_COUNT];
 	uint32_t imageCount;
+	RenderDeviceIndex deviceIndex;
 };
 
 struct RenderWindowSpecificData
@@ -817,9 +821,10 @@ struct RenderBufferDescription
 {
 	EntryHandle bufferHandle;
 	MemoryType type;
+	RenderDeviceIndex deviceIndex;
 };
 
-#define MAX_VIEWS_ATTACHED_TO_TEXTURE 4
+#define MAX_VIEWS_ATTACHED_TO_TEXTURE 5
 #define ATTACHMENT_VIEW_INDEX 0
 
 struct RenderTextureDescription
@@ -834,6 +839,7 @@ struct RenderTextureDescription
 	uint32_t mipLayers;
 	uint32_t arrayLayers;
 	uint32_t viewCount;
+	RenderDeviceIndex deviceIndex;
 };
 
 #define IMAGE_VIEW_ALL_MIPS ~0U
@@ -893,7 +899,7 @@ struct BarrierAccumulator
 
 struct ImagePoolDescription
 {
-	int generationCounter;
+	RenderDeviceIndex deviceIndex;
 	MemoryType imagePoolType;
 	EntryHandle imagePoolHandle;
 	size_t imagePoolSize;

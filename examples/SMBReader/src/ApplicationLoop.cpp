@@ -282,7 +282,7 @@ struct GPUDebugRenderable
 
 struct ShadowMapBase
 {
-	int frameGraphIndex;
+	AttachmentGraphInstanceIndex frameGraphIndex;
 	int resourceIndex;
 	int atlasWidth;
 	int atlasHeight;
@@ -400,13 +400,13 @@ struct Font
 
 static Logger mainAppLogger{};
 
-static int mainGPU = -1;
-static int mainLogicalDevice = -1;
-static int mainPresentationSwapChain = -1;
-static int mainPresentationWindow = -1;
-static int mainHostBuffer = -1;
-static int mainDeviceBuffer = -1;
-static int mainDescriptorManagerIndex = -1;
+static RenderPhysicalDeviceIndex mainGPU{};
+static RenderDeviceIndex mainLogicalDevice{};
+static SwapChainIndex mainPresentationSwapChain{};
+static WindowIndex mainPresentationWindow{};
+static BufferMemoryIndex mainHostBuffer{};
+static BufferMemoryIndex mainDeviceBuffer{};
+static ShaderResourceManagerIndex mainDescriptorManagerIndex{};
 static int mainCommandStreamIndex = -1;
 
 static size_t mainHostSize = 128 * MiB;
@@ -497,7 +497,7 @@ static TextureDictionary mainDictionary;
 
 static OSThreadHandle threadHandle;
 
-static int currentFrameGraphIndex = 4;
+static AttachmentGraphInstanceIndex currentFrameGraphIndex{};
 static int mainComputeQueueIndex = 0;
 static int mainFullScreenPipeline = 0;
 
@@ -562,19 +562,17 @@ static int mainNearestSampler = -1;
 
 static uint32_t swcImageIndex = 0;
 
-static int mainRTVIndex;
-static int mainDSVIndex;
+static ImageMemoryPoolIndex mainRTVIndex;
+static ImageMemoryPoolIndex mainDSVIndex;
 
 size_t mainRTVSize = 800 * MiB, mainDSVSize = 1024 * MiB;
 
 static DeviceSlabAllocator mainRTVSlab(mainRTVSize, STRING_VIEW_FROM_LITERAL("Main RTV Slab Allocator"), &mainAppLogger);
 static DeviceSlabAllocator mainDSVSlab(mainDSVSize, STRING_VIEW_FROM_LITERAL("Main DSV Slab Allocator"), &mainAppLogger);
 
-static int graphNoMSAAIndex = -1;
-static int graphMSAAIndex = -1;
-static int MSAAPost = -1;
-static int BasicShadow = -1;
-static int MSAAShadowMapping = -1;
+static AttachmentGraphInstanceIndex MSAAPost{};
+static AttachmentGraphInstanceIndex BasicShadow{};
+static AttachmentGraphInstanceIndex MSAAShadowMapping{};
 static int frameGraphsCount = 0;
 
 static ShadowMapBase mainShadowMapManager{};
@@ -804,7 +802,7 @@ static ImageFormat ConvertSMBImageToAppImage(SMBImageFormat fmt);
 static void LoadObjectThreaded(void* data);;
 static void PrintDebugMemoryAllocation();
 static void CreateBitTangentFromNormalTristrips(Vector4f* pos, Vector2f* uvs, uint16_t* indices, int totalIndexCount, int totalVertCount, Vector4f* tangents, Vector3f* outNormals, RingAllocator* tempAllocator);
-static int GetPoolIndexByFormat(ImageFormat format, DeviceSlabAllocator** allocator);
+static ImageMemoryPoolIndex GetPoolIndexByFormat(ImageFormat format, DeviceSlabAllocator** allocator);
 static int FindSMBArenaForUse(int requestedSize);
 static int ReturnSMBArena(int arenaIndex);
 static void LoadObject(const StringView& file);
@@ -1075,7 +1073,7 @@ void ApplicationLoop::Execute()
 		int localUICount = 0;
 
 		GlobalRenderer::gRenderInstance.AddCommandQueue(mainCommandStreamIndex, mainComputeQueueIndex, COMPUTE_QUEUE_COMMANDS);
-		GlobalRenderer::gRenderInstance.AddCommandQueue(mainCommandStreamIndex, currentFrameGraphIndex, ATTACHMENT_COMMANDS);
+		GlobalRenderer::gRenderInstance.AddCommandQueue(mainCommandStreamIndex, currentFrameGraphIndex.index, ATTACHMENT_COMMANDS);
 
 		DeviceHandleArrayUpdate samplerUpdate;
 
@@ -1298,13 +1296,7 @@ void ApplicationLoop::Execute()
 
 				GlobalRenderer::gRenderInstance.SubmitFrame(mainLogicalDevice, mainPresentationSwapChain, swcImageIndex);
 
-				GlobalRenderer::gRenderInstance.EndFrame(mainCommandStreamIndex, mainLogicalDevice);
-
-				//static UITextVertex vertices[64];
-
-				//static Font fontData;
-
-				//GlobalRenderer::gRenderInstance.ReadData(mainLogicalDevice, globalUITextVertexData, vertices, sizeof(vertices), 0);
+				GlobalRenderer::gRenderInstance.EndFrame(mainLogicalDevice, mainCommandStreamIndex);
 
 				running = ProcessCommands();
 
@@ -1339,7 +1331,7 @@ void CreateTexturePools()
 
 	for (int i = 0; i < 4; i++)
 	{
-		int texturePoolHandle = 
+		ImageMemoryPoolIndex texturePoolHandle = 
 			rendInst->CreateImagePool(mainLogicalDevice,
 			requestedSize,
 			formats[i], MAX_IMAGE_DIM, MAX_IMAGE_DIM, 
@@ -1348,7 +1340,7 @@ void CreateTexturePools()
 				MemoryTypeBits::DEVICE_MEMORY_TYPE
 		);
 
-		if (texturePoolHandle < 0)
+		if (ImageMemoryPoolIndex() == texturePoolHandle)
 		{
 			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Failed to create a texture image pool"));
 		}
@@ -1429,9 +1421,9 @@ void UpdateCameraMatrix()
 	GlobalRenderer::gRenderInstance.UpdateDriverMemory(&c.View, globalBufferLocation, (sizeof(Matrix4f) * 3) + sizeof(Frustum), 0, TransferType::MEMORY);
 }
 
-int GetPoolIndexByFormat(ImageFormat format, DeviceSlabAllocator** allocator)
+ImageMemoryPoolIndex GetPoolIndexByFormat(ImageFormat format, DeviceSlabAllocator** allocator)
 {
-	int ret = -1;
+	ImageMemoryPoolIndex ret{};
 	switch (format)
 	{
 	case ImageFormat::DXT1:
@@ -2593,7 +2585,7 @@ void ProcessSMBFile(SMBFile *file, int arenaIndex)
 
 				DeviceSlabAllocator* perFormatAllocator = nullptr;
 
-				int poolIndex = GetPoolIndexByFormat(format, &perFormatAllocator);
+				ImageMemoryPoolIndex poolIndex = GetPoolIndexByFormat(format, &perFormatAllocator);
 
 				size_t actualMemorySize = 0, actualMemoryAlignment = 0, actualMemoryAddress = 0;
 
@@ -3588,12 +3580,12 @@ void RecreateFrameGraphAttachments(uint32_t width, uint32_t height)
 	mainRTVSlab.dataAllocator = 0;
 	mainDSVSlab.dataAllocator = 0;
 
-	if (BasicShadow >= 0)
+	if (AttachmentGraphInstanceIndex() != BasicShadow)
 	{
 		GlobalRenderer::gRenderInstance.CreateSwapChainAttachment(mainLogicalDevice, mainPresentationSwapChain, BasicShadow, 0, nullptr, &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
 	}
 	
-	if (MSAAShadowMapping >= 0)
+	if (AttachmentGraphInstanceIndex() != MSAAShadowMapping)
 	{
 		GlobalRenderer::gRenderInstance.CreatePerFrameAttachment(mainLogicalDevice, MSAAShadowMapping, 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT, 4096, 4096, nullptr, &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
 		GlobalRenderer::gRenderInstance.CreatePerFrameAttachment(mainLogicalDevice, MSAAShadowMapping, 1, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT, width, height, nullptr, &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
@@ -4711,25 +4703,25 @@ void ProcessKeys(GenericKeyAction keyActions[KC_COUNT])
 
 	if (keyActions[KC_Q].GetCurrentState() == PRESSED && !clamped)
 	{
-		int next = currentFrameGraphIndex + dir;
+		int next = currentFrameGraphIndex.index + dir;
 
 		if (next < 0)
 		{
 			dir = 1;
-			next = currentFrameGraphIndex + 1;
+			next = currentFrameGraphIndex.index + 1;
 		}
 		
 		if (next >= frameGraphsCount)
 		{
 			dir = -1;
-			next = (currentFrameGraphIndex - 1 < 0 ? 0 : currentFrameGraphIndex -1);
+			next = (currentFrameGraphIndex.index - 1 < 0 ? 0 : currentFrameGraphIndex.index -1);
 		}
 
 		currentFrameGraphIndex = next;
 
 		GlobalRenderer::gRenderInstance.ResetCommandList(mainCommandStreamIndex);
 		GlobalRenderer::gRenderInstance.AddCommandQueue(mainCommandStreamIndex, mainComputeQueueIndex, COMPUTE_QUEUE_COMMANDS);
-		GlobalRenderer::gRenderInstance.AddCommandQueue(mainCommandStreamIndex, currentFrameGraphIndex, ATTACHMENT_COMMANDS);
+		GlobalRenderer::gRenderInstance.AddCommandQueue(mainCommandStreamIndex, currentFrameGraphIndex.index, ATTACHMENT_COMMANDS);
 
 		clamped = true;
 	}
@@ -4823,7 +4815,7 @@ int ReadCubeImage(StringView* name, int textureCount, TextureIOType ioType)
 
 	DeviceSlabAllocator* perFormatAllocator = nullptr;
 
-	int poolIndex = GetPoolIndexByFormat(details.type, &perFormatAllocator);
+	ImageMemoryPoolIndex poolIndex = GetPoolIndexByFormat(details.type, &perFormatAllocator);
 
 	size_t actualMemorySize = 0, actualMemoryAlignment = 0, actualMemoryAddress = 0;
 
@@ -4929,7 +4921,7 @@ int Read2DImage(StringView* name, int mipCounts, TextureIOType ioType)
 
 	DeviceSlabAllocator* perFormatAllocator = nullptr;
 
-	int poolIndex = GetPoolIndexByFormat(details->type, &perFormatAllocator);
+	ImageMemoryPoolIndex poolIndex = GetPoolIndexByFormat(details->type, &perFormatAllocator);
 
 	size_t actualMemorySize = 0, actualMemoryAlignment = 0, actualMemoryAddress = 0;
 

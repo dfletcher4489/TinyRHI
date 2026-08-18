@@ -2,6 +2,7 @@
 
 #include "allocator/AppAllocator.h"
 #include "CommonRenderTypes.h"
+#include "RenderInstanceHandleTypes.h"
 
 #define SHADER_NAME_SIZE 64
 #define MAX_SHADER_MAPS 4
@@ -29,11 +30,13 @@ struct ShaderMap
 
 struct PipelineInstanceData
 {
-	int frameGraphIndices[MAX_FRAME_GRAPHS_RENDER_PASS_COMBOS];
+	AttachmentGraphInstanceIndex frameGraphIndices[MAX_FRAME_GRAPHS_RENDER_PASS_COMBOS];
 	int frameGraphRenderPasses[MAX_FRAME_GRAPHS_RENDER_PASS_COMBOS];
 	int frameGraphPipelineIndices[MAX_FRAME_GRAPHS_RENDER_PASS_COMBOS];
 	int frameGraphCount;
 	int pipelineCount;
+	RenderDeviceIndex deviceIndex;
+	int pad;
 };
 
 struct GraphPipelineDescription

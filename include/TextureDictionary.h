@@ -15,9 +15,9 @@ struct TextureDictionary
 	std::atomic<size_t> textureAllocator = 0;
 	
 	std::array<TextureDetails, 50> textureAllocations{};
-	std::array<int, 50> textureHandles{};
+	std::array<TextureIndex, 50> textureHandles{};
 
-	std::array<ImageMemoryPoolIndex, 10> texturePoolHandle{};
+	std::array<ImageMemoryIndex, 10> texturePoolHandle{};
 	std::array<ImageFormat, 10> texturePoolsFormat{};
 	std::array<DeviceSlabAllocator, 10> texturePoolAllocators{};
 

@@ -6,7 +6,6 @@
 #include "IndexTypes.h"
 #include "VKTypes.h"
 #include "math/VertexTypes.h"
-#include "ShaderManagement.h"
 #include "WindowManager.h"
 
 #include "VKRenderInstance.h"
@@ -126,12 +125,12 @@ struct RenderInstance
 
 	int RecreateSwapChain(RenderDeviceIndex deviceSelection, SwapChainIndex swapChainIndex, uint32_t width, uint32_t height);
 
-	int CreateAttachmentResources(RenderDeviceIndex deviceSelection, AttachmentGraphInstanceIndex graphIndex, int renderPassIndex, int imageCount, int* backBufferTextureIds, uint32_t width, uint32_t height,
-		RenderPassType rpType, AttachmentClear* clears, DeviceSlabAllocator* rsvAllocator, DeviceSlabAllocator* dsvAllocator, ImageMemoryPoolIndex rsvPoolIndex, ImageMemoryPoolIndex dsvPoolIndex);
+	int CreateAttachmentResources(RenderDeviceIndex deviceSelection, AttachmentGraphInstanceIndex& graphIndex, int renderPassIndex, int imageCount, TextureIndex* backBufferTextureIds, uint32_t width, uint32_t height,
+		RenderPassType rpType, AttachmentClear* clears, DeviceSlabAllocator* rsvAllocator, DeviceSlabAllocator* dsvAllocator, ImageMemoryIndex rsvPoolIndex, ImageMemoryIndex dsvPoolIndex);
 
-	int CreateSwapChainAttachment(RenderDeviceIndex deviceSelection, SwapChainIndex swapChainIndex, AttachmentGraphInstanceIndex graphIndex, int renderPassIndex, AttachmentClear* clears, DeviceSlabAllocator* rsvAllocator, DeviceSlabAllocator* dsvAllocator, ImageMemoryPoolIndex rsvPoolIndex, ImageMemoryPoolIndex dsvPoolIndex);
+	int CreateSwapChainAttachment(RenderDeviceIndex deviceSelection, SwapChainIndex swapChainIndex, AttachmentGraphInstanceIndex graphIndex, int renderPassIndex, AttachmentClear* clears, DeviceSlabAllocator* rsvAllocator, DeviceSlabAllocator* dsvAllocator, ImageMemoryIndex rsvPoolIndex, ImageMemoryIndex dsvPoolIndex);
 
-	int CreatePerFrameAttachment(RenderDeviceIndex deviceSelection, AttachmentGraphInstanceIndex graphIndex, int renderPassIndex, int imageCount, uint32_t width, uint32_t height, AttachmentClear* clears, DeviceSlabAllocator* rsvAllocator, DeviceSlabAllocator* dsvAllocator, ImageMemoryPoolIndex rsvPoolIndex, ImageMemoryPoolIndex dsvPoolIndex);
+	int CreatePerFrameAttachment(RenderDeviceIndex deviceSelection, AttachmentGraphInstanceIndex graphIndex, int renderPassIndex, int imageCount, uint32_t width, uint32_t height, AttachmentClear* clears, DeviceSlabAllocator* rsvAllocator, DeviceSlabAllocator* dsvAllocator, ImageMemoryIndex rsvPoolIndex, ImageMemoryIndex dsvPoolIndex);
 
 	AttachmentGraphInstanceIndex CreateAttachmentGraphInstance(RenderDeviceIndex deviceSelection, AttachmentGraph* graph);
 
@@ -161,15 +160,15 @@ struct RenderInstance
 
 	int GetAllocFromBuffer(RenderDeviceIndex deviceSelection, BufferMemoryIndex bufferHandle, size_t structureSize, size_t copiesOfStructure, size_t alignment, AllocationType allocType, ComponentFormatType formatType, BufferAlignmentType bufferAlignmentType, int parentIndex, DeviceSlabAllocator* allocator);
 
-	int CreateImageHandle(
+	TextureIndex CreateImageHandle(
 		RenderDeviceIndex deviceSelection,
 		size_t gpuMemAddress,
 		uint32_t width, uint32_t height,
-		uint32_t mipLevels, uint32_t arrayLayers, ImageFormat format, ImageType imageType, ImageUsageFlags usageFlags, ImageMemoryPoolIndex poolIndex);
+		uint32_t mipLevels, uint32_t arrayLayers, ImageFormat format, ImageType imageType, ImageUsageFlags usageFlags, ImageMemoryIndex poolIndex);
 
-	int CreateImageView(RenderDeviceIndex deviceSelection, int imageHandle, int firstMip, int mipCount, int firstLayer, int layerCount, ImageViewAspectMask imageAspect, ImageLayout desiredImageLayoutUsage);
+	int CreateImageView(RenderDeviceIndex deviceSelection, TextureIndex& imageHandle, int firstMip, int mipCount, int firstLayer, int layerCount, ImageViewAspectMask imageAspect, ImageLayout desiredImageLayoutUsage);
 
-	ImageMemoryPoolIndex CreateImagePool(RenderDeviceIndex deviceSelection, size_t size, ImageFormat format, int maxWidth, int maxHeight, ImageUsageFlags usageFlags, MemoryType memType);
+	ImageMemoryIndex CreateImagePool(RenderDeviceIndex deviceSelection, size_t size, ImageFormat format, int maxWidth, int maxHeight, ImageUsageFlags usageFlags, MemoryType memType);
 
 	RenderDeviceIndex CreateLogicalDevice(LogicalDeviceCreateInfo* createInfo);
 
@@ -183,9 +182,9 @@ struct RenderInstance
 
 	void DrawScene(RenderDeviceIndex deviceSelection, int commandStreamIndex, uint32_t imageIndex);
 
-	void IncreaseMSAA(AttachmentGraphInstanceIndex frameGraph, int renderPassIndex);
+	void IncreaseMSAA(AttachmentGraphInstanceIndex& frameGraph, int renderPassIndex);
 
-	void DecreaseMSAA(AttachmentGraphInstanceIndex frameGraph, int renderPassIndex);
+	void DecreaseMSAA(AttachmentGraphInstanceIndex& frameGraph, int renderPassIndex);
 
 	int CreateShaderResourceMap(RHIDevice* device, ShaderGraph *graph);
 
@@ -203,7 +202,7 @@ struct RenderInstance
 
 	void EndFrame(RenderDeviceIndex deviceSelection, int commandStreamIndex);
 
-	int AddPipelineToRPGraphicsQueue(int psoIndex, AttachmentGraphInstanceIndex frameGraphIndex, int renderPass);
+	int AddPipelineToRPGraphicsQueue(int psoIndex, AttachmentGraphInstanceIndex& frameGraphIndex, int renderPass);
 
 	int AddPipelineToComputeQueue(int queueIndex, int psoIndex);
 
@@ -213,7 +212,7 @@ struct RenderInstance
 
 	int UpdateDriverMemory(void* data, int allocationIndex, int size, int allocOffset, TransferType transferType);
 
-	int UpdateImageMemory(void* data, int textureIndex, size_t totalSize, int width, int height, int mipLevels, int mipStart, int layerCount, int layerStart, ImageViewAspectMask mask);
+	int UpdateImageMemory(void* data, TextureIndex& textureIndex, size_t totalSize, int width, int height, int mipLevels, int mipStart, int layerCount, int layerStart, ImageViewAspectMask mask);
 
 	int InsertTransferCommand(int allocationIndex, int size, int allocOffset, uint32_t fillValue);
 
@@ -223,7 +222,7 @@ struct RenderInstance
 
 	void SwapUpdateCommands();
 
-	int CreateSampler(
+	SamplerIndex CreateSampler(
 		RenderDeviceIndex deviceSelection, uint32_t baseLod, uint32_t maxLod, 
 		SamplerFilterMode minFilter, SamplerFilterMode magFilter, 
 		SamplerAddressMode addressMode, SamplerMipmapMode mipmapMode, 
@@ -244,13 +243,15 @@ struct RenderInstance
 
 	void ResetCommandList(int commandStreamIndex);
 
-	void CreateGraphicsQueueForAttachments(AttachmentGraphInstanceIndex frameGraphIndex, int renderPassIndex, uint32_t pipelineCount);
+	void CreateGraphicsQueueForAttachments(AttachmentGraphInstanceIndex& frameGraphIndex, int renderPassIndex, uint32_t pipelineCount);
 
 	int CreateComputeQueue();
 
-	void AddCommandQueue(int commandStreamIndex, int handleIndex, GPUCommandStreamType type);
+	void AddComputeCommandQueue(int commandStreamIndex, int handleIndex);
 
-	int UploadFrameAttachmentResource(AttachmentGraphInstanceIndex frameGraph, int resourceIndex, int perTextureViewIndex, ShaderResourceSetHandle handle, int bindingIndex, int textureStart);
+	void AddAttachmentCommandQueue(int commandStreamIndex, AttachmentGraphInstanceIndex& handleIndex);
+
+	int UploadFrameAttachmentResource(AttachmentGraphInstanceIndex& frameGraph, int resourceIndex, int perTextureViewIndex, ShaderResourceSetHandle handle, int bindingIndex, int textureStart);
 
 	void PipelineUpdateIndirectCommandBuffer(int pipelineIndex, int allocationIndex);
 	void PipelineUpdateVertexBuffer(int pipelineIndex, int allocationIndex, uint32_t vertexCount);
@@ -282,7 +283,7 @@ struct RenderInstance
 
 	void InitializeResourceStatus(ResourceStatus* status, int numberOfCurrentActions, int numberOfCurrentStages, int numberOfCurrentLayouts, BarrierAction action, PipelineStage stage, ImageLayout imageLayout);
 
-	void TransitionImageLayout(VKDevice* dev, int imageIndex, int perImageViewIndex, PipelineStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator, int pipelineIndex);
+	void TransitionImageLayout(VKDevice* dev, TextureIndex& imageIndex, int perImageViewIndex, PipelineStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator, int pipelineIndex);
 
 	void TransitionImageLayout(VKDevice* dev, EntryHandle imageIndex, int mipStart, int mipCount, int totalMipCount, int layerStart, int layerCount,
 		ImageViewAspectMask mask, ImageLayout requestedLayout, ResourceStatus* status,
@@ -292,18 +293,18 @@ struct RenderInstance
 
 	void InsertBufferBarrier(VKDevice* dev, int allocationIndex, PipelineStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator);
 
-	int CreateAttachmentImage(
+	TextureIndex CreateAttachmentImage(
 		uint32_t width, uint32_t height,
 		uint32_t arrayLayers, uint32_t mipCount,
 		ImageType imageType, int sampleCount,
 		ImageFormat format, ImageUsageFlags usageFlags,
 		DeviceSlabAllocator* attachmentAllocator, ImageLayout initialLayout,
-		RenderDeviceIndex devSelection, ImageMemoryPoolIndex imageMemoryPoolIndex, ResourceStatusType resourceType
+		RenderDeviceIndex devSelection, ImageMemoryIndex imageMemoryPoolIndex, ResourceStatusType resourceType
 	);
 
-	int CreateAttachmentImageView(int textureIndex, uint32_t firstMip, uint32_t mipCount, uint32_t firstArrayLayer, uint32_t arrayLayerCount, ImageViewAspectMask mask, ImageLayout desiredLayout, RHIDevice* dev);
+	int CreateAttachmentImageView(TextureIndex& textureIndex, uint32_t firstMip, uint32_t mipCount, uint32_t firstArrayLayer, uint32_t arrayLayerCount, ImageViewAspectMask mask, ImageLayout desiredLayout, RHIDevice* dev);
 
-	int CreateAttachmentImageView(RenderDeviceIndex deviceSelection, AttachmentGraphInstanceIndex attachmentGraphInstance, int attachmentResourceIndex, uint32_t firstMip, uint32_t mipCount, uint32_t firstArrayLayer, uint32_t arrayLayerCount, ImageViewAspectMask mask, ImageLayout desiredLayout);
+	int CreateAttachmentImageView(RenderDeviceIndex deviceSelection, AttachmentGraphInstanceIndex& attachmentGraphInstance, int attachmentResourceIndex, uint32_t firstMip, uint32_t mipCount, uint32_t firstArrayLayer, uint32_t arrayLayerCount, ImageViewAspectMask mask, ImageLayout desiredLayout);
 
 	int CreateGPUCommandStream(int maxGPUCommandCount);
 
@@ -341,25 +342,25 @@ struct RenderInstance
 	
 	void DestroyPhysicalDeviceIndices(RenderPhysicalDeviceIndex handle);
 	void DestroyLogicalDeviceIndices(RenderDeviceIndex handle);
-	void DestroyWindowsSurfaces(WindowIndex handle);
-	void DestroySwapChain(SwapChainIndex handle);
-	void DestroyBufferHandles(BufferMemoryIndex handle);
-	void DestroyImagePool(ImageMemoryPoolIndex handle);
+	void DestroyWindowsSurfaces(WindowIndex& handle);
+	void DestroySwapChain(SwapChainIndex& handle);
+	void DestroyBufferHandle(BufferMemoryIndex& handle);
+	void DestroyImagePool(ImageMemoryIndex& handle);
 	void DestroyPipelineHandle(int handle);
 	void DestroyAttachmentGraph(int handle);
-	void DestroyAttachmentGraphInstance(RenderDeviceIndex mainLogicalDevice, AttachmentGraphInstanceIndex handle);
+	void DestroyAttachmentGraphInstance(RenderDeviceIndex mainLogicalDevice, AttachmentGraphInstanceIndex& handle);
 	void DestroyRenderTargetQueue(int handle);
 	void DestroyComputeQueue(int handle);
-	void DestroyTextureResourceHandle(int handle);
+	void DestroyTextureResourceHandle(TextureIndex& handle);
 	void DestroyTextureViewsResourceHandle(RenderDeviceIndex mainLogicalDevice, int handle);
-	void DestroySamplerResourceHandle(RenderDeviceIndex mainLogicalDevice, int handle);
-	void DestroyResourceStatus(int handle);
+	void DestroySamplerResourceHandle(RenderDeviceIndex mainLogicalDevice, SamplerIndex handle);
+	void DestroyResourceStatus(ResourceIndex& handle);
 	void DestroyPipelineInfo(int handle);
 	void DestroyRenderPass(RenderDeviceIndex mainLogicalDevice, int handle);
 	void DestroyRenderTarget(RenderDeviceIndex mainLogicalDevice, int handle);
 	void DestroyShaderResourceTemplate(RenderDeviceIndex mainLogicalDevice, int handle);
 	void DestroyAllocation(int handle);
-	void DestroyDescriptorManager(ShaderResourceManagerIndex handle);
+	void DestroyDescriptorManager(ShaderResourceManagerIndex& handle);
 	void DestroyGpuCommandStream(int handle);
 	void DestroyShaderGraph(RenderDeviceIndex mainLogicalDevice, int handle);
 	void DestroyGraphPipelineDescription(int handle);
@@ -393,31 +394,31 @@ struct RenderInstance
 
 	RHIDevice* logicalDeviceIndices{};
 
-	PoolAllocator<RenderWindowSpecificData> windowsSurfaces{};
+	TypedPoolAllocator<RenderWindowSpecificData, WindowIndex> windowsSurfaces{};
 
-	PoolAllocator<RenderSwapchainData> swapChains{};
+	TypedPoolAllocator<RenderSwapchainData, SwapChainIndex> swapChains{};
 
-	PoolAllocator<RenderBufferDescription> bufferHandles{};
+	TypedPoolAllocator<RenderBufferDescription, BufferMemoryIndex> bufferHandles{};
 
-	PoolAllocator<ImagePoolDescription> imagePools{};
+	TypedPoolAllocator<ImagePoolDescription, ImageMemoryIndex> imagePools{};
 
 	PoolAllocator<PipelineHandle> pipelineHandles{};
 	
 	PoolAllocator<AttachmentGraph> attachmentGraphs{};
 
-	PoolAllocator<AttachmentGraphInstance> attachmentGraphsInstances{};
+	TypedPoolAllocator<AttachmentGraphInstance, AttachmentGraphInstanceIndex> attachmentGraphsInstances{};
 
 	PoolAllocator<RenderQueue> renderTargetQueues{};
 
 	PoolAllocator<ComputeQueue> computeQueues{};
 
-	PoolAllocator<RenderTextureDescription> textureResourceHandles{};
+	TypedPoolAllocator<RenderTextureDescription, TextureIndex> textureResourceHandles{};
 
 	PoolAllocator<RenderImageViewDescription> textureViewsResourceHandles{};
 
-	PoolAllocator<EntryHandle> samplerResourceHandles{};
+	TypedPoolAllocator<EntryHandle, SamplerIndex> samplerResourceHandles{};
 
-	PoolAllocator<ResourceStatus> resourceStatuses{};
+	TypedPoolAllocator<ResourceStatus, ResourceIndex> resourceStatuses{};
 
 	PoolAllocator<GenericPipelineStateInfo> pipelineInfos{};
 
@@ -429,7 +430,7 @@ struct RenderInstance
 
 	PoolAllocator<RenderAllocation> allocations{};
 
-	PoolAllocator<ShaderResourceManager> descriptorManagers{};
+	TypedPoolAllocator<ShaderResourceManager, ShaderResourceManagerIndex> descriptorManagers{};
 
 	PoolAllocator<GPUCommandStreamAllocator> gpuCommandStreams{};
 

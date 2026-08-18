@@ -549,7 +549,7 @@ static UniformGrid mainGrid = {
 };
 
 static int skyboxPipeline = 0;
-static int skyboxCubeImage = -1;
+static TextureIndex skyboxCubeImage = -1;
 
 static char DebugAllocQueueMemory[512];
 static char RenderableAllocQueueMemory[512];
@@ -557,13 +557,13 @@ static char RenderableAllocQueueMemory[512];
 static CircularMessageQueueMPSC DebugAllocQueue{ DebugAllocQueueMemory, sizeof(DebugAllocQueueMemory) };
 static CircularMessageQueueMPSC RenderableAllocQueue{ RenderableAllocQueueMemory, sizeof(RenderableAllocQueueMemory) };
 
-static int mainLinearSampler = -1;
-static int mainNearestSampler = -1;
+static SamplerIndex mainLinearSampler = -1;
+static SamplerIndex mainNearestSampler = -1;
 
 static uint32_t swcImageIndex = 0;
 
-static ImageMemoryPoolIndex mainRTVIndex;
-static ImageMemoryPoolIndex mainDSVIndex;
+static ImageMemoryIndex mainRTVIndex;
+static ImageMemoryIndex mainDSVIndex;
 
 size_t mainRTVSize = 800 * MiB, mainDSVSize = 1024 * MiB;
 
@@ -794,7 +794,7 @@ static void UpdateLight(GPULightSource& lightDesc, int lightIndex);
 static int CreateBlendRange(int gpuBlendRangeID, int* blendIDs, int blendCount);
 static int CreateBlendDetails(int gpuBlendDescID, BlendMaterialType type, float constantAlpha);
 static int CreateBlendDetails(int gpuBlendDescID, BlendMaterialType type, int mapID);
-static int ReadCubeImage(StringView* name, int textureCount, TextureIOType ioType);
+static TextureIndex ReadCubeImage(StringView* name, int textureCount, TextureIOType ioType);
 static int Read2DImage(StringView* name, int mipCounts, TextureIOType ioType);
 static void CreateUniformGrid();
 static SMBImageFormat ConvertAppImageFormatToSMBFormat(ImageFormat format);
@@ -802,7 +802,7 @@ static ImageFormat ConvertSMBImageToAppImage(SMBImageFormat fmt);
 static void LoadObjectThreaded(void* data);;
 static void PrintDebugMemoryAllocation();
 static void CreateBitTangentFromNormalTristrips(Vector4f* pos, Vector2f* uvs, uint16_t* indices, int totalIndexCount, int totalVertCount, Vector4f* tangents, Vector3f* outNormals, RingAllocator* tempAllocator);
-static ImageMemoryPoolIndex GetPoolIndexByFormat(ImageFormat format, DeviceSlabAllocator** allocator);
+static ImageMemoryIndex GetPoolIndexByFormat(ImageFormat format, DeviceSlabAllocator** allocator);
 static int FindSMBArenaForUse(int requestedSize);
 static int ReturnSMBArena(int arenaIndex);
 static void LoadObject(const StringView& file);
@@ -1072,8 +1072,8 @@ void ApplicationLoop::Execute()
 
 		int localUICount = 0;
 
-		GlobalRenderer::gRenderInstance.AddCommandQueue(mainCommandStreamIndex, mainComputeQueueIndex, COMPUTE_QUEUE_COMMANDS);
-		GlobalRenderer::gRenderInstance.AddCommandQueue(mainCommandStreamIndex, currentFrameGraphIndex.index, ATTACHMENT_COMMANDS);
+		GlobalRenderer::gRenderInstance.AddComputeCommandQueue(mainCommandStreamIndex, mainComputeQueueIndex);
+		GlobalRenderer::gRenderInstance.AddAttachmentCommandQueue(mainCommandStreamIndex, currentFrameGraphIndex);
 
 		DeviceHandleArrayUpdate samplerUpdate;
 
@@ -1331,7 +1331,7 @@ void CreateTexturePools()
 
 	for (int i = 0; i < 4; i++)
 	{
-		ImageMemoryPoolIndex texturePoolHandle = 
+		ImageMemoryIndex texturePoolHandle = 
 			rendInst->CreateImagePool(mainLogicalDevice,
 			requestedSize,
 			formats[i], MAX_IMAGE_DIM, MAX_IMAGE_DIM, 
@@ -1340,7 +1340,7 @@ void CreateTexturePools()
 				MemoryTypeBits::DEVICE_MEMORY_TYPE
 		);
 
-		if (ImageMemoryPoolIndex() == texturePoolHandle)
+		if (ImageMemoryIndex() == texturePoolHandle)
 		{
 			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Failed to create a texture image pool"));
 		}
@@ -1421,9 +1421,9 @@ void UpdateCameraMatrix()
 	GlobalRenderer::gRenderInstance.UpdateDriverMemory(&c.View, globalBufferLocation, (sizeof(Matrix4f) * 3) + sizeof(Frustum), 0, TransferType::MEMORY);
 }
 
-ImageMemoryPoolIndex GetPoolIndexByFormat(ImageFormat format, DeviceSlabAllocator** allocator)
+ImageMemoryIndex GetPoolIndexByFormat(ImageFormat format, DeviceSlabAllocator** allocator)
 {
-	ImageMemoryPoolIndex ret{};
+	ImageMemoryIndex ret{};
 	switch (format)
 	{
 	case ImageFormat::DXT1:
@@ -1971,7 +1971,7 @@ void CreateCrateObject()
 	int blendMapped = Read2DImage(&blendname, 1, BMP);
 	int skymapped = Read2DImage(&skyname, 1, BMP);
 
-	if (skymapped < 0 || albedoMapped < 0 || normalMapped < 0 || blendMapped < 0)
+	if (-1 == skymapped || -1 == albedoMapped || -1 == normalMapped  || -1 == blendMapped)
 	{
 		mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Cannot create crate object"));
 		mainAppLogger.ProcessMessage();
@@ -2585,7 +2585,7 @@ void ProcessSMBFile(SMBFile *file, int arenaIndex)
 
 				DeviceSlabAllocator* perFormatAllocator = nullptr;
 
-				ImageMemoryPoolIndex poolIndex = GetPoolIndexByFormat(format, &perFormatAllocator);
+				ImageMemoryIndex poolIndex = GetPoolIndexByFormat(format, &perFormatAllocator);
 
 				size_t actualMemorySize = 0, actualMemoryAlignment = 0, actualMemoryAddress = 0;
 
@@ -2595,7 +2595,7 @@ void ProcessSMBFile(SMBFile *file, int arenaIndex)
 
 				actualMemoryAddress = perFormatAllocator->Allocate(actualMemorySize, actualMemoryAlignment);
 
-				int smbImageIndex = mainDictionary.textureHandles[ii + globalTextureStartIndex] =
+				TextureIndex smbImageIndex = mainDictionary.textureHandles[ii + globalTextureStartIndex] =
 					GlobalRenderer::gRenderInstance.CreateImageHandle(mainLogicalDevice,
 						actualMemoryAddress,
 						texture.width,
@@ -4720,8 +4720,8 @@ void ProcessKeys(GenericKeyAction keyActions[KC_COUNT])
 		currentFrameGraphIndex = next;
 
 		GlobalRenderer::gRenderInstance.ResetCommandList(mainCommandStreamIndex);
-		GlobalRenderer::gRenderInstance.AddCommandQueue(mainCommandStreamIndex, mainComputeQueueIndex, COMPUTE_QUEUE_COMMANDS);
-		GlobalRenderer::gRenderInstance.AddCommandQueue(mainCommandStreamIndex, currentFrameGraphIndex.index, ATTACHMENT_COMMANDS);
+		GlobalRenderer::gRenderInstance.AddComputeCommandQueue(mainCommandStreamIndex, mainComputeQueueIndex);
+		GlobalRenderer::gRenderInstance.AddAttachmentCommandQueue(mainCommandStreamIndex, currentFrameGraphIndex);
 
 		clamped = true;
 	}
@@ -4737,7 +4737,7 @@ void UpdateLight(GPULightSource& lightDesc, int lightIndex)
 	GlobalRenderer::gRenderInstance.UpdateDriverMemory(&lightDesc, globalLightBuffer, sizeof(GPULightSource), sizeof(GPULightSource) * lightIndex, TransferType::CACHED);
 }
 
-int ReadCubeImage(StringView* name, int textureCount, TextureIOType ioType)
+TextureIndex ReadCubeImage(StringView* name, int textureCount, TextureIOType ioType)
 {
 	TextureDetails details;
 
@@ -4815,7 +4815,7 @@ int ReadCubeImage(StringView* name, int textureCount, TextureIOType ioType)
 
 	DeviceSlabAllocator* perFormatAllocator = nullptr;
 
-	ImageMemoryPoolIndex poolIndex = GetPoolIndexByFormat(details.type, &perFormatAllocator);
+	ImageMemoryIndex poolIndex = GetPoolIndexByFormat(details.type, &perFormatAllocator);
 
 	size_t actualMemorySize = 0, actualMemoryAlignment = 0, actualMemoryAddress = 0;
 
@@ -4825,7 +4825,7 @@ int ReadCubeImage(StringView* name, int textureCount, TextureIOType ioType)
 
 	actualMemoryAddress = perFormatAllocator->Allocate(actualMemorySize, actualMemoryAlignment);
 
-	int cubeImageIndex = 
+	TextureIndex cubeImageIndex = 
 		GlobalRenderer::gRenderInstance.CreateImageHandle(
 			mainLogicalDevice,
 			actualMemoryAddress,
@@ -4840,7 +4840,7 @@ int ReadCubeImage(StringView* name, int textureCount, TextureIOType ioType)
 		);
 
 
-	if (cubeImageIndex >= 0)
+	if (TextureIndex() != cubeImageIndex)
 	{
 		int viewIndex = GlobalRenderer::gRenderInstance.CreateImageView(mainLogicalDevice, cubeImageIndex, 0, IMAGE_VIEW_ALL_MIPS, 0, IMAGE_VIEW_ALL_LAYERS, COLOR_IMAGE_ASPECT, ImageLayout::SHADERREADABLE);
 
@@ -4873,7 +4873,7 @@ int Read2DImage(StringView* name, int mipCounts, TextureIOType ioType)
 
 	int totalBlobSize = 0;
 
-	int twoDimageIndex = -1;
+	TextureIndex twoDimageIndex{};
 
 	for (int i = 0; i < mipCounts; i++)
 	{
@@ -4921,7 +4921,7 @@ int Read2DImage(StringView* name, int mipCounts, TextureIOType ioType)
 
 	DeviceSlabAllocator* perFormatAllocator = nullptr;
 
-	ImageMemoryPoolIndex poolIndex = GetPoolIndexByFormat(details->type, &perFormatAllocator);
+	ImageMemoryIndex poolIndex = GetPoolIndexByFormat(details->type, &perFormatAllocator);
 
 	size_t actualMemorySize = 0, actualMemoryAlignment = 0, actualMemoryAddress = 0;
 
@@ -4943,7 +4943,7 @@ int Read2DImage(StringView* name, int mipCounts, TextureIOType ioType)
 			poolIndex
 		);
 
-	if (twoDimageIndex >= 0)
+	if (TextureIndex() != twoDimageIndex)
 	{
 		int viewIndex = GlobalRenderer::gRenderInstance.CreateImageView(mainLogicalDevice, twoDimageIndex, 0, IMAGE_VIEW_ALL_MIPS, 0, IMAGE_VIEW_ALL_LAYERS, COLOR_IMAGE_ASPECT, ImageLayout::SHADERREADABLE);
 

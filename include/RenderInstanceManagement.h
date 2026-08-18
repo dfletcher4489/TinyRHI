@@ -30,7 +30,7 @@ struct ShaderResourceUpdate
 {
 	void* data;
 	ShaderResourceType type;
-	int descriptorManagerIndex;
+	ShaderResourceManagerIndex descriptorManagerIndex;
 	int descriptorSet;
 	int bindingIndex;
 	int copyCount;
@@ -46,15 +46,15 @@ enum class DeviceHandleArrayUpdateType
 
 struct DeviceHandleArrayUpdateTextureView
 {
-	int imageHandle;
+	TextureIndex imageHandle;
 	int viewIndex;
 };
 
 struct DeviceHandleArrayUpdateTextureViewSampler
 {
-	int imageHandle;
+	TextureIndex imageHandle;
 	int viewIndex;
-	int samplerHandle;
+	SamplerIndex samplerHandle;
 };
 
 struct DeviceHandleArrayUpdate
@@ -113,7 +113,7 @@ struct TextureMemoryRegion
 	void* data;
 	size_t totalSize;
 	size_t currentPointerUpdate;
-	int textureIndex;
+	TextureIndex textureIndex;
 	int width;
 	int height;
 	int mipLevels;
@@ -143,7 +143,7 @@ struct RenderAllocation
 	ComponentFormatType formatType;
 	int structureCopies;
 	BufferMemoryIndex memIndex;
-	int resourceStatus;
+	ResourceIndex resourceStatus;
 	int parentAllocation;
 	RenderDeviceIndex deviceIndex;
 	int pad;
@@ -187,7 +187,10 @@ enum GPUCommandStreamType
 struct GPUCommand
 {
 	GPUCommandStreamType streamType;
-	int indexForStreamType;
+	union {
+		int indexForComputeQueue;
+		AttachmentGraphInstanceIndex attachmentGraphIndex;
+	} commandIndex;
 };
 
 enum class DriverUpdateType
@@ -239,7 +242,7 @@ struct RenderDriverUpdateCommandImage : public RenderDriverUpdateCommandHeader
 	int height; 
 	int mipLevels; 
 	int layersCount;
-	int textureIndex;
+	TextureIndex textureIndex;
 	int mipStart;
 	int layerStart;
 	ImageViewAspectMask mask;
@@ -521,7 +524,7 @@ struct ImageMemoryUpdateManager
 		regionLinks = (int*)(transferRegions + ddsRegionSize);
 	}
 
-	int Create(void* data, int textureIndex, size_t totalSize, int width, int height, int mipLevels, int layerCount, int mipStart, int layerStart, ImageViewAspectMask mask)
+	int Create(void* data, TextureIndex textureIndex, size_t totalSize, int width, int height, int mipLevels, int layerCount, int mipStart, int layerStart, ImageViewAspectMask mask)
 	{
 		int link = Find(textureIndex);
 		TextureMemoryRegion* region = nullptr;
@@ -560,7 +563,7 @@ struct ImageMemoryUpdateManager
 		linkCount++;
 	}
 
-	int Find(int textureIndex)
+	int Find(TextureIndex textureIndex)
 	{
 		return (-1);
 	}
@@ -766,7 +769,7 @@ struct RenderSwapchainData
 	uint32_t height;
 	EntryHandle rendererWaitSemaphores[MAX_INSTANCE_FRAME_IN_FLIGHT];
 	EntryHandle rendererFinishedSemaphores[MAX_SWC_IMAGE_COUNT];
-	int textureIds[MAX_SWC_IMAGE_COUNT];
+	TextureIndex textureIds[MAX_SWC_IMAGE_COUNT];
 	uint32_t imageCount;
 	RenderDeviceIndex deviceIndex;
 };
@@ -831,7 +834,7 @@ struct RenderTextureDescription
 {
 	EntryHandle textureIndex;
 	int viewIndex[MAX_VIEWS_ATTACHED_TO_TEXTURE];
-	int resourceStatusIndex;
+	ResourceIndex resourceStatusIndex;
 	ImageFormat format; 
 	ImageType imageType;
 	uint32_t imageHeight;
@@ -903,4 +906,36 @@ struct ImagePoolDescription
 	MemoryType imagePoolType;
 	EntryHandle imagePoolHandle;
 	size_t imagePoolSize;
+};
+
+#define MAX_RESOURCE_IMAGES 4
+
+struct AttachmentResourceInstance
+{
+	TextureIndex textureIds[MAX_SAMPLE_COUNT_LEVEL][MAX_RESOURCE_IMAGES];
+	ImageUsageFlags usage;
+	int sampLo;
+	int sampHi;
+	int imageCount;
+};
+
+struct AttachmentRenderPassInstance
+{
+	AttachmentInstance attachInst[MAX_RENDER_PASS_DESCRIPTIONS];
+	int attachInstCount;
+	int maxSampleCount;
+	int baseRenderTargetData;
+	int baseRenderPassData;
+	int currentSampleCount;
+	int graphicsOTQIndex;
+	RenderPassType rpType;
+};
+
+struct AttachmentGraphInstance
+{
+	AttachmentGraph* graphLayout;
+	AttachmentResourceInstance resources[MAX_GRAPH_RESOURCES];
+	AttachmentRenderPassInstance passes[MAX_GRAPH_RENDER_PASSES];
+	int consecutiveRenderPassBase;
+	int consecutiveRenderTargetsBase;
 };

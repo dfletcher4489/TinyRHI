@@ -167,120 +167,6 @@ enum ShaderStageTypeBits
 
 typedef int ShaderStageType;
 
-struct ShaderResourceSetTemplate
-{
-	int vulkanDescLayout;
-	int dx12DescriptorTable;
-	int resourceStart;
-	int totalResourceCount;
-	int constantsCount;
-	int bindingCount;
-	int totalSamplersCount;
-	int totalViewsCount;
-	int constantStageCount;
-};
-
-struct ShaderResourceTemplate
-{
-	ShaderStageType stages;
-	ShaderResourceAction action;
-	ShaderResourceType type;
-	int set;
-	int binding;
-	int arrayCount;
-	int size;
-	int offset;
-	int rangeIndex;
-};
-
-#define MAX_SHADER_RESOURCE_SET_CONSTANT_BUFFER_COUNT 8
-#define MAX_SHADER_RESOURCE_SET_RESOURCE_COUNT 32
-
-struct ShaderResourceHeader
-{
-	ShaderResourceType type;
-	ShaderResourceAction action;
-	ShaderStageType stage;
-	int binding;
-	int arrayCount;
-};
-
-struct ShaderResourceSampler
-{
-	int samplerCount;
-	int* samplerHandles;
-};
-
-struct ShaderResourceImageContainer
-{
-	int textureHandle;
-	int viewIndex;
-};
-
-struct ShaderResourceCombinedImageContainer
-{
-	int textureHandle;
-	int viewIndex;
-	int samplerHandle;
-};
-
-struct ShaderResourceImage
-{
-	int textureCount;
-	ShaderResourceImageContainer* textureDetails;
-};
-
-struct ShaderResourceCombinedImage
-{
-	int textureCount;
-	ShaderResourceCombinedImageContainer* textureDetails;
-};
-
-struct ShaderResourceBuffer
-{
-	int bufferCount;
-	int* allocationIndex;
-};
-
-struct ShaderResourceArray : public ShaderResourceHeader
-{
-	union
-	{
-		ShaderResourceSampler samplers;
-
-		ShaderResourceImage images;
-
-		ShaderResourceBuffer buffers;
-
-		ShaderResourceBuffer views;
-
-		ShaderResourceCombinedImage combinedImages;
-	} resourceArray;
-};
-
-struct ShaderResourceConstantBuffer : public ShaderResourceHeader
-{
-	ShaderStageType stage;
-	int size;
-	int offset;
-	int rangeindex;
-	void* data;
-};
-
-struct ShaderResourceSet
-{
-	int setCount;
-	ShaderResourceConstantBuffer constantBuffers[MAX_SHADER_RESOURCE_SET_CONSTANT_BUFFER_COUNT];
-	ShaderResourceArray resourceBindings[MAX_SHADER_RESOURCE_SET_RESOURCE_COUNT];
-	ShaderResourceSetTemplate* templateMetaData;
-};
-
-struct ShaderComputeLayout
-{
-	unsigned long x;
-	unsigned long y;
-	unsigned long z;
-};
 
 enum class VertexUsage : size_t
 {
@@ -456,6 +342,8 @@ enum class RenderPassType
 #define MAX_RENDER_PASS_DESCRIPTIONS 8
 #define MAX_GRAPH_RENDER_PASSES 4
 #define MAX_GRAPH_RESOURCES 12
+#define MAX_SAMPLE_COUNT_LEVEL 4
+#define MAX_SAMPLE_COUNT (1 << MAX_SAMPLE_COUNT_LEVEL)
 
 struct AttachmentRenderPass
 {
@@ -472,20 +360,6 @@ struct AttachmentGraph
 	int resourceCount;
 	AttachmentRenderPass holders[MAX_GRAPH_RENDER_PASSES];
 	AttachmentResource resources[MAX_GRAPH_RESOURCES];
-};
-
-#define MAX_SAMPLE_COUNT_LEVEL 4
-#define MAX_SAMPLE_COUNT (1 << MAX_SAMPLE_COUNT_LEVEL)
-#define MAX_RESOURCE_IMAGES 4
-
-
-struct AttachmentResourceInstance
-{
-	int textureIds[MAX_SAMPLE_COUNT_LEVEL][MAX_RESOURCE_IMAGES];
-	ImageUsageFlags usage;
-	int sampLo;
-	int sampHi;
-	int imageCount;
 };
 
 enum RPClearType
@@ -516,27 +390,6 @@ struct AttachmentInstance
 	AttachmentDescription* descLayout;
 	int attachmentResource;
 	AttachmentClear clear;
-};
-
-struct AttachmentRenderPassInstance
-{
-	AttachmentInstance attachInst[MAX_RENDER_PASS_DESCRIPTIONS];
-	int attachInstCount;
-	int maxSampleCount;
-	int baseRenderTargetData;
-	int baseRenderPassData;
-	int currentSampleCount;
-	int graphicsOTQIndex;
-	RenderPassType rpType;
-};
-
-struct AttachmentGraphInstance
-{
-	AttachmentGraph* graphLayout;
-	AttachmentResourceInstance resources[MAX_GRAPH_RESOURCES];
-	AttachmentRenderPassInstance passes[MAX_GRAPH_RENDER_PASSES];
-	int consecutiveRenderPassBase;
-	int consecutiveRenderTargetsBase;
 };
 
 enum VertexComponents

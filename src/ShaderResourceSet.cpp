@@ -2781,7 +2781,7 @@ void ShaderResourceSetBuilder::BindImageResourceToShaderResource(ShaderResourceS
 		images->textureCount = (firstTexture + textureCount);
 }
 
-void ShaderResourceSetBuilder::BindSamplerResourceToShaderResource(ShaderResourceSetContext* context, int* indices, int samplerCount, int firstSampler, int bindingIndex)
+void ShaderResourceSetBuilder::BindSamplerResourceToShaderResource(ShaderResourceSetContext* context, SamplerIndex* indices, int samplerCount, int firstSampler, int bindingIndex)
 {
 	ShaderResourceArray* header = &set->resourceBindings[bindingIndex];
 
@@ -2808,7 +2808,7 @@ void ShaderResourceSetBuilder::BindSamplerResourceToShaderResource(ShaderResourc
 		samplers->samplerCount = (firstSampler + samplerCount);
 }
 
-void ShaderResourceSetBuilder::BindSampledImageToShaderResource(ShaderResourceSetContext* context, int* index, int* views, int* samplers, int textureCount, int firstTexture, int bindingIndex)
+void ShaderResourceSetBuilder::BindSampledImageToShaderResource(ShaderResourceSetContext* context, TextureIndex* index, int* views, SamplerIndex* samplers, int textureCount, int firstTexture, int bindingIndex)
 {
 	ShaderResourceArray* header = &set->resourceBindings[bindingIndex];
 

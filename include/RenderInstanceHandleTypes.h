@@ -48,19 +48,24 @@ struct WindowIndex
 	}
 };
 
-struct ImageMemoryPoolIndex
+struct ImageMemoryIndex
 {
 	int index = -1;
 
-	ImageMemoryPoolIndex() = default;
+	ImageMemoryIndex() = default;
+	ImageMemoryIndex(int val)
+		: index(val)
+	{
 
-	ImageMemoryPoolIndex operator=(const int val)
+	}
+
+	ImageMemoryIndex operator=(const int val)
 	{
 		this->index = val;
 		return *this;
 	}
 
-	constexpr bool operator==(const ImageMemoryPoolIndex& val) const
+	constexpr bool operator==(const ImageMemoryIndex& val) const
 	{
 		return val.index == this->index;
 	}
@@ -71,6 +76,11 @@ struct AttachmentGraphInstanceIndex
 	int index = -1;
 
 	AttachmentGraphInstanceIndex() = default;
+	AttachmentGraphInstanceIndex(int val)
+		: index(val)
+	{
+
+	}
 
 	AttachmentGraphInstanceIndex operator=(const int val)
 	{
@@ -89,6 +99,11 @@ struct SwapChainIndex
 	int index = -1;
 
 	SwapChainIndex() = default;
+	SwapChainIndex(int val)
+		: index(val)
+	{
+
+	}
 
 	SwapChainIndex operator=(const int val)
 	{
@@ -107,6 +122,11 @@ struct BufferMemoryIndex
 	int index = -1;
 
 	BufferMemoryIndex() = default;
+	BufferMemoryIndex(int val)
+		: index(val)
+	{
+
+	}
 
 	BufferMemoryIndex operator=(const int val)
 	{
@@ -125,6 +145,11 @@ struct ShaderResourceManagerIndex
 	int index = -1;
 
 	ShaderResourceManagerIndex() = default;
+	ShaderResourceManagerIndex(int val)
+		: index(val)
+	{
+
+	}
 
 	ShaderResourceManagerIndex operator=(const int val)
 	{
@@ -133,6 +158,75 @@ struct ShaderResourceManagerIndex
 	}
 
 	constexpr bool operator==(const ShaderResourceManagerIndex& val) const
+	{
+		return val.index == this->index;
+	}
+};
+
+struct SamplerIndex
+{
+	int index = -1;
+
+	SamplerIndex() = default;
+	SamplerIndex(int val)
+		: index(val)
+	{
+
+	}
+
+	SamplerIndex operator=(const int val)
+	{
+		this->index = val;
+		return *this;
+	}
+
+	constexpr bool operator==(const SamplerIndex& val) const
+	{
+		return val.index == this->index;
+	}
+};
+
+struct TextureIndex
+{
+	int index = -1;
+
+	TextureIndex() = default;
+	TextureIndex(int val)
+		: index(val)
+	{
+
+	}
+
+	TextureIndex operator=(const int val)
+	{
+		this->index = val;
+		return *this;
+	}
+
+	constexpr bool operator==(const TextureIndex& val) const
+	{
+		return val.index == this->index;
+	}
+};
+
+struct ResourceIndex
+{
+	int index = -1;
+
+	ResourceIndex() = default;
+	ResourceIndex(int val)
+		: index(val)
+	{
+
+	}
+
+	ResourceIndex operator=(const int val)
+	{
+		this->index = val;
+		return *this;
+	}
+
+	constexpr bool operator==(const ResourceIndex& val) const
 	{
 		return val.index == this->index;
 	}

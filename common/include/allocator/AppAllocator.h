@@ -311,6 +311,114 @@ struct PoolAllocator
 	}
 };
 
+template<typename T, typename K>
+struct TypedPoolAllocator
+{
+	T* pool{};
+	int* freeList{};
+	int freeListTop = -1;
+	int count = 0;
+	int maxCount = 0;
+	StringView allocatorName{};
+	Logger* logger;
+
+	TypedPoolAllocator() = default;
+
+	void Create(Allocator* allocator, uint32_t maxElements, StringView _allocatorName, Logger* _logger)
+	{
+		pool = (T*)allocator->Allocate(sizeof(T) * maxElements, alignof(T));
+
+		for (int i = 0; i < maxElements; i++)
+		{
+			pool[i] = {};
+		}
+
+		freeList = (int*)allocator->Allocate(sizeof(int) * maxElements, alignof(int));
+		maxCount = maxElements;
+		count = 0;
+		freeListTop = -1;
+		allocatorName = _allocatorName;
+		logger = _logger;
+	}
+
+	K Allocate()
+	{
+		if (freeListTop >= 0)
+		{
+			return K(freeList[freeListTop--]);
+		}
+
+		if (count == maxCount)
+		{
+			logger->AddLogMessage(LOGERROR, allocatorName);
+			logger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Pool Allocator - Allocate(): Max Count reached and no free slots"));
+			return K{};
+		}
+
+		return K(count++);
+	}
+
+	K Allocate(int N)
+	{
+		int ret = count;
+
+		if ((ret + N) > maxCount)
+		{
+			logger->AddLogMessage(LOGERROR, allocatorName);
+			logger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Pool Allocator - Allocate(int n): No contiguous range of slots"));
+			return K{};
+		}
+
+		count += N;
+
+		return K(ret);
+	}
+
+	void Free(K& index)
+	{
+		if (index.index >= maxCount || index.index < 0 || freeListTop >= maxCount)
+		{
+			logger->AddLogMessage(LOGERROR, allocatorName);
+			logger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Pool Allocator - Free(): Invalid Index / Free List Full"));
+			return;
+		}
+
+		freeList[++freeListTop] = index.index;
+	}
+
+	T* Get(K& index)
+	{
+		if (index.index >= maxCount || index.index < 0)
+		{
+			logger->AddLogMessage(LOGERROR, allocatorName);
+			logger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Pool Allocator - Get(): Invalid Index"));
+			return nullptr;
+		}
+
+		return &pool[index.index];
+	}
+
+	T operator[](K& index)
+	{
+		if (index.index >= maxCount || index.index < 0)
+		{
+			logger->AddLogMessage(LOGERROR, allocatorName);
+			logger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Pool Allocator - operator[]: Invalid Index"));
+			return {};
+		}
+
+		return pool[index.index];
+	}
+
+	bool DoIHaveNFreeElements(int n)
+	{
+		int freeListCount = freeListTop + 1;
+		int remain = maxCount - count;
+		return (freeListCount + maxCount) >= n;
+	}
+};
+
+
 struct MessageQueue
 {
 	std::atomic<uint64_t> write;

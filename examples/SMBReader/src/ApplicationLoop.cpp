@@ -785,6 +785,7 @@ struct WindowSize
 	float aspect; 
 } windowSize{ .width = 800.0, .height = 600.0, .aspect = 800.0/600.0 };
 
+static int globalJointCreated = 0;
 
 static bool ExecuteCommands(const StringView& command, int argCount);
 static void SetPositionOfGeometry(int geomIndex, const Vector3f& pos);
@@ -1714,10 +1715,15 @@ void CreateJointVisualData()
 	rendInst.UpdateDriverMemory(Indices, jointMeshIndexAlloc, sizeof(Indices), 0, TransferType::CACHED);
 
 	mainAppLogger.AddLogMessage(LOGINFO, STRING_VIEW_FROM_LITERAL("Created Joint Object"));
+
+	globalJointCreated = 1;
 }
 
 void CreateJointVisualObject(int numberOfJoints, uint32_t startingLocation)
 {
+	if (!globalJointCreated)
+		return;
+
 	if (jointMeshPipelinesCount >= MAX_JOINT_VISUALIZERS)
 	{
 		mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Too many joint visualizer objects"));

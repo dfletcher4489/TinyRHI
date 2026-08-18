@@ -302,6 +302,13 @@ struct PoolAllocator
 
 		return pool[index];
 	}
+
+	bool DoIHaveNFreeElements(int n)
+	{
+		int freeListCount = freeListTop + 1;
+		int remain = maxCount - count;
+		return (freeListCount + maxCount) >= n;
+	}
 };
 
 struct MessageQueue

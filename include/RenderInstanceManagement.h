@@ -76,7 +76,7 @@ struct GraphicsIntermediaryPipelineInfo
 {
 	int vertexBufferHandle;
 	uint32_t vertexCount;
-	uint32_t pipelinename;
+	GeneratedPipelineInstanceIndex pipelinename;
 	uint32_t descCount;
 	ShaderResourceSetHandle* descriptorsetid;
 	int indexBufferHandle;
@@ -93,7 +93,7 @@ struct ComputeIntermediaryPipelineInfo
 	uint32_t x;
 	uint32_t y;
 	uint32_t z;
-	uint32_t pipelinename;
+	GeneratedPipelineInstanceIndex pipelinename;
 	uint32_t descCount;
 	int indirectDispatchAllocation;
 	ShaderResourceSetHandle* descriptorsetid;
@@ -159,7 +159,7 @@ struct PipelineHandle
 {
 	int group;
 	int numHandles;
-	int pipelineIdentifierGroup;
+	GeneratedPipelineInstanceIndex pipelineIdentifierGroup;
 	ShaderResourceSetHandle resourceSets[16];
 	int resourceSetCount;
 	int vertexBufferHandle;
@@ -188,7 +188,7 @@ struct GPUCommand
 {
 	GPUCommandStreamType streamType;
 	union {
-		int indexForComputeQueue;
+		PipelineQueueIndex indexForComputeQueue;
 		AttachmentGraphInstanceIndex attachmentGraphIndex;
 	} commandIndex;
 };
@@ -742,13 +742,13 @@ struct ResourceStatus
 
 struct ComputeQueue
 {
-	int pipelines[63];
+	PipelineHandleIndex pipelines[63];
 	uint32_t queueCount;
 };
 
 struct RenderQueue
 {
-	int pipelines[63];
+	PipelineHandleIndex pipelines[63];
 	uint32_t queueCount;
 };
 
@@ -833,7 +833,7 @@ struct RenderBufferDescription
 struct RenderTextureDescription
 {
 	EntryHandle textureIndex;
-	int viewIndex[MAX_VIEWS_ATTACHED_TO_TEXTURE];
+	TextureViewIndex viewIndex[MAX_VIEWS_ATTACHED_TO_TEXTURE];
 	ResourceIndex resourceStatusIndex;
 	ImageFormat format; 
 	ImageType imageType;
@@ -876,7 +876,7 @@ struct DriverSpecificBarrierAllocator
 
 struct IntraPassBarrier
 {
-	int pipelineInst;
+	PipelineHandleIndex pipelineInst;
 	BarrierType barrierType;
 	PipelineStage srcStage;
 	PipelineStage destStage;
@@ -924,10 +924,10 @@ struct AttachmentRenderPassInstance
 	AttachmentInstance attachInst[MAX_RENDER_PASS_DESCRIPTIONS];
 	int attachInstCount;
 	int maxSampleCount;
-	int baseRenderTargetData;
-	int baseRenderPassData;
+	DriverRenderTargetIndex baseRenderTarget[MAX_SAMPLE_COUNT_LEVEL];
+	OldStyleRenderPassIndex baseRenderPass[MAX_SAMPLE_COUNT_LEVEL];
 	int currentSampleCount;
-	int graphicsOTQIndex;
+	PipelineQueueIndex graphicsOTQIndex;
 	RenderPassType rpType;
 };
 
@@ -936,6 +936,23 @@ struct AttachmentGraphInstance
 	AttachmentGraph* graphLayout;
 	AttachmentResourceInstance resources[MAX_GRAPH_RESOURCES];
 	AttachmentRenderPassInstance passes[MAX_GRAPH_RENDER_PASSES];
-	int consecutiveRenderPassBase;
-	int consecutiveRenderTargetsBase;
+	RenderDeviceIndex deviceIndex;
+};
+
+struct RenderShaderResourceTemplateInfo
+{
+	EntryHandle resourceTemplateInstanceHandle;
+	RenderDeviceIndex deviceIndex;
+};
+
+struct RenderOldStyleVulkanRenderPassInfo
+{
+	EntryHandle renderPassHandle;
+	RenderDeviceIndex deviceIndex;
+};
+
+struct RenderTargetInfo
+{
+	EntryHandle driverRenderTargetInfo;
+	RenderDeviceIndex deviceIndex;
 };

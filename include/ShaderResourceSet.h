@@ -17,7 +17,7 @@
 
 struct ShaderResourceSetTemplate
 {
-	int vulkanDescLayout;
+	ShaderResourceTemplateInstanceIndex vulkanDescLayout;
 	int dx12DescriptorTable;
 	int resourceStart;
 	int totalResourceCount;
@@ -166,6 +166,7 @@ struct ShaderGraph
 	int shaderMapCount;
 	int resourceSetCount;
 	int resourceCount;
+	RenderDeviceIndex deviceIndex;
 
 	ShaderMap shaderMaps[MAX_SHADER_MAPS];
 	ShaderResourceTemplate shaderResources[MAX_SHADER_RESOURCES];
@@ -174,7 +175,7 @@ struct ShaderGraph
 
 struct ShaderGraphsHolder
 {
-	PoolAllocator<ShaderGraph> shaderGraphPtrs{};
+	TypedPoolAllocator<ShaderGraph, RenderShaderGraphIndex> shaderGraphPtrs{};
 	PoolAllocator<ShaderDetails> shaderDetails{};
 
 	ShaderGraphsHolder() = default;

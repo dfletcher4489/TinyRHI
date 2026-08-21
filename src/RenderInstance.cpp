@@ -1053,7 +1053,7 @@ void RenderInstance::DestroySwapChainAttachments()
 	}
 }
 
-int RenderInstance::RecreateSwapChain(SwapChainIndex swapChainIndex, uint32_t width, uint32_t height)
+int RenderInstance::RecreateSwapChain(SwapChainIndex& swapChainIndex, uint32_t width, uint32_t height)
 {
 	int ret = 0;
 
@@ -1373,13 +1373,13 @@ int RenderInstance::CreateRenderPass(AttachmentGraphInstance* graphInstance)
 	return totalRenderPassesCreated;
 }
 
-uint32_t RenderInstance::BeginFrame(RenderDeviceIndex deviceSelection, SwapChainIndex swapChainIndex)
+uint32_t RenderInstance::BeginFrame(SwapChainIndex swapChainIndex)
 {
-	RHIDevice* rhiDevice = GetDeviceHandle(deviceSelection);
+	RenderSwapchainData* swcData = swapChains.Get(swapChainIndex);
+
+	RHIDevice* rhiDevice = GetDeviceHandle(swcData->deviceIndex);
 
 	VKDevice* dev = rhiDevice->device;
-
-	RenderSwapchainData* swcData = swapChains.Get(swapChainIndex);
 
 	int32_t res = dev->CommandBufferWaitOn(UINT64_MAX, rhiDevice->container.currentCommandBufferIndex[currentFrame]);
 
@@ -1402,13 +1402,13 @@ uint32_t RenderInstance::BeginFrame(RenderDeviceIndex deviceSelection, SwapChain
 	return imageIndex;
 }
 
-int RenderInstance::SubmitFrame(RenderDeviceIndex deviceSelection, SwapChainIndex swapChainIndex, uint32_t imageIndex)
+int RenderInstance::SubmitFrame(SwapChainIndex swapChainIndex, uint32_t imageIndex)
 {
-	RHIDevice* rhiDevice = GetDeviceHandle(deviceSelection);
+	RenderSwapchainData* swcData = swapChains.Get(swapChainIndex);
+
+	RHIDevice* rhiDevice = GetDeviceHandle(swcData->deviceIndex);
 
 	VKDevice* dev = rhiDevice->device;
-
-	RenderSwapchainData* swcData = swapChains.Get(swapChainIndex);
 
 	VkPipelineStageFlags waitStages[2] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
 
@@ -1470,7 +1470,7 @@ void RenderInstance::WaitOnRender(RenderDeviceIndex deviceSelection)
 	dev->WaitOnDevice();
 }
 
-int RenderInstance::CreateSwapChainAttachment(AttachmentGraphInstanceIndex graphIndex, int renderPassIndex, SwapChainIndex swapChainIndex, AttachmentClear* clears, DeviceSlabAllocator* rtvAllocator, DeviceSlabAllocator* dsvAllocator, ImageMemoryIndex rtvPoolIndex, ImageMemoryIndex dsvPoolIndex)
+int RenderInstance::CreateSwapChainAttachment(AttachmentGraphInstanceIndex& graphIndex, int renderPassIndex, SwapChainIndex swapChainIndex, AttachmentClear* clears, DeviceSlabAllocator* rtvAllocator, DeviceSlabAllocator* dsvAllocator, ImageMemoryIndex rtvPoolIndex, ImageMemoryIndex dsvPoolIndex)
 {
 	RenderSwapchainData* swcData = swapChains.Get(swapChainIndex);
 
@@ -1482,7 +1482,7 @@ int RenderInstance::CreateSwapChainAttachment(AttachmentGraphInstanceIndex graph
 	return CreateAttachmentResources(graphIndex, renderPassIndex, swcData->imageCount, swcData->textureIds, swcData->width, swcData->height, RenderPassType::SWAPCHAIN_IMAGE_COUNT, clears, rtvAllocator, dsvAllocator, rtvPoolIndex, dsvPoolIndex);
 }
 
-int RenderInstance::CreatePerFrameAttachment(AttachmentGraphInstanceIndex graphIndex, int renderPassIndex, int imageCount, uint32_t width, uint32_t height, AttachmentClear* clears, DeviceSlabAllocator* rtvAllocator, DeviceSlabAllocator* dsvAllocator, ImageMemoryIndex rtvPoolIndex, ImageMemoryIndex dsvPoolIndex)
+int RenderInstance::CreatePerFrameAttachment(AttachmentGraphInstanceIndex& graphIndex, int renderPassIndex, int imageCount, uint32_t width, uint32_t height, AttachmentClear* clears, DeviceSlabAllocator* rtvAllocator, DeviceSlabAllocator* dsvAllocator, ImageMemoryIndex rtvPoolIndex, ImageMemoryIndex dsvPoolIndex)
 {
 	return CreateAttachmentResources(graphIndex, renderPassIndex, imageCount, nullptr, width, height, RenderPassType::PER_FRAME_IMAGE_COUNT, clears, rtvAllocator, dsvAllocator, rtvPoolIndex, dsvPoolIndex);
 }
@@ -1964,18 +1964,18 @@ int RenderInstance::CreateShaderResourceMap(RHIDevice* device, ShaderGraph* grap
 {
 	VKDevice* dev = device->device;
 
-	int ResourceSetCount = graph->resourceSetCount;
+	int resourceSetCount = graph->resourceSetCount;
 
-	int descriptorLayoutIndex = shaderResourceTemplates.DoIHaveNFreeElements(ResourceSetCount);
+	int descriptorLayoutIndex = shaderResourceTemplates.DoIHaveNFreeElements(resourceSetCount);
 
 	if (!descriptorLayoutIndex)
 	{
 		return -1;
 	}
 
-	DescriptorSetLayoutBuilder** descriptorBuilders = (DescriptorSetLayoutBuilder**)cacheAllocator->Allocate(sizeof(DescriptorSetLayoutBuilder*) * ResourceSetCount);
+	DescriptorSetLayoutBuilder** descriptorBuilders = (DescriptorSetLayoutBuilder**)cacheAllocator->Allocate(sizeof(DescriptorSetLayoutBuilder*) * resourceSetCount);
 
-	for (int j = 0; j < ResourceSetCount; j++)
+	for (int j = 0; j < resourceSetCount; j++)
 	{
 		ShaderResourceSetTemplate* set = &graph->shaderResourceSetTemplates[j];
 		descriptorBuilders[j] = dev->CreateDescriptorSetLayoutBuilder(set->bindingCount);
@@ -2068,7 +2068,7 @@ int RenderInstance::CreateShaderResourceMap(RHIDevice* device, ShaderGraph* grap
 
 	int success = 0;
 
-	for (int j = 0; j < ResourceSetCount; j++)
+	for (int j = 0; j < resourceSetCount; j++)
 	{
 		ShaderResourceSetTemplate* set = &graph->shaderResourceSetTemplates[j];
 
@@ -2358,7 +2358,7 @@ GeneratedPipelineInstanceIndex RenderInstance::CreateComputePipelineStateObject(
 
 			CleanInitializeGraphPipeline(desc);
 
-			EntryHandle pipelineID = CreateVulkanComputePipelineTemplate(graph->deviceIndex, graph);
+			EntryHandle pipelineID = CreateVulkanComputePipelineTemplate(graph);
 
 			if (EntryHandle() == pipelineID)
 			{
@@ -2549,9 +2549,9 @@ int RenderInstance::CreatePipelineFromGraphAndSpec(RenderDeviceIndex deviceSelec
 	return pipelinesCreated;
 }
 
-EntryHandle RenderInstance::CreateVulkanComputePipelineTemplate(RenderDeviceIndex deviceSelection, ShaderGraph* graph)
+EntryHandle RenderInstance::CreateVulkanComputePipelineTemplate(ShaderGraph* graph)
 {
-	RHIDevice* rhiDevice = GetDeviceHandle(deviceSelection);
+	RHIDevice* rhiDevice = GetDeviceHandle(graph->deviceIndex);
 
 	VKDevice* dev = rhiDevice->device;
 
@@ -2951,7 +2951,7 @@ void RenderInstance::UploadDescriptorsUpdates(RHIDevice* rhiDevice)
 	}
 }
 
-void RenderInstance::UploadImageMemoryTransfers(RHIDevice* rhiDevice, RecordingBufferObject* rbo, BarrierAccumulator* accum)
+void RenderInstance::UploadImageMemoryTransfers(RHIDevice* rhiDevice, CommandRecorder* recorder)
 {
 	int memCount = imageMemoryUpdateManager.linkCount;
 
@@ -2989,11 +2989,10 @@ void RenderInstance::UploadImageMemoryTransfers(RHIDevice* rhiDevice, RecordingB
 		TransitionImageLayout(dev, handle, region->mipStart, region->mipLevels,
 			desc->mipLayers, region->layerStart, region->layerCount,
 			region->transferMask, ImageLayout::TRANSFER_DEST_OPTIMAL,
-			resourceStatus, TRANSFER_BARRIER, TRANSFER_WRITE_DATA_RESOURCE, accum, fakeIndex);
-
+			resourceStatus, TRANSFER_BARRIER, TRANSFER_WRITE_DATA_RESOURCE, recorder->accumulator, fakeIndex);
 	}
 
-	InsertAccumulatedBarriers(rbo, accum);
+	InsertAccumulatedBarriers(recorder);
 
 	for (int i = 0; i < regionCount; i++)
 	{
@@ -3017,7 +3016,7 @@ void RenderInstance::UploadImageMemoryTransfers(RHIDevice* rhiDevice, RecordingB
 			API::ConvertImageFormatToVulkanFormat(desc->format),
 			API::ConvertImageViewAspectMaskToVulkanImageAspectFlags(region->transferMask),
 			currentImageOffsetInUploadArena,
-			rbo
+			recorder->rbo
 		);
 	}
 
@@ -3026,7 +3025,7 @@ void RenderInstance::UploadImageMemoryTransfers(RHIDevice* rhiDevice, RecordingB
 }
 
 
-void RenderInstance::UploadDeviceLocalTransfers(RHIDevice* rhiDevice, RecordingBufferObject* rbo, BarrierAccumulator* accum)
+void RenderInstance::UploadDeviceLocalTransfers(RHIDevice* rhiDevice, CommandRecorder* recorder)
 {
 	int memCount = driverDeviceMemoryUpdater.linkCount;
 
@@ -3080,15 +3079,15 @@ void RenderInstance::UploadDeviceLocalTransfers(RHIDevice* rhiDevice, RecordingB
 
 		EntryHandle index = bufferHandles[alloc->memIndex].bufferHandle;
 
-		InsertBufferBarrier(dev, handle, StageBits::TRANSFER_BARRIER, BarrierActionBits::TRANSFER_WRITE_DATA_RESOURCE, accum);
+		InsertBufferBarrier(dev, handle, StageBits::TRANSFER_BARRIER, BarrierActionBits::TRANSFER_WRITE_DATA_RESOURCE, recorder->accumulator);
 	
 		if (index != previousBuffer)
 		{
 			if (previousBuffer != EntryHandle())
 			{
-				InsertAccumulatedBarriers(rbo, accum);
+				InsertAccumulatedBarriers(recorder);
 				cumulativeSize = (uploadArenaOffset[batchCounter - 1] - uploadArenaOffset[0]) + batchSizes[batchCounter - 1];
-				dev->WriteToDeviceBufferBatch(previousBuffer, rhiDevice->container.stagingBuffers[currentFrame], batchData, batchSizes, batchOffsets, cumulativeSize, uploadArenaOffset, batchCounter, rbo);
+				dev->WriteToDeviceBufferBatch(previousBuffer, rhiDevice->container.stagingBuffers[currentFrame], batchData, batchSizes, batchOffsets, cumulativeSize, uploadArenaOffset, batchCounter, recorder->rbo);
 			}
 
 			previousBuffer = index;
@@ -3104,14 +3103,14 @@ void RenderInstance::UploadDeviceLocalTransfers(RHIDevice* rhiDevice, RecordingB
 		batchCounter++;
 	}
 
-	InsertAccumulatedBarriers(rbo, accum);
+	InsertAccumulatedBarriers(recorder);
 
 	cumulativeSize = (uploadArenaOffset[batchCounter - 1] - uploadArenaOffset[0]) + batchSizes[batchCounter - 1];
 
-	dev->WriteToDeviceBufferBatch(previousBuffer, rhiDevice->container.stagingBuffers[currentFrame], batchData, batchSizes, batchOffsets, cumulativeSize, uploadArenaOffset, batchCounter, rbo);
+	dev->WriteToDeviceBufferBatch(previousBuffer, rhiDevice->container.stagingBuffers[currentFrame], batchData, batchSizes, batchOffsets, cumulativeSize, uploadArenaOffset, batchCounter, recorder->rbo);
 }
 
-void RenderInstance::InvokeTransferCommands(RHIDevice* rhiDevice, RecordingBufferObject* rbo, BarrierAccumulator* accum)
+void RenderInstance::InvokeTransferCommands(RHIDevice* rhiDevice, CommandRecorder* recorder)
 {
 	int memCount = transferCommandPool.linkCount;
 
@@ -3158,7 +3157,7 @@ void RenderInstance::InvokeTransferCommands(RHIDevice* rhiDevice, RecordingBuffe
 
 		EntryHandle index = bufferHandles[alloc->memIndex].bufferHandle;
 
-		rbo->FillBuffer(index, intSize, intOffset, region.fillVal);
+		recorder->rbo->FillBuffer(index, intSize, intOffset, region.fillVal);
 
 		status->currAction[resourceIndex] = TRANSFER_WRITE_DATA_RESOURCE;
 		status->currStage[resourceIndex] = TRANSFER_BARRIER;
@@ -4818,6 +4817,8 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 	rhiDevice->container.stagingBufferAllocators[currentFrame].dataAllocator = 0;
 
 	EntryHandle cbindex = rhiDevice->container.currentCommandBufferIndex[currentFrame];
+
+	CommandRecorder recorder{};
 	
 	RecordingBufferObject rcb = dev->GetRecordingBufferObject(cbindex);
 	
@@ -4833,15 +4834,19 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 
 	BarrierAccumulator* accumulator = &barrierAccumulators[accumulatorIndex];
 
+	recorder.rbo = &rcb;
+	recorder.accumulator = accumulator;
+	recorder.barrierAccumulatorIndex = accumulatorIndex;
+
 	rcb.BeginRecordingCommand(nullptr, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
 	rcb.ResetQueries(rhiDevice->container.queryPoolIndex, rhiDevice->container.maxQueryResults * currentFrame, rhiDevice->container.maxQueryResults);
 
-	UploadDeviceLocalTransfers(rhiDevice, &rcb, accumulator);
+	UploadDeviceLocalTransfers(rhiDevice, &recorder);
 
-	InvokeTransferCommands(rhiDevice, &rcb, accumulator);
+	InvokeTransferCommands(rhiDevice, &recorder);
 
-	UploadImageMemoryTransfers(rhiDevice, &rcb, accumulator);
+	UploadImageMemoryTransfers(rhiDevice, &recorder);
 
 	int commandCountIter = 0;
 
@@ -4868,7 +4873,7 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 				GenerateComputeDispatchBindingsBarriers(deviceSelection, handle, pipelineIndex, accumulator);
 			}
 
-			InsertAccumulatedBarriers(&rcb, accumulator);
+			InsertAccumulatedBarriers(&recorder);
 
 			for (uint32_t pipeInst = 0; pipeInst < queue->queueCount; pipeInst++)
 			{
@@ -4905,7 +4910,7 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 					ii++;
 				}
 
-				InsertIntraPassBarrier(&rcb, accumulator, pipelineIndex);
+				InsertIntraPassBarrier(&recorder, pipelineIndex);
 
 				if (handle->indirectDispatchCommandHandle >= 0)
 				{
@@ -4925,7 +4930,6 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 				{
 					rcb.DispatchCommand(handle->x, handle->y, handle->z);
 				}
-
 			}
 
 			ResetIntraBarrierAccumulator(accumulator);
@@ -4993,7 +4997,7 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 						GenerateDrawBindingsBarriers(deviceSelection, handle, accumulator);
 					}
 
-					InsertAccumulatedBarriers(&rcb, accumulator);
+					InsertAccumulatedBarriers(&recorder);
 				}
 
 				rcb.BeginRenderPassCommand(rtInfo->driverRenderTargetInfo, SubRenderTargetSelection, VK_SUBPASS_CONTENTS_INLINE, { {0, 0}, {renderTarget->width, renderTarget->height} }, clears, clearCount);
@@ -5224,7 +5228,6 @@ void RenderInstance::DecreaseMSAA(AttachmentGraphInstanceIndex& frameGraph, int 
 		}
 	}
 }
-
 
 void RenderInstance::ResetCommandList(GPUCommandStreamIndex& commandStreamIndex)
 {
@@ -6269,10 +6272,11 @@ void RenderInstance::GeneratePipelineDescriptorBarriers(RenderDeviceIndex device
 	}
 }
 
-void RenderInstance::InsertAccumulatedBarriers(RecordingBufferObject* rcb, BarrierAccumulator* accumulator)
+void RenderInstance::InsertAccumulatedBarriers(CommandRecorder* recorder)
 {
 	RBOPipelineBarrierArgs args{};
-	bool insert = false;
+
+	BarrierAccumulator* accumulator = recorder->accumulator;
 
 	if (accumulator->accumulators[IMAGE_BARRIER_ACCUMULATOR].barrierCount)
 	{
@@ -6281,8 +6285,6 @@ void RenderInstance::InsertAccumulatedBarriers(RecordingBufferObject* rcb, Barri
 
 		args.imageMemoryBarrierCount = accumulator->accumulators[IMAGE_BARRIER_ACCUMULATOR].barrierCount;
 		args.pImageMemoryBarriers = (VkImageMemoryBarrier*)accumulator->accumulators[IMAGE_BARRIER_ACCUMULATOR].allocator->dataHead;
-
-		insert = true;
 	}
 
 	if (accumulator->accumulators[BUFFER_BARRIER_ACCUMULATOR].barrierCount)
@@ -6292,13 +6294,11 @@ void RenderInstance::InsertAccumulatedBarriers(RecordingBufferObject* rcb, Barri
 
 		args.bufferMemoryBarrierCount = accumulator->accumulators[BUFFER_BARRIER_ACCUMULATOR].barrierCount;
 		args.pBufferMemoryBarriers = (VkBufferMemoryBarrier*)accumulator->accumulators[BUFFER_BARRIER_ACCUMULATOR].allocator->dataHead;
-
-		insert = true;
 	}
 
-	if (insert)
+	if (args.imageMemoryBarrierCount || args.bufferMemoryBarrierCount)
 	{
-		rcb->BindPipelineBarrierCommand(&args);
+		recorder->rbo->BindPipelineBarrierCommand(&args);
 
 		accumulator->accumulators[BUFFER_BARRIER_ACCUMULATOR].barrierCount = accumulator->accumulators[BUFFER_BARRIER_ACCUMULATOR].dstStage = accumulator->accumulators[BUFFER_BARRIER_ACCUMULATOR].srcStage = 0;
 
@@ -6767,36 +6767,58 @@ void RenderInstance::InsertBufferBarrier(VKDevice* dev, int allocationIndex, Pip
 	}
 }
 
-void RenderInstance::InsertIntraPassBarrier(RecordingBufferObject* rbo, BarrierAccumulator* accum, PipelineHandleIndex& pipelineIndex)
+void RenderInstance::InsertIntraPassBarrier(CommandRecorder* recorder, PipelineHandleIndex& pipelineIndex)
 {
-	if (accum->intraPassTop == accum->intraPassCount)
+	if (recorder->accumulator->intraPassTop == recorder->accumulator->intraPassCount)
 		return;
 
-	IntraPassBarrier* ipb = &accum->intraPassBarriers[accum->intraPassTop];
+	IntraPassBarrier* ipb = &recorder->accumulator->intraPassBarriers[recorder->accumulator->intraPassTop];
 
-	while(accum->intraPassTop < accum->intraPassCount && ipb->pipelineInst == pipelineIndex)
+	VkImageMemoryBarrier imageMemoryBarriers[32];
+	VkBufferMemoryBarrier bufferMemoryBarriers[32];
+
+	uint32_t imageCount = 0;
+	uint32_t bufferCount = 0;
+
+	RBOPipelineBarrierArgs args{};
+
+	args.pBufferMemoryBarriers = bufferMemoryBarriers;
+	args.pImageMemoryBarriers = imageMemoryBarriers;
+
+	while(recorder->accumulator->intraPassTop < recorder->accumulator->intraPassCount && ipb->pipelineInst == pipelineIndex)
 	{
-		RBOPipelineBarrierArgs args{};
 		args.srcStageMask |= API::ConvertBarrierStageToVulkanPipelineStage(ipb->srcStage);
 		args.dstStageMask |= API::ConvertBarrierStageToVulkanPipelineStage(ipb->destStage);
 
 		if (ipb->barrierType == BarrierType::IMAGE_BARRIER)
 		{
-			args.imageMemoryBarrierCount = ipb->barrierCount;
-			args.pImageMemoryBarriers = (VkImageMemoryBarrier*)ipb->driverSpecificBarriers;
+			VkImageMemoryBarrier* barriers = (VkImageMemoryBarrier*)ipb->driverSpecificBarriers;
 
+			for (uint32_t i = 0; i < ipb->barrierCount; i++)
+			{
+				args.pImageMemoryBarriers[imageCount++] = barriers[i];
+			}
 		} 
 		else if (ipb->barrierType == BarrierType::BUFFER_BARRIER)
 		{
-			args.bufferMemoryBarrierCount = ipb->barrierCount;
-			args.pBufferMemoryBarriers = (VkBufferMemoryBarrier*)ipb->driverSpecificBarriers;
+			VkBufferMemoryBarrier* barriers = (VkBufferMemoryBarrier*)ipb->driverSpecificBarriers;
+
+			for (uint32_t i = 0; i < ipb->barrierCount; i++)
+			{
+				args.pBufferMemoryBarriers[bufferCount++] = barriers[i];
+			}
 		}
-	
-		rbo->BindPipelineBarrierCommand(&args);
 
-		accum->intraPassTop++;
+		recorder->accumulator->intraPassTop++;
 
-		ipb = &accum->intraPassBarriers[accum->intraPassTop];
+		ipb = &recorder->accumulator->intraPassBarriers[recorder->accumulator->intraPassTop];
+	}
+
+	if (imageCount || bufferCount)
+	{
+		args.imageMemoryBarrierCount = imageCount;
+		args.bufferMemoryBarrierCount = bufferCount;
+		recorder->rbo->BindPipelineBarrierCommand(&args);
 	}
 }
 

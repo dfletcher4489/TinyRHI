@@ -1265,7 +1265,7 @@ void ApplicationLoop::Execute()
 
 			checkCursor = true;
 
-			swcImageIndex = GlobalRenderer::gRenderInstance.BeginFrame(mainLogicalDevice, mainPresentationSwapChain);
+			swcImageIndex = GlobalRenderer::gRenderInstance.BeginFrame(mainPresentationSwapChain);
 
 			if (swcImageIndex != ~0UL)
 			{
@@ -1297,7 +1297,7 @@ void ApplicationLoop::Execute()
 
 				GlobalRenderer::gRenderInstance.DrawScene(mainLogicalDevice, mainCommandStreamIndex, swcImageIndex);
 
-				GlobalRenderer::gRenderInstance.SubmitFrame(mainLogicalDevice, mainPresentationSwapChain, swcImageIndex);
+				GlobalRenderer::gRenderInstance.SubmitFrame(mainPresentationSwapChain, swcImageIndex);
 
 				GlobalRenderer::gRenderInstance.EndFrame(mainLogicalDevice, mainCommandStreamIndex);
 

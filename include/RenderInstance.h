@@ -1,11 +1,9 @@
 #pragma once
 
-#include <vulkan/vulkan.h>
-
 #include "allocator/AppAllocator.h"
 #include "IndexTypes.h"
-#include "VKTypes.h"
 #include "math/VertexTypes.h"
+#include "VKTypes.h"
 #include "WindowManager.h"
 
 #include "VKRenderInstance.h"
@@ -113,6 +111,15 @@ struct LogicalDeviceCreateInfo
 	RenderPhysicalDeviceIndex physicalDeviceIndex;
 };
 
+struct CommandRecorder
+{
+	RecordingBufferObject* rbo;
+	BarrierAccumulator* accumulator;
+	uint32_t barrierAccumulatorIndex;
+	uint32_t errorCount;
+	uint64_t errorCodes[64];
+};
+
 struct RenderInstance
 {
 	RenderInstance() = default;
@@ -123,24 +130,24 @@ struct RenderInstance
 
 	void DestroySwapChainAttachments();
 
-	int RecreateSwapChain(SwapChainIndex swapChainIndex, uint32_t width, uint32_t height);
+	int RecreateSwapChain(SwapChainIndex& swapChainIndex, uint32_t width, uint32_t height);
 
 	int CreateAttachmentResources(AttachmentGraphInstanceIndex& graphIndex, int renderPassIndex, int imageCount, TextureIndex* backBufferTextureIds, uint32_t width, uint32_t height,
 		RenderPassType rpType, AttachmentClear* clears, DeviceSlabAllocator* rsvAllocator, DeviceSlabAllocator* dsvAllocator, ImageMemoryIndex rsvPoolIndex, ImageMemoryIndex dsvPoolIndex);
 
-	int CreateSwapChainAttachment(AttachmentGraphInstanceIndex graphIndex, int renderPassIndex, SwapChainIndex swapChainIndex, AttachmentClear* clears, DeviceSlabAllocator* rsvAllocator, DeviceSlabAllocator* dsvAllocator, ImageMemoryIndex rsvPoolIndex, ImageMemoryIndex dsvPoolIndex);
+	int CreateSwapChainAttachment(AttachmentGraphInstanceIndex& graphIndex, int renderPassIndex, SwapChainIndex swapChainIndex, AttachmentClear* clears, DeviceSlabAllocator* rsvAllocator, DeviceSlabAllocator* dsvAllocator, ImageMemoryIndex rsvPoolIndex, ImageMemoryIndex dsvPoolIndex);
 
-	int CreatePerFrameAttachment(AttachmentGraphInstanceIndex graphIndex, int renderPassIndex, int imageCount, uint32_t width, uint32_t height, AttachmentClear* clears, DeviceSlabAllocator* rsvAllocator, DeviceSlabAllocator* dsvAllocator, ImageMemoryIndex rsvPoolIndex, ImageMemoryIndex dsvPoolIndex);
+	int CreatePerFrameAttachment(AttachmentGraphInstanceIndex& graphIndex, int renderPassIndex, int imageCount, uint32_t width, uint32_t height, AttachmentClear* clears, DeviceSlabAllocator* rsvAllocator, DeviceSlabAllocator* dsvAllocator, ImageMemoryIndex rsvPoolIndex, ImageMemoryIndex dsvPoolIndex);
 
 	AttachmentGraphInstanceIndex CreateAttachmentGraphInstance(RenderDeviceIndex deviceSelection, AttachmentGraph* graph);
 
 	int CreateRenderPass(AttachmentGraphInstance* graph);
 
-	EntryHandle CreateVulkanComputePipelineTemplate(RenderDeviceIndex deviceSelection, ShaderGraph* graph);
+	EntryHandle CreateVulkanComputePipelineTemplate(ShaderGraph* graph);
 
-	uint32_t BeginFrame(RenderDeviceIndex deviceSelection, SwapChainIndex swapChainIndex);
+	uint32_t BeginFrame(SwapChainIndex swapChainIndex);
 
-	int SubmitFrame(RenderDeviceIndex deviceSelection, SwapChainIndex swapChainIndex, uint32_t imageIndex);
+	int SubmitFrame(SwapChainIndex swapChainIndex, uint32_t imageIndex);
 
 	void WaitOnRender(RenderDeviceIndex deviceSelection);
 
@@ -152,11 +159,11 @@ struct RenderInstance
 
 	void UploadDescriptorsUpdates(RHIDevice* rhiDevice);
 
-	void InvokeTransferCommands(RHIDevice* rhiDevice, RecordingBufferObject* rbo, BarrierAccumulator* accum);
+	void InvokeTransferCommands(RHIDevice* rhiDevice, CommandRecorder* recorder);
 
-	void UploadImageMemoryTransfers(RHIDevice* rhiDevice, RecordingBufferObject* rbo, BarrierAccumulator* accum);
+	void UploadImageMemoryTransfers(RHIDevice* rhiDevice, CommandRecorder* recorder);
 
-	void UploadDeviceLocalTransfers(RHIDevice* rhiDevice, RecordingBufferObject* rbo, BarrierAccumulator* accum);
+	void UploadDeviceLocalTransfers(RHIDevice* rhiDevice, CommandRecorder* recorder);
 
 	int GetAllocFromBuffer(BufferMemoryIndex bufferHandle, size_t structureSize, size_t copiesOfStructure, size_t alignment, AllocationType allocType, ComponentFormatType formatType, BufferAlignmentType bufferAlignmentType, int parentIndex, DeviceSlabAllocator* allocator);
 
@@ -310,7 +317,7 @@ struct RenderInstance
 
 	void CreateDriverSpecificBarrierArenas(BarrierAccumulator* barrierAccumulator, int maxTextures, int maxAllocations);
 
-	void InsertAccumulatedBarriers(RecordingBufferObject* rcb, BarrierAccumulator* accumulator);
+	void InsertAccumulatedBarriers(CommandRecorder* recorder);
 
 	uint32_t PopBarrierAccumulator();
 
@@ -318,7 +325,7 @@ struct RenderInstance
 
 	IntraPassBarrier* GetIntraPassBarrier(BarrierAccumulator* accum, BarrierType type, PipelineHandleIndex& pipelineIndex, void* driverBarrierData);
 
-	void InsertIntraPassBarrier(RecordingBufferObject* rbo, BarrierAccumulator* accum, PipelineHandleIndex& pipelineIndex);
+	void InsertIntraPassBarrier(CommandRecorder* recorder, PipelineHandleIndex& pipelineIndex);
 
 	void ResetIntraBarrierAccumulator(BarrierAccumulator* accumulator);
 

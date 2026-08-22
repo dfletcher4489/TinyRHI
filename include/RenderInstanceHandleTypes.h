@@ -21,6 +21,7 @@ struct RenderShaderGraph;
 struct ShaderResourceTemplateInstance;
 struct OldStyleRenderPass;
 struct DriverRenderTarget;
+struct AllocationInstance;
 
 template<typename N>
 struct RenderIndex
@@ -43,6 +44,11 @@ struct RenderIndex
 	constexpr bool operator==(const RenderIndex& val) const
 	{
 		return val.index == this->index;
+	}
+
+	constexpr bool operator<=(const RenderIndex& val) const
+	{
+		return val.index <= this->index;
 	}
 };
 
@@ -67,3 +73,4 @@ using RenderShaderGraphIndex = RenderIndex<RenderShaderGraph>;
 using ShaderResourceTemplateInstanceIndex = RenderIndex<ShaderResourceTemplateInstance>;
 using DriverRenderTargetIndex = RenderIndex<DriverRenderTarget>;
 using OldStyleRenderPassIndex = RenderIndex<OldStyleRenderPass>;
+using AllocationInstanceIndex = RenderIndex<AllocationInstance>;

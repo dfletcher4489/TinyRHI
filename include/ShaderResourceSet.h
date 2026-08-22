@@ -84,7 +84,7 @@ struct ShaderResourceCombinedImage
 struct ShaderResourceBuffer
 {
 	int bufferCount;
-	int* allocationIndex;
+	AllocationInstanceIndex* allocationIndex;
 };
 
 struct ShaderResourceArray : public ShaderResourceHeader
@@ -240,15 +240,15 @@ struct ShaderResourceSetBuilder
 
 	void SetVariableArrayCount(ShaderResourceSetContext* context, int bindingIndex, int varArrayCount);
 
-	void BindBufferToShaderResource(ShaderResourceSetContext* context, int* allocationIndex, int firstBuffer, int bufferCount, int bindingIndex);
+	void BindBufferToShaderResource(ShaderResourceSetContext* context, AllocationInstanceIndex* allocationIndex, int firstBuffer, int bufferCount, int bindingIndex);
 
-	void BindImageResourceToShaderResource(ShaderResourceSetContext* context, int* index, int* views, int textureCount, int firstTexture, int bindingIndex);
+	void BindImageResourceToShaderResource(ShaderResourceSetContext* context, TextureIndex* index, int* views, int textureCount, int firstTexture, int bindingIndex);
 
 	void BindSamplerResourceToShaderResource(ShaderResourceSetContext* context, SamplerIndex* indices, int samplerCount, int firstSampler, int bindingIndex);
 
 	void BindSampledImageToShaderResource(ShaderResourceSetContext* context, TextureIndex* index, int* views, SamplerIndex* samplers, int textureCount, int firstTexture, int bindingIndex);
 
-	void BindBufferView(ShaderResourceSetContext* context, int* allocationIndex, int firstView, int viewCount, int bindingIndex);
+	void BindBufferView(ShaderResourceSetContext* context, AllocationInstanceIndex* allocationIndex, int firstView, int viewCount, int bindingIndex);
 
 	ShaderResourceConstantBuffer* GetConstantBuffer(int constantBuffer);
 	

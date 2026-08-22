@@ -165,7 +165,7 @@ struct RenderInstance
 
 	void UploadDeviceLocalTransfers(RHIDevice* rhiDevice, CommandRecorder* recorder);
 
-	int GetAllocFromBuffer(BufferMemoryIndex bufferHandle, size_t structureSize, size_t copiesOfStructure, size_t alignment, AllocationType allocType, ComponentFormatType formatType, BufferAlignmentType bufferAlignmentType, int parentIndex, DeviceSlabAllocator* allocator);
+	AllocationInstanceIndex GetAllocFromBuffer(BufferMemoryIndex bufferHandle, size_t structureSize, size_t copiesOfStructure, size_t alignment, AllocationType allocType, ComponentFormatType formatType, BufferAlignmentType bufferAlignmentType, AllocationInstanceIndex parentIndex, DeviceSlabAllocator* allocator);
 
 	TextureIndex CreateImageHandle(
 		RenderDeviceIndex deviceSelection,
@@ -213,15 +213,15 @@ struct RenderInstance
 
 	int AddPipelineToComputeQueue(PipelineQueueIndex& queueIndex, PipelineHandleIndex& psoIndex);
 
-	int ReadData(RenderDeviceIndex deviceSelection, int handle, void* dest, int size, int offset);
+	int ReadData(AllocationInstanceIndex& handle, void* dest, int size, int offset);
 
 	int CreatePipelineFromGraphAndSpec(RenderDeviceIndex deviceSelection, GenericPipelineStateInfo* stateInfo, ShaderGraph* graph, EntryHandle* outHandles, uint32_t outHandlePointer, AttachmentGraphInstance* graphInstance, uint32_t graphRenderPassIndex);
 
-	int UpdateDriverMemory(void* data, int allocationIndex, int size, int allocOffset, TransferType transferType);
+	int UpdateDriverMemory(void* data, AllocationInstanceIndex& allocationIndex, int size, int allocOffset, TransferType transferType);
 
 	int UpdateImageMemory(void* data, TextureIndex& textureIndex, size_t totalSize, int width, int height, int mipLevels, int mipStart, int layerCount, int layerStart, ImageViewAspectMask mask);
 
-	int InsertTransferCommand(int allocationIndex, int size, int allocOffset, uint32_t fillValue);
+	int InsertTransferCommand(AllocationInstanceIndex& allocationIndex, int size, int allocOffset, uint32_t fillValue);
 
 	int UpdateShaderResourceArray(ShaderResourceSetHandle handle, int bindingindex, ShaderResourceType type, DeviceHandleArrayUpdate* resourceArrayData);
 
@@ -260,10 +260,10 @@ struct RenderInstance
 
 	int UploadFrameAttachmentResource(AttachmentGraphInstanceIndex& frameGraph, int resourceIndex, int perTextureViewIndex, ShaderResourceSetHandle handle, int bindingIndex, int textureStart);
 
-	void PipelineUpdateIndirectCommandBuffer(PipelineHandleIndex& pipelineIndex, int allocationIndex);
-	void PipelineUpdateVertexBuffer(PipelineHandleIndex& pipelineIndex, int allocationIndex, uint32_t vertexCount);
-	void PipelineUpdateIndexBuffer(PipelineHandleIndex& pipelineIndex, int allocationIndex, uint32_t indexCount, uint32_t indexStride);
-	void PipelineUpdateIndirectCountBuffer(PipelineHandleIndex& pipelineIndex, int allocationIndex);
+	void PipelineUpdateIndirectCommandBuffer(PipelineHandleIndex& pipelineIndex, AllocationInstanceIndex& allocationIndex);
+	void PipelineUpdateVertexBuffer(PipelineHandleIndex& pipelineIndex, AllocationInstanceIndex& allocationIndex, uint32_t vertexCount);
+	void PipelineUpdateIndexBuffer(PipelineHandleIndex& pipelineIndex, AllocationInstanceIndex& allocationIndex, uint32_t indexCount, uint32_t indexStride);
+	void PipelineUpdateIndirectCountBuffer(PipelineHandleIndex& pipelineIndex, AllocationInstanceIndex& allocationIndex);
 	void PipelineUpdateDispatchCommands(PipelineHandleIndex& pipelineIndex, uint32_t x, uint32_t y, uint32_t z);
 
 	BufferMemoryIndex CreateUniversalBuffer(RenderDeviceIndex deviceSelection, size_t size, MemoryType bufferMemoryType);
@@ -296,9 +296,9 @@ struct RenderInstance
 		ImageViewAspectMask mask, ImageLayout requestedLayout, ResourceStatus* status,
 		PipelineStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator, PipelineHandleIndex& pipelineIndex);
 
-	void InsertBufferBarrier(VKDevice* dev, int allocationIndex, PipelineStage destBarrierStage, ShaderResourceHeader* header, PipelineHandleIndex& pipelineIndex, BarrierAccumulator* accumulator);
+	void InsertBufferBarrier(VKDevice* dev, AllocationInstanceIndex& allocationIndex, PipelineStage destBarrierStage, ShaderResourceHeader* header, PipelineHandleIndex& pipelineIndex, BarrierAccumulator* accumulator);
 
-	void InsertBufferBarrier(VKDevice* dev, int allocationIndex, PipelineStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator);
+	void InsertBufferBarrier(VKDevice* dev, AllocationInstanceIndex& allocationIndex, PipelineStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator);
 
 	TextureIndex CreateAttachmentImage(
 		uint32_t width, uint32_t height,
@@ -366,7 +366,7 @@ struct RenderInstance
 	void DestroyRenderPass(OldStyleRenderPassIndex& handle);
 	void DestroyRenderTarget(DriverRenderTargetIndex& handle);
 	void DestroyShaderResourceTemplate(ShaderResourceTemplateInstanceIndex& handle);
-	void DestroyAllocation(int handle);
+	void DestroyAllocation(AllocationInstanceIndex& handle);
 	void DestroyDescriptorManager(ShaderResourceManagerIndex& handle);
 	void DestroyGpuCommandStream(GPUCommandStreamIndex& handle);
 	void DestroyShaderGraph(RenderShaderGraphIndex& handle);
@@ -435,7 +435,7 @@ struct RenderInstance
 
 	TypedPoolAllocator<RenderShaderResourceTemplateInfo, ShaderResourceTemplateInstanceIndex> shaderResourceTemplates{};
 
-	PoolAllocator<RenderAllocation> allocations{};
+	TypedPoolAllocator<RenderAllocation, AllocationInstanceIndex> allocations{};
 
 	TypedPoolAllocator<ShaderResourceManager, ShaderResourceManagerIndex> descriptorManagers{};
 

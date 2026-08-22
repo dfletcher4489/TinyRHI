@@ -221,24 +221,24 @@ struct GPUBlendDetails
 
 struct IndirectDrawData
 {
-	int commandBufferAlloc;
+	AllocationInstanceIndex commandBufferAlloc;
 	int commandBufferCount;
 	int commandBufferSize;
-	int commandBufferCountAlloc;
+	AllocationInstanceIndex commandBufferCountAlloc;
 	ShaderResourceSetHandle indirectDrawDescriptor;
 	PipelineHandleIndex indirectDrawPipeline;
 	ShaderResourceSetHandle indirectCullDescriptor;
 	PipelineHandleIndex indirectCullPipeline;
-	int indirectGlobalIDsAlloc;
+	AllocationInstanceIndex indirectGlobalIDsAlloc;
 };
 
 struct WorldSpaceGPUPartition
 {
 	int totalElementsCount; //total subdivisions
 	int totalSumsNeeded;
-	int deviceOffsetsAlloc;
-	int deviceSumsAlloc;
-	int deviceCountsAlloc;
+	AllocationInstanceIndex deviceOffsetsAlloc;
+	AllocationInstanceIndex deviceSumsAlloc;
+	AllocationInstanceIndex deviceCountsAlloc;
 	ShaderResourceSetHandle prefixSumDescriptors;
 	PipelineHandleIndex prefixSumPipeline;
 	ShaderResourceSetHandle sumAfterDescriptors;
@@ -251,7 +251,7 @@ struct WorldSpaceGPUPartition
 
 	ShaderResourceSetHandle postWorldSpaceDivisionDescriptor; //for assigning all the slots
 	PipelineHandleIndex postWorldSpaceDivisionPipeline;
-	int worldSpaceDivisionAlloc; //where all the assignments go 
+	AllocationInstanceIndex worldSpaceDivisionAlloc; //where all the assignments go 
 };
 
 enum class LightType : uint32_t
@@ -294,20 +294,20 @@ struct ShadowMapBase
 	int totalShadowMaps;
 	int zoneAlloc;
 
-	int shadowMapCountsAlloc;
+	AllocationInstanceIndex shadowMapCountsAlloc;
 	int shadowMapCountsAllocSize;
-	int shadowMapOffsetsAlloc;
+	AllocationInstanceIndex shadowMapOffsetsAlloc;
 	int shadowMapOffsetsAllocSize;
-	int shadowMapAssignmentsAlloc;
+	AllocationInstanceIndex shadowMapAssignmentsAlloc;
 	int shadowMapAssignmentsAllocSize;
-	int shadowMapAtlasViewsAlloc;
+	AllocationInstanceIndex shadowMapAtlasViewsAlloc;
 	int shadowMapAtlasViewsAllocSize;
-	int shadowMapViewProjAlloc;
+	AllocationInstanceIndex shadowMapViewProjAlloc;
 	int shadowMapViewProjAllocSize;
-	int shadowMapObjectIDsAlloc;
+	AllocationInstanceIndex shadowMapObjectIDsAlloc;
 	int shadowMapObjectIDsAllocSize;
-	int shadowMapObjectCountAlloc;
-	int shadowMapIndirectBufferAlloc;
+	AllocationInstanceIndex shadowMapObjectCountAlloc;
+	AllocationInstanceIndex shadowMapIndirectBufferAlloc;
 	int shadowMapIndirectBufferAllocSize;
 
 	ShaderResourceSetHandle shadowClippingDescriptor1;
@@ -386,7 +386,6 @@ struct GPUCursorInfo
 	uint32_t currentButtonClicked;
 };
 
-
 struct Font
 {
 	uint32_t pictureHeight, pictureWidth;
@@ -424,49 +423,49 @@ static IndirectDrawData debugIndirectDrawData;
 static WorldSpaceGPUPartition worldSpaceAssignment;
 static WorldSpaceGPUPartition lightAssignment;
 
-static int globalIndexBuffer = 0;
+static AllocationInstanceIndex globalIndexBuffer;
 static int globalIndexBufferSize = 1024 * KiB;
-static int globalVertexBuffer = 0;
+static AllocationInstanceIndex globalVertexBuffer;
 static int globalVertexBufferSize = 1024 * KiB;
 
 static int globalLightBufferSize = 16 * KiB;
 static int globalLightMax = globalLightBufferSize / sizeof(GPULightSource);
 static int globalLightTypesBufferSize = globalLightMax * sizeof(LightType);
 
-static int globalLightTypesBuffer = 0;
-static int globalLightBuffer = 0;
+static AllocationInstanceIndex globalLightTypesBuffer;
+static AllocationInstanceIndex globalLightBuffer;
 static int globalLightCount = 0;
 
-static int normalDebugAlloc;
+static AllocationInstanceIndex normalDebugAlloc;
 
-static int globalDebugStructAlloc = 0;
+static AllocationInstanceIndex globalDebugStructAlloc;
 static const int globalDebugStructAllocSize = 10 * KiB;
-static int globalDebugTypesAlloc = 0;
+static AllocationInstanceIndex globalDebugTypesAlloc;
 
-static int globalBufferLocation;
+static AllocationInstanceIndex globalBufferLocation;
 static ShaderResourceSetHandle globalBufferDescriptor;
 static ShaderResourceSetHandle globalTexturesDescriptor;
 
-static int globalMeshLocation;
+static AllocationInstanceIndex globalMeshLocation;
 static const int globalMeshSize = 24 * KiB;
 
-static int globalGeometryDescriptionsLocation;
+static AllocationInstanceIndex globalGeometryDescriptionsLocation;
 static const int globalGeometryDescriptionsSize = 1 * KiB;
 
-static int globalGeometryRenderableLocation;
+static AllocationInstanceIndex globalGeometryRenderableLocation;
 static const int globalGeometryRenderableSize = 1 * KiB;
 
-static int globalRenderableLocation;
+static AllocationInstanceIndex globalRenderableLocation;
 static const int globalRenderableSize = 24 * KiB;
 
-static int globalMaterialIndicesLocation;
+static AllocationInstanceIndex globalMaterialIndicesLocation;
 static const int globalMaterialIndicesSize = 4 * KiB;
 
-static int globalMaterialsLocation; 
+static AllocationInstanceIndex globalMaterialsLocation;
 static const int globalMaterialsSize = 4 * KiB;
 
-static int globalBlendDetailsLocation;
-static int globalBlendRangesLocation;
+static AllocationInstanceIndex globalBlendDetailsLocation;
+static AllocationInstanceIndex globalBlendRangesLocation;
 static const int globalBlendDetailsSize = 1 * KiB;
 static const int globalBlendRangesSize = 1 * KiB;
 
@@ -508,14 +507,14 @@ static PipelineHandleIndex jointMeshPipelines[MAX_JOINT_VISUALIZERS];
 static uint32_t jointMeshStaringLocations[MAX_JOINT_VISUALIZERS];
 static int jointMeshPipelinesCount = 0;
 
-static int jointMeshVertexAlloc = 0;
-static int jointMeshIndexAlloc = 0;
+static AllocationInstanceIndex jointMeshVertexAlloc;
+static AllocationInstanceIndex jointMeshIndexAlloc;
 
 static int jointMeshWorldMatrixMaxCount = 164;
 static int jointMeshWorldMatrixCount = 0;
 
-static int jointMeshWorldMatrix = -1;
-static int jointMeshParentIndices = -1;
+static AllocationInstanceIndex jointMeshWorldMatrix;
+static AllocationInstanceIndex jointMeshParentIndices;
 
 static GPULightSource mainPointLight = { 
 	.color = Vector4f(229, 211, 191, 130.0), 
@@ -684,39 +683,39 @@ static SlabAllocator geometryObjectSpecificAlloc(geometryObjectSpecificMemory, s
 
 static ShaderResourceSetHandle mainFullScreen;
 
-static int globalUIContainerData = -1;
-static int globalUIElementsOffsets = -1;
-static int globalUIElementsData = -1;
-static int globalUIElementsIndirectCountBuffer = -1;
-static int globalUIElementsIndirectBuffer = -1;
-static PipelineHandleIndex globalUICullPipelineIndex = -1;
-static PipelineHandleIndex globalUIDrawingPipelineIndex = -1;
-static int globalDepthCounts = -1;
-static int globalDepthOffsets = -1;
-static int globalChildrenPrefixSumCount = -1;
-static int globalChildrenOffsets = -1;
-static int globalUIIndirectionHandleBuffer = -1;
-static int globalUIIndirectionPositionalHandleBuffer = -1;
-static PipelineHandleIndex globalUICountPipeline = -1;
-static PipelineHandleIndex globalUIPrefixSumPipeline = -1;
-static PipelineHandleIndex globalUIChildDepthAddPipeline = -1;
-static PipelineHandleIndex globalUIIndexAssignmentPipeline = -1;
-static PipelineHandleIndex globalUIGlobalIDPipeline = -1;
-static PipelineHandleIndex globalUICursorPosition = -1;
-static int globalUIRetainedContainerData = -1;
-static int globalUICursorDetailData = -1;
-static int globalUITextDataPool = -1;
-static int globalUITextToUIIDs = -1;
-static int globalUITextVertexData = -1;
-static int globalUITextElementsCount = -1;
-static int globalUIFontData = -1;
-static int globalUITextIndirectCommands = -1;
-static PipelineHandleIndex globalUITextCountPipeline = -1;
-static PipelineHandleIndex globalUITextGenerationPipeline = -1;
-static PipelineHandleIndex globalUITextRenderingPipeline = -1;
+static AllocationInstanceIndex globalUIContainerData;
+static AllocationInstanceIndex globalUIElementsOffsets;
+static AllocationInstanceIndex globalUIElementsData;
+static AllocationInstanceIndex globalUIElementsIndirectCountBuffer;
+static AllocationInstanceIndex globalUIElementsIndirectBuffer;
+static PipelineHandleIndex globalUICullPipelineIndex;
+static PipelineHandleIndex globalUIDrawingPipelineIndex;
+static AllocationInstanceIndex globalDepthCounts;
+static AllocationInstanceIndex globalDepthOffsets;
+static AllocationInstanceIndex globalChildrenPrefixSumCount;
+static AllocationInstanceIndex globalChildrenOffsets;
+static AllocationInstanceIndex globalUIIndirectionHandleBuffer;
+static AllocationInstanceIndex globalUIIndirectionPositionalHandleBuffer;
+static PipelineHandleIndex globalUICountPipeline;
+static PipelineHandleIndex globalUIPrefixSumPipeline;
+static PipelineHandleIndex globalUIChildDepthAddPipeline;
+static PipelineHandleIndex globalUIIndexAssignmentPipeline;
+static PipelineHandleIndex globalUIGlobalIDPipeline;
+static PipelineHandleIndex globalUICursorPosition;
+static AllocationInstanceIndex globalUIRetainedContainerData;
+static AllocationInstanceIndex globalUICursorDetailData;
+static AllocationInstanceIndex globalUITextDataPool;
+static AllocationInstanceIndex globalUITextToUIIDs;
+static AllocationInstanceIndex globalUITextVertexData;
+static AllocationInstanceIndex globalUITextElementsCount;
+static AllocationInstanceIndex globalUIFontData;
+static AllocationInstanceIndex globalUITextIndirectCommands;
+static PipelineHandleIndex globalUITextCountPipeline;
+static PipelineHandleIndex globalUITextGenerationPipeline;
+static PipelineHandleIndex globalUITextRenderingPipeline;
 static int globalUITextDataPoolSize = 4 * KiB;
-static int globalUITextIndirectDispatchCommands = -1;
-static int globalUIFontWidthsBuffer = -1;
+static AllocationInstanceIndex globalUITextIndirectDispatchCommands;
+static AllocationInstanceIndex globalUIFontWidthsBuffer;
 static int globalUIFontWidthsBufferSize = 16 * KiB;
 
 static DeviceSlabAllocator globalUITextAllocator(4*KiB, STRING_VIEW_FROM_LITERAL("Global Device UI Text Data"), &mainAppLogger);
@@ -1692,8 +1691,8 @@ void CreateJointVisualData()
 
 	auto& rendInst = GlobalRenderer::gRenderInstance;
 
-	int vertexAlloc = jointMeshVertexAlloc = rendInst.GetAllocFromBuffer(mainDeviceBuffer, sizeof(Verts), 1, 64, AllocationType::STATIC, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, globalVertexBuffer, &vertexBufferAlloc);
-	int indexAlloc = jointMeshIndexAlloc = rendInst.GetAllocFromBuffer(mainDeviceBuffer, sizeof(Indices), 1, 64, AllocationType::STATIC, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, globalIndexBuffer, &indexBufferAlloc);
+	jointMeshVertexAlloc = rendInst.GetAllocFromBuffer(mainDeviceBuffer, sizeof(Verts), 1, 64, AllocationType::STATIC, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, globalVertexBuffer, &vertexBufferAlloc);
+	jointMeshIndexAlloc = rendInst.GetAllocFromBuffer(mainDeviceBuffer, sizeof(Indices), 1, 64, AllocationType::STATIC, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, globalIndexBuffer, &indexBufferAlloc);
 
 	/*
 	if (indexAlloc < 0 ||
@@ -3706,8 +3705,8 @@ int CreateSkyBox()
 	};
 
 
-	int vertexAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(BoxVerts), 1, 64, AllocationType::STATIC, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::NO_BUFFER_ALIGNMENT,  globalVertexBuffer, &vertexBufferAlloc);
-	int indexAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(BoxIndices), 1, 64, AllocationType::STATIC, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, globalIndexBuffer, &indexBufferAlloc);
+	AllocationInstanceIndex vertexAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(BoxVerts), 1, 64, AllocationType::STATIC, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::NO_BUFFER_ALIGNMENT,  globalVertexBuffer, &vertexBufferAlloc);
+	AllocationInstanceIndex indexAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(BoxIndices), 1, 64, AllocationType::STATIC, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, globalIndexBuffer, &indexBufferAlloc);
 
 
 	GlobalRenderer::gRenderInstance.UpdateDriverMemory(BoxVerts, vertexAlloc, sizeof(BoxVerts), 0, TransferType::CACHED);

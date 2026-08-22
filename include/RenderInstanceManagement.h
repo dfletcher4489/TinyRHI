@@ -7,12 +7,6 @@
 #include "RenderInstanceHandleTypes.h"
 #include "ShaderResourceSet.h"
 
-enum RenderingBackend
-{
-	VULKAN = 1,
-	DXD12 = 2,
-};
-
 enum class AllocationType
 {
 	STATIC = 0,
@@ -69,23 +63,23 @@ struct BufferArrayUpdate
 {
 	int resourceDstBegin;
 	int allocationCount;
-	int* allocationIndices;
+	AllocationInstanceIndex* allocationIndices;
 };
 
 struct GraphicsIntermediaryPipelineInfo
 {
-	int vertexBufferHandle;
+	AllocationInstanceIndex vertexBufferHandle;
 	uint32_t vertexCount;
 	GeneratedPipelineInstanceIndex pipelinename;
 	uint32_t descCount;
 	ShaderResourceSetHandle* descriptorsetid;
-	int indexBufferHandle;
+	AllocationInstanceIndex indexBufferHandle;
 	uint32_t indexCount;
 	uint32_t instanceCount;
 	uint32_t indexSize;
-	int indirectAllocation;
+	AllocationInstanceIndex indirectAllocation;
 	int indirectDrawCount;
-	int indirectCountAllocation;
+	AllocationInstanceIndex indirectCountAllocation;
 };
 
 struct ComputeIntermediaryPipelineInfo
@@ -95,7 +89,7 @@ struct ComputeIntermediaryPipelineInfo
 	uint32_t z;
 	GeneratedPipelineInstanceIndex pipelinename;
 	uint32_t descCount;
-	int indirectDispatchAllocation;
+	AllocationInstanceIndex indirectDispatchAllocation;
 	ShaderResourceSetHandle* descriptorsetid;
 };
 
@@ -104,7 +98,7 @@ struct BufferMemoryTransferRegion
 	void* data;
 	int size;
 	int copyCount;
-	int allocationIndex;
+	AllocationInstanceIndex allocationIndex;
 	int allocoffset;
 };
 
@@ -128,7 +122,7 @@ struct TransferCommand
 	int fillVal;
 	int size;
 	int offset;
-	int allocationIndex;
+	AllocationInstanceIndex allocationIndex;
 	int copycount;
 };
 
@@ -144,7 +138,7 @@ struct RenderAllocation
 	int structureCopies;
 	BufferMemoryIndex memIndex;
 	ResourceIndex resourceStatus;
-	int parentAllocation;
+	AllocationInstanceIndex parentAllocation;
 	RenderDeviceIndex deviceIndex;
 	int pad;
 };
@@ -162,20 +156,20 @@ struct PipelineHandle
 	GeneratedPipelineInstanceIndex pipelineIdentifierGroup;
 	ShaderResourceSetHandle resourceSets[16];
 	int resourceSetCount;
-	int vertexBufferHandle;
+	AllocationInstanceIndex vertexBufferHandle;
 	uint32_t vertexCount;
-	int indexBufferHandle;
+	AllocationInstanceIndex indexBufferHandle;
 	uint32_t indexCount;
 	uint32_t pushRangeCount;
 	uint32_t instanceCount;
 	uint32_t indexSize;
 	uint32_t indirectDrawCount;
-	int indirectBufferHandle;
-	int indirectCountBufferHandle;
+	AllocationInstanceIndex indirectBufferHandle;
+	AllocationInstanceIndex indirectCountBufferHandle;
 	uint32_t x;
 	uint32_t y;
 	uint32_t z;
-	int indirectDispatchCommandHandle;
+	AllocationInstanceIndex indirectDispatchCommandHandle;
 };
 
 enum GPUCommandStreamType
@@ -208,7 +202,7 @@ struct RenderDriverUpdateCommandHeader
 
 struct RenderDriverUpdateCommandMemory : public RenderDriverUpdateCommandHeader
 {
-	int allocationIndex;
+	AllocationInstanceIndex allocationIndex;
 	int size;
 	int allocOffset;
 	int copiesWithin;
@@ -223,7 +217,7 @@ struct RenderDriverUpdateCommandMemory : public RenderDriverUpdateCommandHeader
 
 struct RenderDriverUpdateCommandFill : public RenderDriverUpdateCommandHeader
 {
-	int allocationIndex;
+	AllocationInstanceIndex allocationIndex;
 	int size;
 	int allocOffset;
 	int copiesWithin;
@@ -306,7 +300,7 @@ struct MemoryDriverTransferPool
 		regionLinks = (int*)(transferRegions + ddsRegionSize);
 	}
 
-	int Create(void* data, int size, int allocationIndex, int allocOffset, int copies)
+	int Create(void* data, int size, AllocationInstanceIndex& allocationIndex, int allocOffset, int copies)
 	{
 		int link = Find(allocationIndex, allocOffset);
 		
@@ -353,7 +347,7 @@ struct MemoryDriverTransferPool
 		linkCount++;
 	}
 	
-	int Find(int allocationIndex, int offset)
+	int Find(AllocationInstanceIndex& allocationIndex, int offset)
 	{
 		int link = linkHead;
 		while (link >= 0 && (transferRegions[link].allocationIndex != allocationIndex || transferRegions[link].allocoffset != offset))
@@ -415,7 +409,7 @@ struct TransferCommandsPool
 		regionLinks = (int*)(transferRegions + ddsRegionSize);
 	}
 
-	int Create(int allocationIndex, int size, int allocOffset, uint32_t fillValue, int copies)
+	int Create(AllocationInstanceIndex& allocationIndex, int size, int allocOffset, uint32_t fillValue, int copies)
 	{
 		int link = Find(allocationIndex, allocOffset);
 		TransferCommand* region = nullptr;
@@ -462,7 +456,7 @@ struct TransferCommandsPool
 		linkCount++;
 	}
 
-	int Find(int allocationIndex, int offset)
+	int Find(AllocationInstanceIndex& allocationIndex, int offset)
 	{
 		int link = linkHead;
 		while ((link >= 0) && (transferRegions[link].allocationIndex != allocationIndex || transferRegions[link].offset != offset))

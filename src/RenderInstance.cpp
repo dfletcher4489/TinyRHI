@@ -1203,12 +1203,8 @@ AttachmentGraphInstanceIndex RenderInstance::CreateAttachmentGraphInstance(Rende
 
 		rpInst->maxSampleCount = renderPassSampleCount;
 	}
-
-	AttachmentGraphInstanceIndex ret;
-
-	ret = attachmentInstanceIndex;
-
-	return ret;
+ 
+	return attachmentInstanceIndex;
 }
 
 int RenderInstance::CreateRenderPass(AttachmentGraphInstance* graphInstance)
@@ -2632,13 +2628,11 @@ void RenderInstance::UploadHostTransfers(RHIDevice* rhiDevice)
 	{
 		link = driverHostMemoryUpdater.PopLink(&region, link, &linkprev);
 
-		int handle = region.allocationIndex;
-
 		size_t intSize = region.size;
 
 		size_t rsize = 0, align = 0, intOffset = 0;
 
-		RenderAllocation* alloc = allocations.Get(handle);
+		RenderAllocation* alloc = allocations.Get(region.allocationIndex);
 
 		rsize = alloc->requestedSize;
 		align = alloc->alignment;
@@ -3053,13 +3047,11 @@ void RenderInstance::UploadDeviceLocalTransfers(RHIDevice* rhiDevice, CommandRec
 	{
 		link = driverDeviceMemoryUpdater.PopLink(&region, link, &linkprev);
 
-		int handle = region.allocationIndex;
-
 		size_t intSize = region.size;
 
 		size_t rsize = 0, align = 0, intOffset = 0;
 
-		RenderAllocation* alloc = allocations.Get(handle);
+		RenderAllocation* alloc = allocations.Get(region.allocationIndex);
 
 		rsize = alloc->requestedSize;
 		align = alloc->alignment;
@@ -3079,7 +3071,7 @@ void RenderInstance::UploadDeviceLocalTransfers(RHIDevice* rhiDevice, CommandRec
 
 		EntryHandle index = bufferHandles[alloc->memIndex].bufferHandle;
 
-		InsertBufferBarrier(dev, handle, StageBits::TRANSFER_BARRIER, BarrierActionBits::TRANSFER_WRITE_DATA_RESOURCE, recorder->accumulator);
+		InsertBufferBarrier(dev, region.allocationIndex, StageBits::TRANSFER_BARRIER, BarrierActionBits::TRANSFER_WRITE_DATA_RESOURCE, recorder->accumulator);
 	
 		if (index != previousBuffer)
 		{
@@ -3126,18 +3118,14 @@ void RenderInstance::InvokeTransferCommands(RHIDevice* rhiDevice, CommandRecorde
 	{
 		link = transferCommandPool.PopLink(&region, link, &linkprev);
 
-		int handle = region.allocationIndex;
-
 		size_t intSize = region.size;
 
 		size_t rsize = 0, align = 0, intOffset = 0;
 
-		RenderAllocation* alloc = allocations.Get(handle);
+		RenderAllocation* alloc = allocations.Get(region.allocationIndex);
 
-		rsize = alloc->requestedSize;
+		rsize = alloc->requestedSize * alloc->structureCopies;
 		align = alloc->alignment;
-
-		rsize *= alloc->structureCopies;
 
 		rsize = (rsize + align - 1) & ~(align - 1);
 
@@ -3164,7 +3152,7 @@ void RenderInstance::InvokeTransferCommands(RHIDevice* rhiDevice, CommandRecorde
 	}
 }
 
-int RenderInstance::GetAllocFromBuffer(BufferMemoryIndex bufferHandle, size_t structureSize, size_t copiesOfStructure, size_t alignment, AllocationType allocType, ComponentFormatType formatType, BufferAlignmentType bufferAlignmentType, int parentIndex, DeviceSlabAllocator* allocator)
+AllocationInstanceIndex RenderInstance::GetAllocFromBuffer(BufferMemoryIndex bufferHandle, size_t structureSize, size_t copiesOfStructure, size_t alignment, AllocationType allocType, ComponentFormatType formatType, BufferAlignmentType bufferAlignmentType, AllocationInstanceIndex parentIndex, DeviceSlabAllocator* allocator)
 {
 	RenderBufferDescription* bufferDesc = bufferHandles.Get(bufferHandle);
 
@@ -3209,9 +3197,9 @@ int RenderInstance::GetAllocFromBuffer(BufferMemoryIndex bufferHandle, size_t st
 		return -1;
 	}
 
-	int allocIndex = allocations.Allocate();
+	AllocationInstanceIndex allocIndex = allocations.Allocate();
 
-	if (allocIndex < 0)
+	if (AllocationInstanceIndex() == allocIndex)
 	{
 		resourceStatuses.Free(resourceIndex);
 		return allocIndex;
@@ -3241,7 +3229,7 @@ int RenderInstance::GetAllocFromBuffer(BufferMemoryIndex bufferHandle, size_t st
 	
 	size_t parentOffset = 0;
 
-	if (parentIndex >= 0)
+	if (AllocationInstanceIndex() != parentIndex)
 	{
 		RenderAllocation* alloc = allocations.Get(parentIndex);
 		parentOffset = alloc->offset;
@@ -3603,7 +3591,7 @@ ShaderResourceSetBuilder RenderInstance::AllocateShaderResourceSet(ShaderResourc
 		case ShaderResourceType::STORAGE_BUFFER:
 		case ShaderResourceType::UNIFORM_BUFFER:
 		{
-			descArray->resourceArray.buffers.allocationIndex = (int*)AllocateFromStorageAllocator(sizeof(int) * actualRequestedArraySize, alignof(int));
+			descArray->resourceArray.buffers.allocationIndex = (AllocationInstanceIndex*)AllocateFromStorageAllocator(sizeof(AllocationInstanceIndex) * actualRequestedArraySize, alignof(AllocationInstanceIndex));
 
 			if (!descArray->resourceArray.buffers.allocationIndex)
 			{
@@ -3617,7 +3605,7 @@ ShaderResourceSetBuilder RenderInstance::AllocateShaderResourceSet(ShaderResourc
 		case ShaderResourceType::BUFFER_VIEW:
 		{
 			descArray->resourceArray.views.bufferCount = 0;
-			descArray->resourceArray.views.allocationIndex = (int*)AllocateFromStorageAllocator(sizeof(int) * actualRequestedArraySize, alignof(int));
+			descArray->resourceArray.views.allocationIndex = (AllocationInstanceIndex*)AllocateFromStorageAllocator(sizeof(AllocationInstanceIndex) * actualRequestedArraySize, alignof(AllocationInstanceIndex));
 
 			if (!descArray->resourceArray.views.allocationIndex)
 			{
@@ -4912,7 +4900,7 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 
 				InsertIntraPassBarrier(&recorder, pipelineIndex);
 
-				if (handle->indirectDispatchCommandHandle >= 0)
+				if (AllocationInstanceIndex() != handle->indirectDispatchCommandHandle)
 				{
 					RenderAllocation* indirectBufferAlloc = allocations.Get(handle->indirectDispatchCommandHandle);
 
@@ -5519,22 +5507,22 @@ int RenderInstance::AddPipelineToComputeQueue(PipelineQueueIndex& queueIndex, Pi
 	return -1;
 }
 
-int RenderInstance::ReadData(RenderDeviceIndex deviceSelection, int handle, void* dest, int size, int offset)
+int RenderInstance::ReadData(AllocationInstanceIndex& handle, void* dest, int size, int offset)
 {
-	RHIDevice* rhiDevice = GetDeviceHandle(deviceSelection);
-
-	VKDevice* dev = rhiDevice->device;
-
-	size_t allocOffset = 0;
-
-	MemoryType type = HOST_MEMORY_TYPE;
-
 	RenderAllocation* allocation = allocations.Get(handle);
 
 	if (!allocation)
 	{
 		return -1;
 	}
+
+	RHIDevice* rhiDevice = GetDeviceHandle(allocation->deviceIndex);
+
+	VKDevice* dev = rhiDevice->device;
+
+	size_t allocOffset = 0;
+
+	MemoryType type = HOST_MEMORY_TYPE;
 
 	type = bufferHandles[allocation->memIndex].type;
 
@@ -5558,7 +5546,7 @@ int RenderInstance::ReadData(RenderDeviceIndex deviceSelection, int handle, void
 	return readRet;
 }
 
-int RenderInstance::UpdateDriverMemory(void* data, int allocationIndex, int size, int allocOffset, TransferType transferType)
+int RenderInstance::UpdateDriverMemory(void* data, AllocationInstanceIndex& allocationIndex, int size, int allocOffset, TransferType transferType)
 {
 	RenderAllocation* alloc = allocations.Get(allocationIndex);
 
@@ -5636,7 +5624,7 @@ int RenderInstance::UpdateImageMemory(void* data, TextureIndex& textureIndex, si
 	return 0;
 }
 
-int RenderInstance::InsertTransferCommand(int allocationIndex, int size, int allocOffset, uint32_t fillValue)
+int RenderInstance::InsertTransferCommand(AllocationInstanceIndex& allocationIndex, int size, int allocOffset, uint32_t fillValue)
 {
 	RenderAllocation* alloc = allocations.Get(allocationIndex);
 
@@ -5781,7 +5769,7 @@ int RenderInstance::UpdateBufferResourceArray(ShaderResourceSetHandle handle, in
 
 		cachedUpdate->resourceDstBegin = resourceArrayData->resourceDstBegin;
 		cachedUpdate->allocationCount = resCount;
-		cachedUpdate->allocationIndices = (int*)(updateCommandsCache->Allocate(sizeof(int) * resCount));
+		cachedUpdate->allocationIndices = (AllocationInstanceIndex*)(updateCommandsCache->Allocate(sizeof(AllocationInstanceIndex) * resCount));
 
 		memcpy(cachedUpdate->allocationIndices, resourceArrayData->allocationIndices, sizeof(int) * resCount);
 
@@ -5859,9 +5847,7 @@ void RenderInstance::SwapUpdateCommands()
 		{
 			RenderDriverUpdateCommandMemory* rducm = (RenderDriverUpdateCommandMemory*)header;
 
-			int truthIndex = rducm->allocationIndex;
-
-			RenderAllocation* alloc = allocations.Get(truthIndex);
+			RenderAllocation* alloc = allocations.Get(rducm->allocationIndex);
 
 			MemoryType bufType = bufferHandles[alloc->memIndex].type;
 
@@ -5923,7 +5909,7 @@ int RenderInstance::UploadFrameAttachmentResource(AttachmentGraphInstanceIndex& 
 	return -1;
 }
 
-void RenderInstance::PipelineUpdateIndirectCommandBuffer(PipelineHandleIndex& pipelineIndex, int allocationIndex)
+void RenderInstance::PipelineUpdateIndirectCommandBuffer(PipelineHandleIndex& pipelineIndex, AllocationInstanceIndex& allocationIndex)
 {
 	PipelineHandle* handle = pipelineHandles.Get(pipelineIndex);
 
@@ -5936,7 +5922,7 @@ void RenderInstance::PipelineUpdateIndirectCommandBuffer(PipelineHandleIndex& pi
 	}
 }
 
-void RenderInstance::PipelineUpdateVertexBuffer(PipelineHandleIndex& pipelineIndex, int allocationIndex, uint32_t vertexCount)
+void RenderInstance::PipelineUpdateVertexBuffer(PipelineHandleIndex& pipelineIndex, AllocationInstanceIndex& allocationIndex, uint32_t vertexCount)
 {
 	PipelineHandle* handle = pipelineHandles.Get(pipelineIndex);
 
@@ -5950,7 +5936,7 @@ void RenderInstance::PipelineUpdateVertexBuffer(PipelineHandleIndex& pipelineInd
 	}
 }
 
-void RenderInstance::PipelineUpdateIndexBuffer(PipelineHandleIndex& pipelineIndex, int allocationIndex, uint32_t indexCount, uint32_t indexStride)
+void RenderInstance::PipelineUpdateIndexBuffer(PipelineHandleIndex& pipelineIndex, AllocationInstanceIndex& allocationIndex, uint32_t indexCount, uint32_t indexStride)
 {
 	PipelineHandle* handle = pipelineHandles.Get(pipelineIndex);
 
@@ -5965,7 +5951,7 @@ void RenderInstance::PipelineUpdateIndexBuffer(PipelineHandleIndex& pipelineInde
 	}
 }
 
-void RenderInstance::PipelineUpdateIndirectCountBuffer(PipelineHandleIndex& pipelineIndex, int allocationIndex)
+void RenderInstance::PipelineUpdateIndirectCountBuffer(PipelineHandleIndex& pipelineIndex, AllocationInstanceIndex& allocationIndex)
 {
 	PipelineHandle* handle = pipelineHandles.Get(pipelineIndex);
 
@@ -6261,7 +6247,7 @@ void RenderInstance::GeneratePipelineDescriptorBarriers(RenderDeviceIndex device
 
 				for (int g = 0; g < arrayCount; g++)
 				{
-					int allocationIndex = bufferBarrier->allocationIndex[g];
+					AllocationInstanceIndex& allocationIndex = bufferBarrier->allocationIndex[g];
 
 					InsertBufferBarrier(dev, allocationIndex, ConvertShaderStageToBarrierStage(header->stage), header, pipelineIndex, accumulator);
 				}
@@ -6332,10 +6318,8 @@ void RenderInstance::GenerateComputeDispatchBindingsBarriers(RenderDeviceIndex d
 
 	VKDevice* dev = rhiDevice->device;
 
-	if (handle->indirectDispatchCommandHandle != -1)
+	if (AllocationInstanceIndex() != handle->indirectDispatchCommandHandle)
 	{
-		int allocationIndex = handle->indirectDispatchCommandHandle;
-
 		size_t size = 0, offset = 0, align = 0;
 
 		int bufferLastAccessFrame = 0;
@@ -6344,7 +6328,7 @@ void RenderInstance::GenerateComputeDispatchBindingsBarriers(RenderDeviceIndex d
 
 		VkBufferMemoryBarrier* vkBarrier = nullptr;
 
-		RenderAllocation* alloc = allocations.Get(allocationIndex);
+		RenderAllocation* alloc = allocations.Get(handle->indirectDispatchCommandHandle);
 
 		allocType = alloc->allocType;
 
@@ -6621,7 +6605,7 @@ IntraPassBarrier* RenderInstance::GetIntraPassBarrier(BarrierAccumulator* accum,
 	return intraPassBarrier;
 }
 
-void RenderInstance::InsertBufferBarrier(VKDevice* dev, int allocationIndex, PipelineStage destBarrierStage, ShaderResourceHeader* header, PipelineHandleIndex& pipelineIndex, BarrierAccumulator* accumulator)
+void RenderInstance::InsertBufferBarrier(VKDevice* dev, AllocationInstanceIndex& allocationIndex, PipelineStage destBarrierStage, ShaderResourceHeader* header, PipelineHandleIndex& pipelineIndex, BarrierAccumulator* accumulator)
 {
 	size_t size = 0, offset = 0, align = 0;
 
@@ -6713,7 +6697,7 @@ void RenderInstance::InsertBufferBarrier(VKDevice* dev, int allocationIndex, Pip
 	status->currAction[bufferLastAccessFrame] = newAction;
 }
 
-void RenderInstance::InsertBufferBarrier(VKDevice* dev, int allocationIndex, PipelineStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator)
+void RenderInstance::InsertBufferBarrier(VKDevice* dev, AllocationInstanceIndex& allocationIndex, PipelineStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator)
 {
 	RenderAllocation* bufferAlloc = allocations.Get(allocationIndex);
 
@@ -7231,9 +7215,8 @@ void RenderInstance::DestroyShaderResourceTemplate(ShaderResourceTemplateInstanc
 	shaderResourceTemplates.Free(handle);
 }
 
-void RenderInstance::DestroyAllocation(int handle)
+void RenderInstance::DestroyAllocation(AllocationInstanceIndex& handle)
 {
-
 	RenderAllocation* allocation = allocations.Get(handle);
 	
 	if (!allocation)
@@ -7248,6 +7231,7 @@ void RenderInstance::DestroyAllocation(int handle)
 	DestoryDriverBufferView(container, allocation->viewIndex);
 
 	CleanInitializeAllocation(allocation);
+
 	allocations.Free(handle);
 }
 

@@ -2723,7 +2723,7 @@ void ShaderResourceSetBuilder::SetVariableArrayCount(ShaderResourceSetContext* c
 	header->arrayCount = (header->arrayCount & UNBOUNDED_DESCRIPTOR_ARRAY) | (varArrayCount & DESCRIPTOR_COUNT_MASK);
 }
 
-void ShaderResourceSetBuilder::BindBufferToShaderResource(ShaderResourceSetContext* context, int* allocationIndex, int firstBuffer, int bufferCount, int bindingIndex)
+void ShaderResourceSetBuilder::BindBufferToShaderResource(ShaderResourceSetContext* context, AllocationInstanceIndex* allocationIndex, int firstBuffer, int bufferCount, int bindingIndex)
 {
 	ShaderResourceArray* header = &set->resourceBindings[bindingIndex];
 
@@ -2751,7 +2751,7 @@ void ShaderResourceSetBuilder::BindBufferToShaderResource(ShaderResourceSetConte
 
 }
 
-void ShaderResourceSetBuilder::BindImageResourceToShaderResource(ShaderResourceSetContext* context, int* index, int* views, int textureCount, int firstTexture, int bindingIndex)
+void ShaderResourceSetBuilder::BindImageResourceToShaderResource(ShaderResourceSetContext* context, TextureIndex* index, int* views, int textureCount, int firstTexture, int bindingIndex)
 {
 	ShaderResourceArray* header = &set->resourceBindings[bindingIndex];
 
@@ -2839,7 +2839,7 @@ void ShaderResourceSetBuilder::BindSampledImageToShaderResource(ShaderResourceSe
 		images->textureCount = (firstTexture + textureCount);
 }
 
-void ShaderResourceSetBuilder::BindBufferView(ShaderResourceSetContext* context, int* allocationIndex, int firstView, int viewCount, int bindingIndex)
+void ShaderResourceSetBuilder::BindBufferView(ShaderResourceSetContext* context, AllocationInstanceIndex* allocationIndex, int firstView, int viewCount, int bindingIndex)
 {
 	ShaderResourceArray* header = &set->resourceBindings[bindingIndex];
 

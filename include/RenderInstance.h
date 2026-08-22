@@ -113,6 +113,7 @@ struct LogicalDeviceCreateInfo
 
 struct CommandRecorder
 {
+	RHIDevice* device;
 	RecordingBufferObject* rbo;
 	BarrierAccumulator* accumulator;
 	uint32_t barrierAccumulatorIndex;
@@ -155,15 +156,15 @@ struct RenderInstance
 
 	int CreateDriverSwapChainData(RHIDevice* rhiDevice, EntryHandle swapChainIndex, uint32_t width, uint32_t height, bool recreate);
 
-	void UploadHostTransfers(RHIDevice* rhiDevice);
+	void UploadHostTransfers(CommandRecorder* recorder);
 
-	void UploadDescriptorsUpdates(RHIDevice* rhiDevice);
+	void UploadDescriptorsUpdates(CommandRecorder* recorder);
 
-	void InvokeTransferCommands(RHIDevice* rhiDevice, CommandRecorder* recorder);
+	void InvokeTransferCommands(CommandRecorder* recorder);
 
-	void UploadImageMemoryTransfers(RHIDevice* rhiDevice, CommandRecorder* recorder);
+	void UploadImageMemoryTransfers(CommandRecorder* recorder);
 
-	void UploadDeviceLocalTransfers(RHIDevice* rhiDevice, CommandRecorder* recorder);
+	void UploadDeviceLocalTransfers(CommandRecorder* recorder);
 
 	AllocationInstanceIndex GetAllocFromBuffer(BufferMemoryIndex bufferHandle, size_t structureSize, size_t copiesOfStructure, size_t alignment, AllocationType allocType, ComponentFormatType formatType, BufferAlignmentType bufferAlignmentType, AllocationInstanceIndex parentIndex, DeviceSlabAllocator* allocator);
 
@@ -199,11 +200,11 @@ struct RenderInstance
 
 	int CreateShaderResourceSet(ShaderResourceManager* descriptorManager, int descriptorSet);
 
-	void GeneratePipelineDescriptorBarriers(RenderDeviceIndex deviceSelection, ShaderResourceSetHandle* descriptorid, int descriptorcount, BarrierAccumulator* accumulator, PipelineHandleIndex& pipelineIndex);
+	void GeneratePipelineDescriptorBarriers(CommandRecorder* recorder, ShaderResourceSetHandle* descriptorid, int descriptorcount, PipelineHandleIndex& pipelineIndex);
 
-	void GenerateDrawBindingsBarriers(RenderDeviceIndex deviceSelection, PipelineHandle* pipelineHandle, BarrierAccumulator* accumulator);
+	void GenerateDrawBindingsBarriers(CommandRecorder* recorder, PipelineHandle* pipelineHandle);
 
-	void GenerateComputeDispatchBindingsBarriers(RenderDeviceIndex deviceSelection, PipelineHandle* handle, PipelineHandleIndex& pipelineIndex, BarrierAccumulator* accumulator);
+	void GenerateComputeDispatchBindingsBarriers(CommandRecorder* recorder, PipelineHandle* handle, PipelineHandleIndex& pipelineIndex);
 
 	ShaderComputeLayout* GetComputeLayout(RenderShaderGraphIndex& shaderGraphIndex);
 
@@ -343,7 +344,7 @@ struct RenderInstance
 
 	size_t GetNecessaryMemoryUsage(RenderInstanceCreateInfo* info);
 
-	void WriteDeviceQuery(RHIDevice* device, RecordingBufferObject* rcbo, PipelineStage stage);
+	void WriteDeviceQuery(CommandRecorder* recorder, PipelineStage stage);
 
 	void ToggleDeviceQueries(RenderDeviceIndex mainDeviceSelection);
 	
@@ -504,3 +505,52 @@ int DestroyDriverDescriptorHeap(RHIDevice* device, EntryHandle handle);
 int DestroyDriverShader(RHIDevice* device, EntryHandle handle);
 int DestoryDriverBufferView(RHIDevice* device, EntryHandle handle);
 int DestroyDriverSemaphore(RHIDevice* device, EntryHandle handle);
+
+
+void ResetCommandPool(CommandRecorder* recorder);
+
+void BeginCommandRecording(CommandRecorder* recorder);
+
+void EndCommandRecording(CommandRecorder* recorder);
+
+void ResetDeviceQueries(CommandRecorder* recorder, EntryHandle queryPoolIndex, uint32_t firstQuery, uint32_t queryCount);
+
+void BindComputePipelineCmd(CommandRecorder* recorder, EntryHandle pipelineHandle);
+
+void BindComputeDescriptorSetsCmd(CommandRecorder* recorder, EntryHandle handle, uint32_t descriptorSetIndex, uint32_t setCount, uint32_t firstSet, uint32_t dynamicOffsetCount, uint32_t* dynamicOffsets);
+
+void PushConstantsCmd(CommandRecorder* recorder, uint32_t offset, uint32_t size, ShaderStageType stage, void* data);
+
+void DispatchIndirectCmd(CommandRecorder* recorder, EntryHandle indirectBufferIndex, size_t offset);
+
+void DispatchCmd(CommandRecorder* recorder, uint32_t x, uint32_t y, uint32_t z);
+
+void BeginRenderPassCmd(CommandRecorder* recorder, EntryHandle renderTargetInfo, int subTargetSelection, VkSubpassContents contents, VkRect2D renderArea, VkClearValue* clears, uint32_t clearCount);
+
+void EndRenderPassCmd(CommandRecorder* recorder);
+
+void SetViewportCmd(CommandRecorder* recorder, float x, float y, float width, float height, float minDepth, float maxDepth);
+
+void SetScissorCmd(CommandRecorder* recorder, int32_t x, int32_t y, uint32_t width, uint32_t height);
+
+void BindGraphicsPipelineCmd(CommandRecorder* recorder, EntryHandle pipelineHandle);
+
+void BindGraphicsDescriptorSetsCmd(CommandRecorder* recorder, EntryHandle handle, uint32_t descriptorSetIndex, uint32_t setCount, uint32_t firstSet, uint32_t dynamicOffsetCount, uint32_t* dynamicOffsets);
+
+void BindVertexBufferCmd(CommandRecorder* recorder, EntryHandle bufferHandle, uint32_t firstBinding, uint32_t bindingCount, size_t* offsets);
+
+void BindIndexBufferCmd(CommandRecorder* recorder, EntryHandle bufferHandle, size_t offset, int indexType);
+
+void DrawIndexedIndirectCountCmd(CommandRecorder* recorder, EntryHandle indirectBufferIndex, EntryHandle indirectCountBufferIndex, size_t indirectOffset, size_t countOffset, uint32_t maxDrawCount);
+
+void DrawIndexedIndirectCmd(CommandRecorder* recorder, EntryHandle indirectBufferIndex, uint32_t drawCount, size_t indirectOffset);
+
+void DrawIndirectCountCmd(CommandRecorder* recorder, EntryHandle indirectBufferIndex, EntryHandle indirectCountBufferIndex, size_t indirectOffset, size_t countOffset, uint32_t maxDrawCount);
+
+void DrawIndirectCmd(CommandRecorder* recorder, EntryHandle indirectBufferIndex, uint32_t drawCount, size_t indirectOffset);
+
+void DrawIndexedCmd(CommandRecorder* recorder, uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance);
+
+void DrawCmd(CommandRecorder* recorder, uint32_t firstVertex, uint32_t vertexCount, uint32_t firstInstance, uint32_t instanceCount);
+
+void WriteTimeStamp(CommandRecorder* recorder, EntryHandle queryPoolIndex, uint32_t queryOffset, PipelineStage stage);

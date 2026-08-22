@@ -719,6 +719,7 @@ namespace API
 
 #define RENDER_MIN(a, b) ((a) > (b) ? (b) : (a))
 #define RENDER_MAX(a, b) ((a) < (b) ? (b) : (a))
+#define RENDER_PWR2UP(size, align) (((size) + ((align)-1)) & ~((align)-1))
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(
 	VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -767,6 +768,34 @@ int findMSB(unsigned int input)
 #else
 	return 31 - __builtin_clz(input);
 #endif
+}
+
+void GetAllocationDetails(RenderAllocation* alloc, size_t* requestedSize, size_t* offset, int* resourceIndex, int currentFrame)
+{
+	size_t rsize = alloc->requestedSize * alloc->structureCopies;
+	size_t align = alloc->alignment;
+	size_t iOffset = 0;
+	int iResourceIndex = 0;
+	rsize = RENDER_PWR2UP(rsize, align);
+
+	if (alloc->allocType == AllocationType::PERFRAME)
+	{
+		iResourceIndex = currentFrame;
+		iOffset = (currentFrame * rsize) + alloc->offset;
+	}
+	else if (alloc->allocType == AllocationType::STATIC)
+	{
+		iOffset = alloc->offset;
+	}
+
+	if (offset)
+		*offset = iOffset;
+
+	if (requestedSize)
+		*requestedSize = rsize;
+
+	if (resourceIndex)
+		*resourceIndex = iResourceIndex;
 }
 
 void* RenderInstance::AllocateFromStorageAllocator(size_t size, size_t alignment)
@@ -2603,13 +2632,13 @@ EntryHandle RenderInstance::CreateVulkanComputePipelineTemplate(ShaderGraph* gra
 	return pipelineBuilder->CreateComputePipeline(layoutHandles, descriptorCount, shaderHandle);
 }
 
-void RenderInstance::UploadHostTransfers(RHIDevice* rhiDevice)
+void RenderInstance::UploadHostTransfers(CommandRecorder* recorder)
 {
 	int memCount = driverHostMemoryUpdater.linkCount;
 
 	if (!memCount) return;
 
-	VKDevice* dev = rhiDevice->device;
+	VKDevice* dev = recorder->device->device;
 
 	BufferMemoryTransferRegion region;
 	int link = driverHostMemoryUpdater.linkHead;
@@ -2630,25 +2659,13 @@ void RenderInstance::UploadHostTransfers(RHIDevice* rhiDevice)
 
 		size_t intSize = region.size;
 
-		size_t rsize = 0, align = 0, intOffset = 0;
+		size_t rsize = 0, intOffset = 0;
 
 		RenderAllocation* alloc = allocations.Get(region.allocationIndex);
 
-		rsize = alloc->requestedSize;
-		align = alloc->alignment;
+		GetAllocationDetails(alloc, &rsize, &intOffset, nullptr, currentFrame);
 
-		rsize *= alloc->structureCopies;
-
-		rsize = (rsize + align - 1) & ~(align - 1);
-
-		if (alloc->allocType == AllocationType::PERFRAME)
-		{
-			intOffset = (currentFrame * rsize) + alloc->offset + region.allocoffset;
-		}
-		else if (alloc->allocType == AllocationType::STATIC)
-		{
-			intOffset = alloc->offset + region.allocoffset;
-		}
+		intOffset += region.allocoffset;
 		
 		EntryHandle index = bufferHandles[alloc->memIndex].bufferHandle;
 
@@ -2656,7 +2673,7 @@ void RenderInstance::UploadHostTransfers(RHIDevice* rhiDevice)
 
 		if (index != previousBuffer)
 		{
-			if (previousBuffer != EntryHandle())
+			if (EntryHandle() != previousBuffer)
 			{
 				dev->WriteToHostBufferBatch(previousBuffer, batchAddresses, batchSizes, batchOffsets, previousMax - previousMin, previousMin, batchCounter);
 			}
@@ -2674,19 +2691,19 @@ void RenderInstance::UploadHostTransfers(RHIDevice* rhiDevice)
 		batchCounter++;
 
 		previousMin = RENDER_MIN(intOffset, previousMin);
-		previousMax = RENDER_MAX(intOffset + rsize, previousMax);
+		previousMax = RENDER_MAX(intOffset + intSize, previousMax);
 	}
 
 	dev->WriteToHostBufferBatch(previousBuffer, batchAddresses, batchSizes, batchOffsets, previousMax - previousMin, previousMin, batchCounter);
 }
 
-void RenderInstance::UploadDescriptorsUpdates(RHIDevice* rhiDevice)
+void RenderInstance::UploadDescriptorsUpdates(CommandRecorder* recorder)
 {
 	int memCount = descriptorUpdatePool.linkCount;
 
 	if (!memCount) return;
 
-	VKDevice* dev = rhiDevice->device;
+	VKDevice* dev = recorder->device->device;
 
 	int link = descriptorUpdatePool.linkHead;
 	int* linkprev = &descriptorUpdatePool.linkHead;
@@ -2716,9 +2733,6 @@ void RenderInstance::UploadDescriptorsUpdates(RHIDevice* rhiDevice)
 
 			set = manager->descriptorSets[region.descriptorSet];
 		}
-
-		if (!set)
-			continue;
 
 		switch (region.type)
 		{
@@ -2945,17 +2959,17 @@ void RenderInstance::UploadDescriptorsUpdates(RHIDevice* rhiDevice)
 	}
 }
 
-void RenderInstance::UploadImageMemoryTransfers(RHIDevice* rhiDevice, CommandRecorder* recorder)
+void RenderInstance::UploadImageMemoryTransfers(CommandRecorder* recorder)
 {
 	int memCount = imageMemoryUpdateManager.linkCount;
 
 	if (!memCount) return;
 
-	VKDevice* dev = rhiDevice->device;
+	VKDevice* dev = recorder->device->device;
 
 	int link = imageMemoryUpdateManager.linkHead;
 
-	DeviceSlabAllocator* stagingAlloc = &rhiDevice->container.stagingBufferAllocators[currentFrame];
+	DeviceSlabAllocator* stagingAlloc = &recorder->device->container.stagingBufferAllocators[currentFrame];
 
 	TextureMemoryRegion* regions = (TextureMemoryRegion*)cacheAllocator->Allocate(sizeof(TextureMemoryRegion) * memCount, alignof(TextureMemoryRegion));
 
@@ -3002,7 +3016,7 @@ void RenderInstance::UploadImageMemoryTransfers(RHIDevice* rhiDevice, CommandRec
 			handle,
 			(char*)region->data,
 			region->totalSize,
-			rhiDevice->container.stagingBuffers[currentFrame],
+			recorder->device->container.stagingBuffers[currentFrame],
 			region->width,
 			region->height,
 			region->mipLevels,
@@ -3019,13 +3033,13 @@ void RenderInstance::UploadImageMemoryTransfers(RHIDevice* rhiDevice, CommandRec
 }
 
 
-void RenderInstance::UploadDeviceLocalTransfers(RHIDevice* rhiDevice, CommandRecorder* recorder)
+void RenderInstance::UploadDeviceLocalTransfers(CommandRecorder* recorder)
 {
 	int memCount = driverDeviceMemoryUpdater.linkCount;
 
 	if (!memCount) return;
 
-	VKDevice* dev = rhiDevice->device;
+	VKDevice* dev = recorder->device->device;
 
 	BufferMemoryTransferRegion region;
 	int link = driverDeviceMemoryUpdater.linkHead;
@@ -3041,33 +3055,19 @@ void RenderInstance::UploadDeviceLocalTransfers(RHIDevice* rhiDevice, CommandRec
 
 	EntryHandle previousBuffer = EntryHandle();
 
-	DeviceSlabAllocator* stagingAlloc = &rhiDevice->container.stagingBufferAllocators[currentFrame];
+	DeviceSlabAllocator* stagingAlloc = &recorder->device->container.stagingBufferAllocators[currentFrame];
 
 	while (link >= 0)
 	{
 		link = driverDeviceMemoryUpdater.PopLink(&region, link, &linkprev);
 
-		size_t intSize = region.size;
-
-		size_t rsize = 0, align = 0, intOffset = 0;
+		size_t rsize = 0, intOffset = 0;
 
 		RenderAllocation* alloc = allocations.Get(region.allocationIndex);
 
-		rsize = alloc->requestedSize;
-		align = alloc->alignment;
+		GetAllocationDetails(alloc, &rsize, &intOffset, nullptr, currentFrame);
 
-		rsize *= alloc->structureCopies;
-
-		rsize = (rsize + align - 1) & ~(align - 1);
-
-		if (alloc->allocType == AllocationType::PERFRAME)
-		{
-			intOffset = (currentFrame * rsize) + alloc->offset + region.allocoffset;
-		}
-		else if (alloc->allocType == AllocationType::STATIC)
-		{
-			intOffset = alloc->offset + region.allocoffset;
-		}
+		intOffset += region.allocoffset;
 
 		EntryHandle index = bufferHandles[alloc->memIndex].bufferHandle;
 
@@ -3079,7 +3079,7 @@ void RenderInstance::UploadDeviceLocalTransfers(RHIDevice* rhiDevice, CommandRec
 			{
 				InsertAccumulatedBarriers(recorder);
 				cumulativeSize = (uploadArenaOffset[batchCounter - 1] - uploadArenaOffset[0]) + batchSizes[batchCounter - 1];
-				dev->WriteToDeviceBufferBatch(previousBuffer, rhiDevice->container.stagingBuffers[currentFrame], batchData, batchSizes, batchOffsets, cumulativeSize, uploadArenaOffset, batchCounter, recorder->rbo);
+				dev->WriteToDeviceBufferBatch(previousBuffer, recorder->device->container.stagingBuffers[currentFrame], batchData, batchSizes, batchOffsets, cumulativeSize, uploadArenaOffset, batchCounter, recorder->rbo);
 			}
 
 			previousBuffer = index;
@@ -3099,16 +3099,16 @@ void RenderInstance::UploadDeviceLocalTransfers(RHIDevice* rhiDevice, CommandRec
 
 	cumulativeSize = (uploadArenaOffset[batchCounter - 1] - uploadArenaOffset[0]) + batchSizes[batchCounter - 1];
 
-	dev->WriteToDeviceBufferBatch(previousBuffer, rhiDevice->container.stagingBuffers[currentFrame], batchData, batchSizes, batchOffsets, cumulativeSize, uploadArenaOffset, batchCounter, recorder->rbo);
+	dev->WriteToDeviceBufferBatch(previousBuffer, recorder->device->container.stagingBuffers[currentFrame], batchData, batchSizes, batchOffsets, cumulativeSize, uploadArenaOffset, batchCounter, recorder->rbo);
 }
 
-void RenderInstance::InvokeTransferCommands(RHIDevice* rhiDevice, CommandRecorder* recorder)
+void RenderInstance::InvokeTransferCommands(CommandRecorder* recorder)
 {
 	int memCount = transferCommandPool.linkCount;
 
 	if (!memCount) return;
 
-	VKDevice* dev = rhiDevice->device;
+	VKDevice* dev = recorder->device->device;
 	
 	TransferCommand region;
 	int link = transferCommandPool.linkHead;
@@ -3118,34 +3118,21 @@ void RenderInstance::InvokeTransferCommands(RHIDevice* rhiDevice, CommandRecorde
 	{
 		link = transferCommandPool.PopLink(&region, link, &linkprev);
 
-		size_t intSize = region.size;
-
-		size_t rsize = 0, align = 0, intOffset = 0;
-
-		RenderAllocation* alloc = allocations.Get(region.allocationIndex);
-
-		rsize = alloc->requestedSize * alloc->structureCopies;
-		align = alloc->alignment;
-
-		rsize = (rsize + align - 1) & ~(align - 1);
+		size_t rsize = 0, intOffset = 0;
 
 		int resourceIndex = 0;
 
-		if (alloc->allocType == AllocationType::PERFRAME)
-		{
-			intOffset = (currentFrame * rsize) + alloc->offset;
-			resourceIndex = currentFrame;
-		}
-		else if (alloc->allocType == AllocationType::STATIC)
-		{
-			intOffset = alloc->offset;
-		}
+		RenderAllocation* alloc = allocations.Get(region.allocationIndex);
+
+		GetAllocationDetails(alloc, &rsize, &intOffset, &resourceIndex, currentFrame);
+
+		intOffset += region.offset;
 		
 		ResourceStatus* status = resourceStatuses.Get(alloc->resourceStatus);
 
 		EntryHandle index = bufferHandles[alloc->memIndex].bufferHandle;
 
-		recorder->rbo->FillBuffer(index, intSize, intOffset, region.fillVal);
+		recorder->rbo->FillBuffer(index, region.size, intOffset, region.fillVal);
 
 		status->currAction[resourceIndex] = TRANSFER_WRITE_DATA_RESOURCE;
 		status->currStage[resourceIndex] = TRANSFER_BARRIER;
@@ -3168,14 +3155,14 @@ AllocationInstanceIndex RenderInstance::GetAllocFromBuffer(BufferMemoryIndex buf
 	switch (bufferAlignmentType)
 	{
 	case BufferAlignmentType::UNIFORM_BUFFER_ALIGNMENT:
-		alignment = (alignment + rhiDevice->container.relatedPhysDeviceInfo->minUniformAlignment - 1) & ~((size_t)rhiDevice->container.relatedPhysDeviceInfo->minUniformAlignment - 1);
+		alignment = RENDER_PWR2UP(alignment, rhiDevice->container.relatedPhysDeviceInfo->minUniformAlignment);
 		break;
 	case BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT:
-		alignment = (alignment + rhiDevice->container.relatedPhysDeviceInfo->minStorageAlignment - 1) & ~((size_t)rhiDevice->container.relatedPhysDeviceInfo->minStorageAlignment - 1);
+		alignment = RENDER_PWR2UP(alignment, rhiDevice->container.relatedPhysDeviceInfo->minStorageAlignment);
 		break;
 	}
 
-	size_t allocSize = ((copiesOfStructure * structureSize) + alignment - 1) & ~(alignment - 1);
+	size_t allocSize = RENDER_PWR2UP((copiesOfStructure * structureSize), alignment);
 
 	size_t copies = 1;
 
@@ -4809,14 +4796,6 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 	CommandRecorder recorder{};
 	
 	RecordingBufferObject rcb = dev->GetRecordingBufferObject(cbindex);
-	
-	rcb.ResetCommandPoolForBuffer();
-
-	SwapUpdateCommands();
-
-	UploadHostTransfers(rhiDevice);
-
-	UploadDescriptorsUpdates(rhiDevice);
 
 	uint32_t accumulatorIndex = PopBarrierAccumulator();
 
@@ -4825,16 +4804,28 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 	recorder.rbo = &rcb;
 	recorder.accumulator = accumulator;
 	recorder.barrierAccumulatorIndex = accumulatorIndex;
+	recorder.device = rhiDevice;
 
-	rcb.BeginRecordingCommand(nullptr, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+	ResetCommandPool(&recorder);
 
-	rcb.ResetQueries(rhiDevice->container.queryPoolIndex, rhiDevice->container.maxQueryResults * currentFrame, rhiDevice->container.maxQueryResults);
+	SwapUpdateCommands();
 
-	UploadDeviceLocalTransfers(rhiDevice, &recorder);
+	UploadHostTransfers(&recorder);
 
-	InvokeTransferCommands(rhiDevice, &recorder);
+	UploadDescriptorsUpdates(&recorder);
 
-	UploadImageMemoryTransfers(rhiDevice, &recorder);
+	BeginCommandRecording(&recorder);
+
+	if (rhiDevice->container.queriesAreActive)
+	{
+		ResetDeviceQueries(&recorder, rhiDevice->container.queryPoolIndex, rhiDevice->container.maxQueryResults * currentFrame, rhiDevice->container.maxQueryResults);
+	}
+
+	UploadDeviceLocalTransfers(&recorder);
+
+	InvokeTransferCommands(&recorder);
+
+	UploadImageMemoryTransfers(&recorder);
 
 	int commandCountIter = 0;
 
@@ -4846,7 +4837,7 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 
 		if (command->streamType == GPUCommandStreamType::COMPUTE_QUEUE_COMMANDS)
 		{
-			WriteDeviceQuery(rhiDevice, &rcb, StageBits::COMPUTE_BARRIER);
+			WriteDeviceQuery(&recorder, StageBits::COMPUTE_BARRIER);
 			
 			ComputeQueue* queue = computeQueues.Get(command->commandIndex.indexForComputeQueue);
 
@@ -4856,9 +4847,9 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 
 				PipelineHandle* handle = pipelineHandles.Get(pipelineIndex);
 
-				GeneratePipelineDescriptorBarriers(deviceSelection, handle->resourceSets, handle->resourceSetCount, accumulator, pipelineIndex);
+				GeneratePipelineDescriptorBarriers(&recorder, handle->resourceSets, handle->resourceSetCount, pipelineIndex);
 
-				GenerateComputeDispatchBindingsBarriers(deviceSelection, handle, pipelineIndex, accumulator);
+				GenerateComputeDispatchBindingsBarriers(&recorder, handle, pipelineIndex);
 			}
 
 			InsertAccumulatedBarriers(&recorder);
@@ -4870,14 +4861,14 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 				PipelineHandle* handle = pipelineHandles.Get(pipelineIndex);
 
 				EntryHandle pipelineTemp = graphPipelineDescriptions.Get(handle->pipelineIdentifierGroup)->pipelineIndices[0];
-			
-				rcb.BindComputePipeline(pipelineTemp);
+
+				BindComputePipelineCmd(&recorder, pipelineTemp);
 
 				for (uint32_t ii = 0; ii < handle->resourceSetCount; ii++)
 				{
 					ShaderResourceManager* descriptorManager = descriptorManagers.Get(handle->resourceSets[ii].descriptorManagerIndex);
 
-					rcb.BindComputeDescriptorSets(descriptorManager->descriptorSetHandles[handle->resourceSets[ii].descriptorSetIndex], currentFrame, 1, ii, 0, nullptr);
+					BindComputeDescriptorSetsCmd(&recorder, descriptorManager->descriptorSetHandles[handle->resourceSets[ii].descriptorSetIndex], currentFrame, 1, ii, 0, nullptr);
 				}
 
 				for (uint32_t ii = 0, jj = 0, constantBufferPerSet = 0; ii < handle->pushRangeCount && jj < handle->resourceSetCount;)
@@ -4893,7 +4884,7 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 						continue;
 					}
 
-					rcb.PushConstantsCommand(pushArgs->offset, pushArgs->size, API::ConvertShaderStageToVulkanShaderStage(pushArgs->stage), pushArgs->data);
+					PushConstantsCmd(&recorder, pushArgs->offset, pushArgs->size, pushArgs->stage, pushArgs->data);
 
 					ii++;
 				}
@@ -4904,25 +4895,21 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 				{
 					RenderAllocation* indirectBufferAlloc = allocations.Get(handle->indirectDispatchCommandHandle);
 
-					size_t align = indirectBufferAlloc->alignment;
+					size_t indirectBufferBaseOffset = 0;
 
-					size_t copiesOfstruct = static_cast<size_t>(indirectBufferAlloc->structureCopies);
+					GetAllocationDetails(indirectBufferAlloc, nullptr, &indirectBufferBaseOffset, nullptr, currentFrame);
 
-					size_t indirectBufferBaseOffset = indirectBufferAlloc->offset;
-
-					size_t perFrameIndirectBufferOffset = (((indirectBufferAlloc->requestedSize * copiesOfstruct) + (align - 1)) & ~(align - 1));
-
-					rcb.IndirectDispatchCommand(bufferHandles[indirectBufferAlloc->memIndex].bufferHandle, indirectBufferBaseOffset + (currentFrame * perFrameIndirectBufferOffset));
+					DispatchIndirectCmd(&recorder, bufferHandles[indirectBufferAlloc->memIndex].bufferHandle, indirectBufferBaseOffset);
 				}
 				else
 				{
-					rcb.DispatchCommand(handle->x, handle->y, handle->z);
+					DispatchCmd(&recorder, handle->x, handle->y, handle->z);
 				}
 			}
 
 			ResetIntraBarrierAccumulator(accumulator);
 			
-			WriteDeviceQuery(rhiDevice, &rcb, StageBits::COMPUTE_BARRIER);
+			WriteDeviceQuery(&recorder, StageBits::COMPUTE_BARRIER);
 		}
 		else if (command->streamType == GPUCommandStreamType::ATTACHMENT_COMMANDS)
 		{
@@ -4930,7 +4917,7 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 
 			for (int i = 0; i < currentGraphInstance->graphLayout->passesCount; i++)
 			{
-				WriteDeviceQuery(rhiDevice, &rcb, StageBits::BEGINNING_OF_PIPE);
+				WriteDeviceQuery(&recorder, StageBits::BEGINNING_OF_PIPE);
 
 				AttachmentRenderPassInstance* rpInst = &currentGraphInstance->passes[i];
 
@@ -4980,23 +4967,23 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 
 						PipelineHandle* handle = pipelineHandles.Get(pipelineIndex);
 
-						GeneratePipelineDescriptorBarriers(deviceSelection, handle->resourceSets, handle->resourceSetCount, accumulator, pipelineIndex);
+						GeneratePipelineDescriptorBarriers(&recorder, handle->resourceSets, handle->resourceSetCount, pipelineIndex);
 
-						GenerateDrawBindingsBarriers(deviceSelection, handle, accumulator);
+						GenerateDrawBindingsBarriers(&recorder, handle);
 					}
 
 					InsertAccumulatedBarriers(&recorder);
 				}
 
-				rcb.BeginRenderPassCommand(rtInfo->driverRenderTargetInfo, SubRenderTargetSelection, VK_SUBPASS_CONTENTS_INLINE, { {0, 0}, {renderTarget->width, renderTarget->height} }, clears, clearCount);
+				BeginRenderPassCmd(&recorder, rtInfo->driverRenderTargetInfo, SubRenderTargetSelection, VK_SUBPASS_CONTENTS_INLINE, { {0, 0}, {renderTarget->width, renderTarget->height} }, clears, clearCount);
 
 				float x = static_cast<float>(renderTarget->width), y = static_cast<float>(renderTarget->height);
 
 				float xOff = static_cast<float>(renderTarget->wOffset), yOff = static_cast<float>(renderTarget->hOffset);
 
-				rcb.SetViewportCommand(xOff, yOff, x, y, 0.0f, 1.0f);
+				SetViewportCmd(&recorder, xOff, yOff, x, y, 0.0f, 1.0f);
 
-				rcb.SetScissorCommand(renderTarget->wOffset, renderTarget->hOffset, renderTarget->width, renderTarget->height);
+				SetScissorCmd(&recorder, renderTarget->wOffset, renderTarget->hOffset, renderTarget->width, renderTarget->height);
 
 				if (PipelineQueueIndex() != possibleQueueIndex)
 				{
@@ -5025,73 +5012,59 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 
 						EntryHandle pipelineTemp = pipeDesc->pipelineIndices[pipelineOffset + sampleLevelForRenderPass];
 
-						rcb.BindGraphicsPipeline(pipelineTemp);
+						BindGraphicsPipelineCmd(&recorder, pipelineTemp);
 
 						for (uint32_t ii = 0; ii < handle->resourceSetCount; ii++)
 						{
 							ShaderResourceManager* descriptorManager = descriptorManagers.Get(handle->resourceSets[ii].descriptorManagerIndex);
 
-							rcb.BindGraphicsDescriptorSets(descriptorManager->descriptorSetHandles[handle->resourceSets[ii].descriptorSetIndex], currentFrame, 1, ii, 0, nullptr);
+							BindGraphicsDescriptorSetsCmd(&recorder, descriptorManager->descriptorSetHandles[handle->resourceSets[ii].descriptorSetIndex], currentFrame, 1, ii, 0, nullptr);
 						}
 
 						uint32_t vertexCount = handle->vertexCount;
 
 						uint32_t indexCount = handle->indexCount;
 
-						size_t perFrameIndirectBufferOffset = -1, perFrameIndirectCountBufferOffset = -1;
-
 						size_t vertexOffset = -1, indexOffset = -1, indirectBufferBaseOffset = -1, indirectCountBufferBaseOffset = -1;
 
 						BufferMemoryIndex vertexMemIndex{}, indexMemIndex{}, indirectBufferIndex{}, indirectCountBufferIndex{};
 
-						if (handle->vertexBufferHandle != -1)
+						if (AllocationInstanceIndex() != handle->vertexBufferHandle)
 						{		
 							RenderAllocation* vertexAlloc = allocations.Get(handle->vertexBufferHandle);
 
 							vertexMemIndex = vertexAlloc->memIndex;
 
-							vertexOffset = vertexAlloc->offset;
+							GetAllocationDetails(vertexAlloc, nullptr, &vertexOffset, nullptr, currentFrame);
 
-							rcb.BindVertexBuffer(bufferHandles[vertexMemIndex].bufferHandle, 0, 1, &vertexOffset);
+							BindVertexBufferCmd(&recorder, bufferHandles[vertexMemIndex].bufferHandle, 0, 1, &vertexOffset);
 						}
 
-						if (handle->indexBufferHandle != -1)
+						if (AllocationInstanceIndex() != handle->indexBufferHandle)
 						{			
 							RenderAllocation* indexAlloc = allocations.Get(handle->indexBufferHandle);
 
 							indexMemIndex = indexAlloc->memIndex;
 
-							indexOffset = indexAlloc->offset;
+							GetAllocationDetails(indexAlloc, nullptr, &indexOffset, nullptr, currentFrame);
 
-							rcb.BindIndexBuffer(bufferHandles[indexMemIndex].bufferHandle, indexOffset, handle->indexSize == 2 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
+							BindIndexBufferCmd(&recorder, bufferHandles[indexMemIndex].bufferHandle, indexOffset, handle->indexSize);
 						}
 
-						if (handle->indirectBufferHandle != -1)
+						if (AllocationInstanceIndex() != handle->indirectBufferHandle)
 						{
 							RenderAllocation* indirectBufferAlloc = allocations.Get(handle->indirectBufferHandle);
 
-							size_t align = indirectBufferAlloc->alignment;
-
-							size_t copiesOfstruct = static_cast<size_t>(indirectBufferAlloc->structureCopies);
-
-							indirectBufferBaseOffset = indirectBufferAlloc->offset;
-
-							perFrameIndirectBufferOffset = (((indirectBufferAlloc->requestedSize * copiesOfstruct) + (align - 1)) & ~(align - 1));
+							GetAllocationDetails(indirectBufferAlloc, nullptr, &indirectBufferBaseOffset, nullptr, currentFrame);
 
 							indirectBufferIndex = indirectBufferAlloc->memIndex;
 						}
 
-						if (handle->indirectCountBufferHandle != -1)
+						if (AllocationInstanceIndex() != handle->indirectCountBufferHandle)
 						{
 							RenderAllocation* indirectCountBufferAlloc = allocations.Get(handle->indirectCountBufferHandle);
 
-							size_t align = indirectCountBufferAlloc->alignment;
-
-							size_t copiesOfstruct = static_cast<size_t>(indirectCountBufferAlloc->structureCopies);
-
-							indirectCountBufferBaseOffset = indirectCountBufferAlloc->offset;
-
-							perFrameIndirectCountBufferOffset = (((indirectCountBufferAlloc->requestedSize * copiesOfstruct) + (align - 1)) & ~(align - 1));
+							GetAllocationDetails(indirectCountBufferAlloc, nullptr, &indirectCountBufferBaseOffset, nullptr, currentFrame);
 
 							indirectCountBufferIndex = indirectCountBufferAlloc->memIndex;
 						}
@@ -5109,47 +5082,43 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 								continue;
 							}
 					
-							rcb.PushConstantsCommand(pushArgs->offset, pushArgs->size, API::ConvertShaderStageToVulkanShaderStage(pushArgs->stage), pushArgs->data);
+							PushConstantsCmd(&recorder, pushArgs->offset, pushArgs->size, pushArgs->stage, pushArgs->data);
 
 							ii++;
 						}
 
-						if (handle->indirectBufferHandle != -1)
+						if (AllocationInstanceIndex() != handle->indirectBufferHandle)
 						{
-							perFrameIndirectBufferOffset *=  currentFrame;
-
-							perFrameIndirectCountBufferOffset *= currentFrame;
-
 							if (BufferMemoryIndex() != indexMemIndex)
 							{
-								if (handle->indirectCountBufferHandle != -1)
+								if (AllocationInstanceIndex() == handle->indirectCountBufferHandle)
 								{
-									rcb.BindingDrawIndexedIndirectCount(
+									DrawIndexedIndirectCountCmd(&recorder,
 										bufferHandles[indirectBufferIndex].bufferHandle, 
 										bufferHandles[indirectCountBufferIndex].bufferHandle, 
-										indirectBufferBaseOffset + perFrameIndirectBufferOffset, 
-										indirectCountBufferBaseOffset + perFrameIndirectCountBufferOffset, 
+										indirectBufferBaseOffset, 
+										indirectCountBufferBaseOffset, 
 										handle->indirectDrawCount);
 								}
 								else
 								{
-									rcb.BindingIndexedIndirectDrawCmd(bufferHandles[indirectBufferIndex].bufferHandle, handle->indirectDrawCount, indirectBufferBaseOffset + perFrameIndirectBufferOffset);
+									DrawIndexedIndirectCmd(&recorder, bufferHandles[indirectBufferIndex].bufferHandle, handle->indirectDrawCount, indirectBufferBaseOffset);
 								}
 							}
 							else
 							{
-								if (handle->indirectCountBufferHandle != -1)
+								if (AllocationInstanceIndex() != handle->indirectCountBufferHandle)
 								{
-									rcb.BindingDrawIndirectCount(
+									DrawIndirectCountCmd(&recorder,
 										bufferHandles[indirectBufferIndex].bufferHandle,
 										bufferHandles[indirectCountBufferIndex].bufferHandle,
-										indirectBufferBaseOffset + perFrameIndirectBufferOffset,
-										indirectCountBufferBaseOffset + perFrameIndirectCountBufferOffset,
+										indirectBufferBaseOffset,
+										indirectCountBufferBaseOffset,
 										handle->indirectDrawCount);
 								}
 								else
 								{
-									rcb.BindingIndirectDrawCmd(bufferHandles[indirectBufferIndex].bufferHandle, handle->indirectDrawCount, indirectBufferBaseOffset + perFrameIndirectBufferOffset);
+									DrawIndirectCmd(&recorder, bufferHandles[indirectBufferIndex].bufferHandle, handle->indirectDrawCount, indirectBufferBaseOffset);
 								}
 							}
 						}
@@ -5157,19 +5126,19 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 						{
 							if (BufferMemoryIndex() != indexMemIndex)
 							{
-								rcb.BindingDrawIndexedCmd(indexCount, handle->instanceCount, 0, 0, 0);
+								DrawIndexedCmd(&recorder, indexCount, handle->instanceCount, 0, 0, 0);
 							}
 							else
 							{
-								rcb.BindingDrawCmd(0, vertexCount, 0, handle->instanceCount);
+								DrawCmd(&recorder, 0, vertexCount, 0, handle->instanceCount);
 							}
 						}
 					}
 				}
 
-				rcb.EndRenderPassCommand();
+				EndRenderPassCmd(&recorder);
 
-				WriteDeviceQuery(rhiDevice, &rcb, StageBits::END_OF_PIPE);
+				WriteDeviceQuery(&recorder, StageBits::END_OF_PIPE);
 			}
 		}
 
@@ -5178,7 +5147,7 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 
 	ReturnBarrierAccumulator(accumulatorIndex);
 
-	rcb.EndRecordingCommand();
+	EndCommandRecording(&recorder);
 }
 
 void RenderInstance::IncreaseMSAA(AttachmentGraphInstanceIndex& frameGraph, int renderPassIndex)
@@ -5437,15 +5406,15 @@ void RenderInstance::EndFrame(RenderDeviceIndex deviceSelection, GPUCommandStrea
 	currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
-void RenderInstance::WriteDeviceQuery(RHIDevice* device, RecordingBufferObject* rcbo, PipelineStage stage)
+void RenderInstance::WriteDeviceQuery(CommandRecorder* recorder, PipelineStage stage)
 {
-	if (device->container.queriesAreActive)
+	if (recorder->device->container.queriesAreActive)
 	{
-		int queryBase = device->container.maxQueryResults * currentFrame;
+		int queryBase = recorder->device->container.maxQueryResults * currentFrame;
 
-		rcbo->WriteTimestamp(device->container.queryPoolIndex, device->container.queryCounts[currentFrame] + queryBase, (VkPipelineStageFlagBits)API::ConvertBarrierStageToVulkanPipelineStage(stage));
+		WriteTimeStamp(recorder, recorder->device->container.queryPoolIndex, recorder->device->container.queryCounts[currentFrame] + queryBase, stage);
 
-		device->container.queryCounts[currentFrame] += 1;
+		recorder->device->container.queryCounts[currentFrame] += 1;
 	}
 }
 
@@ -6166,12 +6135,8 @@ ShaderResourceManagerIndex RenderInstance::CreateDescriptorHeap(RenderDeviceInde
 	return descriptorManagerIndex;
 }
 
-void RenderInstance::GeneratePipelineDescriptorBarriers(RenderDeviceIndex deviceSelection, ShaderResourceSetHandle* descriptorid, int descriptorcount, BarrierAccumulator* accumulator, PipelineHandleIndex& pipelineIndex)
+void RenderInstance::GeneratePipelineDescriptorBarriers(CommandRecorder* recorder, ShaderResourceSetHandle* descriptorid, int descriptorcount, PipelineHandleIndex& pipelineIndex)
 {
-	RHIDevice* rhiDevice = GetDeviceHandle(deviceSelection);
-
-	VKDevice* dev = rhiDevice->device;
-
 	for (int i = 0; i < descriptorcount; i++)
 	{
 		ShaderResourceManager* manager = descriptorManagers.Get(descriptorid[i].descriptorManagerIndex);
@@ -6201,7 +6166,7 @@ void RenderInstance::GeneratePipelineDescriptorBarriers(RenderDeviceIndex device
 
 					int viewIndex = imageBarrier->textureDetails[imageIndex].viewIndex;
 
-					TransitionImageLayout(dev, currImageIndex, viewIndex, ConvertShaderStageToBarrierStage(header->stage), READ_SHADER_RESOURCE, accumulator, pipelineIndex);
+					TransitionImageLayout(recorder->device->device, currImageIndex, viewIndex, ConvertShaderStageToBarrierStage(header->stage), READ_SHADER_RESOURCE, recorder->accumulator, pipelineIndex);
 				}
 				break;
 			}
@@ -6217,7 +6182,7 @@ void RenderInstance::GeneratePipelineDescriptorBarriers(RenderDeviceIndex device
 
 					int viewIndex = imageBarrier->textureDetails[imageIndex].viewIndex;
 
-					TransitionImageLayout(dev, currImageIndex, viewIndex, ConvertShaderStageToBarrierStage(header->stage), READ_SHADER_RESOURCE, accumulator, pipelineIndex);
+					TransitionImageLayout(recorder->device->device, currImageIndex, viewIndex, ConvertShaderStageToBarrierStage(header->stage), READ_SHADER_RESOURCE, recorder->accumulator, pipelineIndex);
 				}
 				break;
 			}
@@ -6233,7 +6198,7 @@ void RenderInstance::GeneratePipelineDescriptorBarriers(RenderDeviceIndex device
 
 					int viewIndex = imageBarrier->textureDetails[imageIndex].viewIndex;
 
-					TransitionImageLayout(dev, currImageIndex, viewIndex, COMPUTE_BARRIER, WRITE_SHADER_RESOURCE, accumulator, pipelineIndex);
+					TransitionImageLayout(recorder->device->device, currImageIndex, viewIndex, COMPUTE_BARRIER, WRITE_SHADER_RESOURCE, recorder->accumulator, pipelineIndex);
 				}
 				break;
 			}
@@ -6249,7 +6214,7 @@ void RenderInstance::GeneratePipelineDescriptorBarriers(RenderDeviceIndex device
 				{
 					AllocationInstanceIndex& allocationIndex = bufferBarrier->allocationIndex[g];
 
-					InsertBufferBarrier(dev, allocationIndex, ConvertShaderStageToBarrierStage(header->stage), header, pipelineIndex, accumulator);
+					InsertBufferBarrier(recorder->device->device, allocationIndex, ConvertShaderStageToBarrierStage(header->stage), header, pipelineIndex, recorder->accumulator);
 				}
 				break;
 			}
@@ -6296,72 +6261,46 @@ void RenderInstance::InsertAccumulatedBarriers(CommandRecorder* recorder)
 	}
 }
 
-void RenderInstance::GenerateDrawBindingsBarriers(RenderDeviceIndex deviceSelection, PipelineHandle* handle, BarrierAccumulator* accumulator)
+void RenderInstance::GenerateDrawBindingsBarriers(CommandRecorder* recorder, PipelineHandle* handle)
 {
-	RHIDevice* rhiDevice = GetDeviceHandle(deviceSelection);
+	if (AllocationInstanceIndex() != handle->vertexBufferHandle)
+		InsertBufferBarrier(recorder->device->device, handle->vertexBufferHandle, StageBits::VERTEX_INPUT_BARRIER, BarrierActionBits::READ_VERTEX_INPUT, recorder->accumulator);
 
-	VKDevice* dev = rhiDevice->device;
+	if (AllocationInstanceIndex() != handle->indirectBufferHandle)
+		InsertBufferBarrier(recorder->device->device, handle->indirectBufferHandle, StageBits::INDIRECT_DRAW_BARRIER, BarrierActionBits::READ_INDIRECT_COMMAND, recorder->accumulator);
 
-	if (handle->vertexBufferHandle != -1)
-		InsertBufferBarrier(dev, handle->vertexBufferHandle, StageBits::VERTEX_INPUT_BARRIER, BarrierActionBits::READ_VERTEX_INPUT, accumulator);
-
-	if (handle->indirectBufferHandle != -1)
-		InsertBufferBarrier(dev, handle->indirectBufferHandle, StageBits::INDIRECT_DRAW_BARRIER, BarrierActionBits::READ_INDIRECT_COMMAND, accumulator);
-
-	if (handle->indirectCountBufferHandle != -1)
-		InsertBufferBarrier(dev, handle->indirectCountBufferHandle, StageBits::INDIRECT_DRAW_BARRIER, BarrierActionBits::READ_INDIRECT_COMMAND, accumulator);
+	if (AllocationInstanceIndex() != handle->indirectCountBufferHandle)
+		InsertBufferBarrier(recorder->device->device, handle->indirectCountBufferHandle, StageBits::INDIRECT_DRAW_BARRIER, BarrierActionBits::READ_INDIRECT_COMMAND, recorder->accumulator);
 }
 
-void RenderInstance::GenerateComputeDispatchBindingsBarriers(RenderDeviceIndex deviceSelection, PipelineHandle* handle, PipelineHandleIndex& pipelineIndex, BarrierAccumulator* accumulator)
+void RenderInstance::GenerateComputeDispatchBindingsBarriers(CommandRecorder* recorder, PipelineHandle* handle, PipelineHandleIndex& pipelineIndex)
 {
-	RHIDevice* rhiDevice = GetDeviceHandle(deviceSelection);
-
-	VKDevice* dev = rhiDevice->device;
-
 	if (AllocationInstanceIndex() != handle->indirectDispatchCommandHandle)
 	{
 		size_t size = 0, offset = 0, align = 0;
 
 		int bufferLastAccessFrame = 0;
 
-		AllocationType allocType;
-
 		VkBufferMemoryBarrier* vkBarrier = nullptr;
 
 		RenderAllocation* alloc = allocations.Get(handle->indirectDispatchCommandHandle);
 
-		allocType = alloc->allocType;
+		GetAllocationDetails(alloc, &size, &offset, &bufferLastAccessFrame, currentFrame);
 
 		ResourceStatus* status = resourceStatuses.Get(alloc->resourceStatus);
-
-		if (allocType == AllocationType::PERFRAME)
-			bufferLastAccessFrame = currentFrame;
 
 		if (StageBits::INDIRECT_DRAW_BARRIER & status->currStage[bufferLastAccessFrame] && BarrierActionBits::READ_INDIRECT_COMMAND & status->currAction[bufferLastAccessFrame])
 			return;
 
-		align = alloc->alignment;
+		vkBarrier = (VkBufferMemoryBarrier*)recorder->accumulator->intraPassBarrierAllocator.Allocate(sizeof(VkBufferMemoryBarrier));
 
-		size = ((alloc->requestedSize * alloc->structureCopies) + align - 1) & ~(align - 1);
-
-		offset = alloc->offset;
-
-		if (allocType == AllocationType::PERFRAME)
-		{
-			size_t strideSize = size;
-
-			offset += (currentFrame * strideSize);
-		}
-
-		vkBarrier = (VkBufferMemoryBarrier*)accumulator->intraPassBarrierAllocator.Allocate(sizeof(VkBufferMemoryBarrier));
-
-		IntraPassBarrier* intraBarrier = GetIntraPassBarrier(accumulator, BarrierType::BUFFER_BARRIER, pipelineIndex, vkBarrier);
+		IntraPassBarrier* intraBarrier = GetIntraPassBarrier(recorder->accumulator, BarrierType::BUFFER_BARRIER, pipelineIndex, vkBarrier);
 
 		intraBarrier->destStage |= StageBits::INDIRECT_DRAW_BARRIER;
 		intraBarrier->srcStage |= status->currStage[bufferLastAccessFrame];
 		intraBarrier->barrierCount++;
 		
-		VkBuffer buffer = dev->GetBufferHandle(bufferHandles[alloc->memIndex].bufferHandle);
+		VkBuffer buffer = recorder->device->device->GetBufferHandle(bufferHandles[alloc->memIndex].bufferHandle);
 
 		BarrierAction newAction = BarrierActionBits::READ_INDIRECT_COMMAND;
 
@@ -6617,12 +6556,9 @@ void RenderInstance::InsertBufferBarrier(VKDevice* dev, AllocationInstanceIndex&
 
 	RenderAllocation* alloc = allocations.Get(allocationIndex);
 
-	allocType = alloc->allocType;
+	GetAllocationDetails(alloc, &size, &offset, &bufferLastAccessFrame, currentFrame);
 
 	ResourceStatus* status = resourceStatuses.Get(alloc->resourceStatus);
-
-	if (allocType == AllocationType::PERFRAME)
-		bufferLastAccessFrame = currentFrame;
 
 	if 
 	(
@@ -6633,19 +6569,6 @@ void RenderInstance::InsertBufferBarrier(VKDevice* dev, AllocationInstanceIndex&
 	)
 	{
 		return;
-	}
-
-	align = alloc->alignment;
-
-	size = ((alloc->requestedSize * alloc->structureCopies) + align - 1) & ~(align - 1);
-
-	offset = alloc->offset;
-
-	if (allocType == AllocationType::PERFRAME)
-	{
-		size_t strideSize = size;
-
-		offset += (currentFrame * strideSize);
 	}
 
 	if (destBarrierStage & status->currStage[bufferLastAccessFrame])
@@ -6703,31 +6626,15 @@ void RenderInstance::InsertBufferBarrier(VKDevice* dev, AllocationInstanceIndex&
 
 	ResourceStatus* status = resourceStatuses.Get(bufferAlloc->resourceStatus);
 
+	size_t bufferSize = 0, bufferBaseOffset = 0;
+
 	int resourceIndexToUpdate = 0;
 
-	if (bufferAlloc->allocType == AllocationType::PERFRAME)
-		resourceIndexToUpdate = currentFrame;
+	GetAllocationDetails(bufferAlloc, &bufferSize, &bufferBaseOffset, &resourceIndexToUpdate, currentFrame);
 
 	if (status->currStage[resourceIndexToUpdate] != destBarrierStage ||
 		status->currAction[resourceIndexToUpdate] != destBarrierAction)
 	{
-		size_t align = bufferAlloc->alignment;
-
-		size_t copiesOfstruct = static_cast<size_t>(bufferAlloc->structureCopies);
-
-		size_t bufferSize = ((bufferAlloc->requestedSize * copiesOfstruct) + (align - 1)) & ~(align - 1);
-
-		size_t bufferBaseOffset = bufferAlloc->offset;
-
-		if (bufferAlloc->allocType == AllocationType::PERFRAME)
-		{
-			size_t perFrameBufferOffset = (((bufferAlloc->requestedSize * copiesOfstruct) + (align - 1)) & ~(align - 1));
-
-			perFrameBufferOffset *= currentFrame;
-
-			bufferBaseOffset += perFrameBufferOffset;
-		}
-
 		VkBufferMemoryBarrier* vkBarrier = (VkBufferMemoryBarrier*)accumulator->accumulators[BUFFER_BARRIER_ACCUMULATOR].allocator->Allocate(sizeof(VkBufferMemoryBarrier));
 
 		VkBuffer buffer = dev->GetBufferHandle(bufferHandles[bufferAlloc->memIndex].bufferHandle);

@@ -178,3 +178,11 @@ Finish app level architecture
 ## Building
 
 *Build instructions to be added.*
+
+## Third-Party Software
+
+This project uses the following third-party code:
+
+| Library | Purpose | License |
+|---|---|---|
+| [s3tc-dxt-decompression](https://github.com/Benjamin-Dobell/s3tc-dxt-decompression) | DXT1/DXT5 texture decompression routines | MIT |

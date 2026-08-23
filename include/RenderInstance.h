@@ -114,11 +114,10 @@ struct LogicalDeviceCreateInfo
 struct CommandRecorder
 {
 	RHIDevice* device;
-	RecordingBufferObject* rbo;
 	BarrierAccumulator* accumulator;
-	uint32_t barrierAccumulatorIndex;
-	uint32_t errorCount;
+	RecordingBufferObject rbo;
 	uint64_t errorCodes[64];
+	uint32_t errorCount;
 };
 
 struct RenderInstance
@@ -180,9 +179,9 @@ struct RenderInstance
 
 	RenderDeviceIndex CreateLogicalDevice(LogicalDeviceCreateInfo* createInfo);
 
-	uint32_t GetSwapChainHeight(SwapChainIndex swapChainIndex);
+	uint32_t GetSwapChainHeight(SwapChainIndex& swapChainIndex);
 
-	uint32_t GetSwapChainWidth(SwapChainIndex swapChainIndex);
+	uint32_t GetSwapChainWidth(SwapChainIndex& swapChainIndex);
 
 	PipelineHandleIndex CreateGraphicsPipelineObject(GraphicsIntermediaryPipelineInfo *info);
 
@@ -198,7 +197,7 @@ struct RenderInstance
 
 	ShaderResourceSetBuilder AllocateShaderResourceSet(ShaderResourceManagerIndex descriptorManagerIndex, RenderShaderGraphIndex& shaderGraphIndex, int targetSet, int setCount);
 
-	int CreateShaderResourceSet(ShaderResourceManager* descriptorManager, int descriptorSet);
+	int CreateShaderResourceSet(ShaderResourceManager* descriptorManager, DescriptorSetInstanceIndex& descriptorSet);
 
 	void GeneratePipelineDescriptorBarriers(CommandRecorder* recorder, ShaderResourceSetHandle* descriptorid, int descriptorcount, PipelineHandleIndex& pipelineIndex);
 
@@ -291,15 +290,15 @@ struct RenderInstance
 
 	void InitializeResourceStatus(ResourceStatus* status, int numberOfCurrentActions, int numberOfCurrentStages, int numberOfCurrentLayouts, BarrierAction action, PipelineStage stage, ImageLayout imageLayout);
 
-	void TransitionImageLayout(VKDevice* dev, TextureIndex& imageIndex, int perImageViewIndex, PipelineStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator, PipelineHandleIndex& pipelineIndex);
+	void TransitionImageLayout(TextureIndex& imageIndex, int perImageViewIndex, PipelineStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator, PipelineHandleIndex& pipelineIndex);
 
-	void TransitionImageLayout(VKDevice* dev, EntryHandle imageIndex, int mipStart, int mipCount, int totalMipCount, int layerStart, int layerCount,
+	void TransitionImageLayout(EntryHandle imageIndex, int mipStart, int mipCount, int totalMipCount, int layerStart, int layerCount,
 		ImageViewAspectMask mask, ImageLayout requestedLayout, ResourceStatus* status,
 		PipelineStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator, PipelineHandleIndex& pipelineIndex);
 
-	void InsertBufferBarrier(VKDevice* dev, AllocationInstanceIndex& allocationIndex, PipelineStage destBarrierStage, ShaderResourceHeader* header, PipelineHandleIndex& pipelineIndex, BarrierAccumulator* accumulator);
+	void InsertBufferBarrier(AllocationInstanceIndex& allocationIndex, PipelineStage destBarrierStage, ShaderResourceHeader* header, PipelineHandleIndex& pipelineIndex, BarrierAccumulator* accumulator);
 
-	void InsertBufferBarrier(VKDevice* dev, AllocationInstanceIndex& allocationIndex, PipelineStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator);
+	void InsertBufferBarrier(AllocationInstanceIndex& allocationIndex, PipelineStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator);
 
 	TextureIndex CreateAttachmentImage(
 		uint32_t width, uint32_t height,
@@ -318,15 +317,11 @@ struct RenderInstance
 
 	void CreateDriverSpecificBarrierArenas(BarrierAccumulator* barrierAccumulator, int maxTextures, int maxAllocations);
 
-	void InsertAccumulatedBarriers(CommandRecorder* recorder);
-
 	uint32_t PopBarrierAccumulator();
 
 	void ReturnBarrierAccumulator(uint32_t returnIndex);
 
 	IntraPassBarrier* GetIntraPassBarrier(BarrierAccumulator* accum, BarrierType type, PipelineHandleIndex& pipelineIndex, void* driverBarrierData);
-
-	void InsertIntraPassBarrier(CommandRecorder* recorder, PipelineHandleIndex& pipelineIndex);
 
 	void ResetIntraBarrierAccumulator(BarrierAccumulator* accumulator);
 
@@ -372,6 +367,7 @@ struct RenderInstance
 	void DestroyGpuCommandStream(GPUCommandStreamIndex& handle);
 	void DestroyShaderGraph(RenderShaderGraphIndex& handle);
 	void DestroyGraphPipelineDescription(GeneratedPipelineInstanceIndex& handle);
+	void DestroyShaderResourceSet(ShaderResourceSetHandle& handle);
 
 	void CleanInitializePhysicalDeviceIndices(RenderPhysicalDeviceContainer* physicalDevice);
 	void CleanInitializeRHIDevice(RHIDevice* logicalDevice);
@@ -505,6 +501,7 @@ int DestroyDriverDescriptorHeap(RHIDevice* device, EntryHandle handle);
 int DestroyDriverShader(RHIDevice* device, EntryHandle handle);
 int DestoryDriverBufferView(RHIDevice* device, EntryHandle handle);
 int DestroyDriverSemaphore(RHIDevice* device, EntryHandle handle);
+int DestroyDescriptorSet(RHIDevice* device, EntryHandle handle);
 
 
 void ResetCommandPool(CommandRecorder* recorder);
@@ -525,13 +522,17 @@ void DispatchIndirectCmd(CommandRecorder* recorder, EntryHandle indirectBufferIn
 
 void DispatchCmd(CommandRecorder* recorder, uint32_t x, uint32_t y, uint32_t z);
 
-void BeginRenderPassCmd(CommandRecorder* recorder, EntryHandle renderTargetInfo, int subTargetSelection, VkSubpassContents contents, VkRect2D renderArea, VkClearValue* clears, uint32_t clearCount);
+void BeginRenderPassCmd(CommandRecorder* recorder, EntryHandle renderTargetInfo, uint32_t imageIndex, AttachmentClear* clears, uint32_t clearCount, Allocator* clearsAllocators);
 
 void EndRenderPassCmd(CommandRecorder* recorder);
 
 void SetViewportCmd(CommandRecorder* recorder, float x, float y, float width, float height, float minDepth, float maxDepth);
 
+void SetViewportCmd(CommandRecorder* recorder, EntryHandle renderTargetIndex, float minDepth, float maxDepth);
+
 void SetScissorCmd(CommandRecorder* recorder, int32_t x, int32_t y, uint32_t width, uint32_t height);
+
+void SetScissorCmd(CommandRecorder* recorder, EntryHandle renderTargetIndex);
 
 void BindGraphicsPipelineCmd(CommandRecorder* recorder, EntryHandle pipelineHandle);
 
@@ -554,3 +555,36 @@ void DrawIndexedCmd(CommandRecorder* recorder, uint32_t indexCount, uint32_t ins
 void DrawCmd(CommandRecorder* recorder, uint32_t firstVertex, uint32_t vertexCount, uint32_t firstInstance, uint32_t instanceCount);
 
 void WriteTimeStamp(CommandRecorder* recorder, EntryHandle queryPoolIndex, uint32_t queryOffset, PipelineStage stage);
+
+int WriteHostBufferBatch(RHIDevice* device, EntryHandle bufferHandle, void** cpuDataLocations, size_t* sizesOfDataLocations, size_t* offsetsIntoHostMemory, size_t numberOfLocations, size_t mappableSize, size_t mappableStart);
+
+int WriteDeviceBufferBatch(CommandRecorder* recorder, EntryHandle bufferHandle, EntryHandle stagingBufferHandle,
+	void** cpuDataLocations, size_t* sizesOfDataLocations, size_t* offsetsIntoStagingMemory, size_t* offsetsIntoDeviceMemory, size_t numberOfCopies, size_t mappableSize);
+
+void FillBuffer(CommandRecorder* recorder, EntryHandle bufferHandle, size_t regionSize, size_t regionOffset, uint32_t fillVal);
+
+void MakeAndBindDriverAccumulatedBarriers(CommandRecorder* recorder);
+
+void MakeAndBindDriverIntraPassBarriers(CommandRecorder* recorder, PipelineHandleIndex& pipelineIndex);
+
+int UploadImageDataToDeviceMemory(
+	CommandRecorder* recorder, 
+	EntryHandle textureHandle, EntryHandle stagingBufferHandle,
+	void* cpuImageData, size_t totalUploadSize, size_t imageDataOffsetInStaging,
+	uint32_t writeWidth, uint32_t writeHeight,
+	uint32_t mipLevels, uint32_t layersCount,
+	ImageFormat imageFormat, ImageViewAspectMask aspectMask
+);
+
+void GetDriverCommandBufferObject(CommandRecorder* recorder, EntryHandle commandBufferIndex);
+
+size_t GetDriverImageMemoryBarrierSize();
+size_t GetDriverBufferMemoryBarrierSize();
+size_t GetDriverImageMemoryBarrierAlign();
+size_t GetDriverBufferMemoryBarrierAlign();
+size_t GetDriverIndexedIndirectDrawCommandSize();
+size_t GetDriverIndirectDrawCommandSize();
+size_t GetDriverIndirectDispatchCommandSize();
+size_t GetDriverIndexedIndirectDrawCommandAlign();
+size_t GetDriverIndirectDrawCommandAlign();
+size_t GetDriverIndirectDispatchCommandAlign();

@@ -13,8 +13,6 @@ struct VKCommandBuffer
 		buffer(VK_NULL_HANDLE), fenceIdx(~0U), poolIndex(~0U), queueIndex(~0U), queueFamilyIndex(~0U) {};
 	VKCommandBuffer(VkCommandBuffer _b, EntryHandle i, EntryHandle pi, uint32_t qi, uint32_t qfi)
 		: buffer(_b), fenceIdx(i), poolIndex(pi), queueIndex(qi), queueFamilyIndex(qfi) {};
-	VKCommandBuffer(const VKCommandBuffer& other) = default;
-	VKCommandBuffer(VKCommandBuffer&& other) = default;
 
 	VkCommandBuffer buffer;
 	EntryHandle fenceIdx;
@@ -46,6 +44,8 @@ enum RecordingBufferObjectErrorCodes
 
 struct RecordingBufferObject
 {
+	RecordingBufferObject() = default;
+
 	RecordingBufferObject(VKDevice* device, VKCommandBuffer buffer);
 
 	int BindGraphicsPipeline(EntryHandle pipelinename);
@@ -70,9 +70,8 @@ struct RecordingBufferObject
 
 	void BindingIndexedIndirectDrawCmd(EntryHandle indirectBufferIndex, uint32_t drawCount, size_t indirectBufferOffset);
 
-	void BeginRenderPassCommand(EntryHandle renderTargetIndex, uint32_t imageIndex,
+	void BeginRenderPassCommandForRenderTarget(EntryHandle renderTargetIndex, uint32_t imageIndex,
 		VkSubpassContents contents,
-		VkRect2D rect,
 		VkClearValue* clearVals, uint32_t clearValCount);
 
 	void BindIndexBuffer(EntryHandle bufferIndex, uint32_t indexOffset, VkIndexType indexType);

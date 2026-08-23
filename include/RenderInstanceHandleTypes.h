@@ -22,6 +22,7 @@ struct ShaderResourceTemplateInstance;
 struct OldStyleRenderPass;
 struct DriverRenderTarget;
 struct AllocationInstance;
+struct DescriptorSetInstance;
 
 template<typename N>
 struct RenderIndex
@@ -74,3 +75,4 @@ using ShaderResourceTemplateInstanceIndex = RenderIndex<ShaderResourceTemplateIn
 using DriverRenderTargetIndex = RenderIndex<DriverRenderTarget>;
 using OldStyleRenderPassIndex = RenderIndex<OldStyleRenderPass>;
 using AllocationInstanceIndex = RenderIndex<AllocationInstance>;
+using DescriptorSetInstanceIndex = RenderIndex<DescriptorSetInstance>;

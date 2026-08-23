@@ -2697,7 +2697,7 @@ int ReadAttributesAttachments(char* fileData, int size, int currentLocation, uns
 }
 
 
-ShaderResourceSetBuilder::ShaderResourceSetBuilder(ShaderResourceManagerIndex _descriptorManagerIndex, int _descriptorSetIndex, ShaderResourceSet* _setPtr)
+ShaderResourceSetBuilder::ShaderResourceSetBuilder(ShaderResourceManagerIndex _descriptorManagerIndex, DescriptorSetInstanceIndex _descriptorSetIndex, ShaderResourceSet* _setPtr)
 	:
 	set(_setPtr), handle(_descriptorManagerIndex, _descriptorSetIndex)
 {
@@ -2901,34 +2901,22 @@ void ShaderResourceSetBuilder::UploadConstant(ShaderResourceSetContext* context,
 void ShaderResourceManager::Create(Allocator* shaderResourceMemoryAllocator, uint32_t maxDescriptorSets, StringView descriptorPoolName, Logger* logger)
 {
 	descriptorSetHandles.Create(shaderResourceMemoryAllocator, maxDescriptorSets, descriptorPoolName, logger);
-	memset(descriptorSetHandles.pool, 0xFF, sizeof(EntryHandle) * maxDescriptorSets);
-	descriptorSets = (ShaderResourceSet**)shaderResourceMemoryAllocator->Allocate(sizeof(ShaderResourceSet*) * maxDescriptorSets, alignof(ShaderResourceSet*));
 }
 
-int ShaderResourceManager::AddShaderToSets(ShaderResourceSet* location)
+int ShaderResourceManager::GetConstantBufferCount(DescriptorSetInstanceIndex& descriptorSet)
 {
-	int indexRet = descriptorSetHandles.Allocate();
+	ShaderResourceDescriptorSetInfo* info = descriptorSetHandles.Get(descriptorSet);
 
-	if (indexRet < 0)
-	{
-		return indexRet;
-	}
-
-	descriptorSets[indexRet] = location;
-
-	return indexRet;
-}
-
-int ShaderResourceManager::GetConstantBufferCount(int descriptorSet)
-{
-	ShaderResourceSet* set = descriptorSets[descriptorSet];
+	ShaderResourceSet* set = &info->shaderResourceSetInfo;
 
 	return set->templateMetaData->constantsCount;
 }
 
-ShaderResourceHeader* ShaderResourceManager::GetConstantBuffer(int descriptorSet, int constantBuffer)
+ShaderResourceHeader* ShaderResourceManager::GetConstantBuffer(DescriptorSetInstanceIndex& descriptorSet, int constantBuffer)
 {
-	ShaderResourceSet* set = descriptorSets[descriptorSet];
+	ShaderResourceDescriptorSetInfo* info = descriptorSetHandles.Get(descriptorSet);
+
+	ShaderResourceSet* set = &info->shaderResourceSetInfo;
 
 	ShaderResourceConstantBuffer* ret = &set->constantBuffers[constantBuffer];
 

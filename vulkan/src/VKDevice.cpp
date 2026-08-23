@@ -420,18 +420,16 @@ void RecordingBufferObject::IndirectDispatchCommand(EntryHandle bufferHandle, si
 	vkCmdDispatchIndirect(cbBufferHandler.buffer, buffer, bufferOffset);
 }
 
-void RecordingBufferObject::BeginRenderPassCommand(EntryHandle renderTargetIndex, uint32_t imageIndex,
+void RecordingBufferObject::BeginRenderPassCommandForRenderTarget(EntryHandle renderTargetIndex, uint32_t imageIndex,
 	VkSubpassContents contents,
-	VkRect2D rect,
 	VkClearValue* clearVals, uint32_t clearValCount)
 {
-
 	VkRenderPassBeginInfo renderPassInfo{};
 	RenderTarget* ref = vkDeviceHandle->GetRenderTarget(renderTargetIndex);
 	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 	renderPassInfo.renderPass = vkDeviceHandle->GetRenderPass(ref->renderPassIndex);
 	renderPassInfo.framebuffer = vkDeviceHandle->GetFrameBuffer(ref->framebufferIndices[imageIndex]);
-	renderPassInfo.renderArea = rect;
+	renderPassInfo.renderArea = { { (int)ref->wOffset, (int)ref->hOffset }, { ref->width, ref->height } };
 
 	renderPassInfo.clearValueCount = clearValCount;
 	renderPassInfo.pClearValues = clearVals;

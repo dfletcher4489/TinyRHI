@@ -25,7 +25,7 @@ struct ShaderResourceUpdate
 	void* data;
 	ShaderResourceType type;
 	ShaderResourceManagerIndex descriptorManagerIndex;
-	int descriptorSet;
+	DescriptorSetInstanceIndex descriptorSet;
 	int bindingIndex;
 	int copyCount;
 	int dataSize;
@@ -627,7 +627,7 @@ struct ShaderResourceUpdatePool
 		regionLinks = (int*)(transferRegions + ddsRegionSize);
 	}
 
-	int Create(int descriptorManagerIndex, int descriptorid, int bindingindex, ShaderResourceType type, void* data, int cachedDataSize, int copies)
+	int Create(ShaderResourceManagerIndex descriptorManagerIndex, DescriptorSetInstanceIndex descriptorid, int bindingindex, ShaderResourceType type, void* data, int cachedDataSize, int copies)
 	{
 		ShaderResourceUpdate* region = nullptr;
 
@@ -654,7 +654,7 @@ struct ShaderResourceUpdatePool
 
 	void Insert(int index)
 	{
-		int newid = transferRegions[index].descriptorSet;
+		DescriptorSetInstanceIndex newid = transferRegions[index].descriptorSet;
 		int newbindingindex = transferRegions[index].bindingIndex;
 		int* test = &linkHead;
 		while ((*test >= 0) && (transferRegions[(*test)].descriptorSet <= newid))
@@ -668,7 +668,7 @@ struct ShaderResourceUpdatePool
 		linkCount++;
 	}
 
-	int Find(int descriptor, int bindingindex)
+	int Find(DescriptorSetInstanceIndex descriptor, int bindingindex)
 	{
 		int link = linkHead;
 		while ((link >= 0) && ((transferRegions[link].descriptorSet != descriptor) || (transferRegions[link].bindingIndex != bindingindex)))
@@ -866,6 +866,7 @@ struct DriverSpecificBarrierAllocator
 	PipelineStage dstStage;
 	int barrierCount;
 	SlabAllocator* allocator;
+	SlabAllocator* driverAllocator;
 };
 
 struct IntraPassBarrier
@@ -884,6 +885,35 @@ struct IntraPassBarrier
 #define BUFFER_BARRIER_ACCUMULATOR 0
 #define IMAGE_BARRIER_ACCUMULATOR 1
 #define TOTAL_BARRIER_ACCUMULATORS 2
+#define QUEUE_FAMILY_IGNORED ~0UL
+
+struct AgnosticImageMemoryBarrier
+{
+	BarrierAction srcAccess;
+	BarrierAction dstAccess;
+	uint32_t srcQueueFamily;
+	uint32_t dstQueueFamily;
+	ImageLayout oldLayout;
+	ImageLayout newLayout;
+	uint32_t startMip;
+	uint32_t mipCount;
+	uint32_t startLevel;
+	uint32_t levelCount;
+	ImageViewAspectMask aspectMask;
+	int pad;
+	EntryHandle textureIndex;
+};
+
+struct AgnosticBufferMemoryBarrier
+{
+	BarrierAction srcAccess;
+	BarrierAction dstAccess;
+	uint32_t srcQueueFamily;
+	uint32_t dstQueueFamily;
+	size_t offset;
+	size_t size;
+	EntryHandle bufferHandle;
+};
 
 struct BarrierAccumulator
 {

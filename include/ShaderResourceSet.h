@@ -196,10 +196,15 @@ struct ShaderResourceSetContext
 	bool contextFailed;
 };
 
+struct ShaderResourceDescriptorSetInfo
+{
+	EntryHandle descriptorSetHandles;
+	ShaderResourceSet shaderResourceSetInfo;
+};
+
 struct ShaderResourceManager
 {
-	PoolAllocator<EntryHandle> descriptorSetHandles{};
-	ShaderResourceSet** descriptorSets{};
+	TypedPoolAllocator<ShaderResourceDescriptorSetInfo, DescriptorSetInstanceIndex> descriptorSetHandles{};
 	EntryHandle deviceResourceHeap = EntryHandle();
 	RenderDeviceIndex deviceIndex;
 
@@ -207,18 +212,16 @@ struct ShaderResourceManager
 
 	void Create(Allocator* shaderResourceMemoryAllocator, uint32_t maxDescriptorSets, StringView descriptorPoolName, Logger* logger);
 
-	int AddShaderToSets(ShaderResourceSet* location);
+	int GetConstantBufferCount(DescriptorSetInstanceIndex& descriptorSet);
 
-	int GetConstantBufferCount(int descriptorSet);
-
-	ShaderResourceHeader* GetConstantBuffer(int descriptorSet, int constantBuffer);
+	ShaderResourceHeader* GetConstantBuffer(DescriptorSetInstanceIndex&, int constantBuffer);
 };
 
 struct ShaderResourceSetHandle
 {
 	ShaderResourceSetHandle() = default;
 
-	ShaderResourceSetHandle(ShaderResourceManagerIndex _descriptorManagerIndex, int _descriptorSetIndex)
+	ShaderResourceSetHandle(ShaderResourceManagerIndex _descriptorManagerIndex, DescriptorSetInstanceIndex _descriptorSetIndex)
 		:
 		descriptorManagerIndex(_descriptorManagerIndex), descriptorSetIndex(_descriptorSetIndex)
 	{
@@ -226,7 +229,7 @@ struct ShaderResourceSetHandle
 	}
 
 	ShaderResourceManagerIndex descriptorManagerIndex;
-	int descriptorSetIndex;
+	DescriptorSetInstanceIndex descriptorSetIndex;
 };
 
 struct ShaderResourceSetBuilder
@@ -234,7 +237,7 @@ struct ShaderResourceSetBuilder
 	ShaderResourceSet* set;
 	ShaderResourceSetHandle handle{};
 
-	ShaderResourceSetBuilder(ShaderResourceManagerIndex _descriptorManagerIndex, int _descriptorSetIndex, ShaderResourceSet* _setPtr);
+	ShaderResourceSetBuilder(ShaderResourceManagerIndex _descriptorManagerIndex, DescriptorSetInstanceIndex _descriptorSetIndex, ShaderResourceSet* _setPtr);
 
 	ShaderResourceSetHandle operator()();
 

@@ -2437,7 +2437,7 @@ void RenderInstance::UploadDeviceLocalTransfers(CommandRecorder* recorder)
 
 		EntryHandle index = bufferHandles[alloc->memIndex].bufferHandle;
 
-		InsertBufferBarrier(region.allocationIndex, StageBits::TRANSFER_BARRIER, BarrierActionBits::TRANSFER_WRITE_DATA_RESOURCE, recorder->accumulator);
+		InsertDrawCommandBufferBarrier(region.allocationIndex, StageBits::TRANSFER_BARRIER, BarrierActionBits::TRANSFER_WRITE_DATA_RESOURCE, recorder->accumulator);
 	
 		if (index != previousBuffer)
 		{
@@ -3369,11 +3369,7 @@ SwapChainIndex RenderInstance::CreateSwapChainHandle(RenderDeviceIndex deviceSel
 
 	if (!renderFinished)
 	{
-		for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-			DestroyDriverSemaphore(rhiDevice, renderWait[i]);
-
 		DestroySwapChain(swapChainInternalIndex);
-		
 		return {};
 	}
 
@@ -4254,7 +4250,7 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 						{
 							if (BufferMemoryIndex() != indexMemIndex)
 							{
-								if (AllocationInstanceIndex() == handle->indirectCountBufferHandle)
+								if (AllocationInstanceIndex() != handle->indirectCountBufferHandle)
 								{
 									DrawIndexedIndirectCountCmd(&recorder,
 										bufferHandles[indirectBufferIndex].bufferHandle, 
@@ -4658,7 +4654,7 @@ int RenderInstance::ReadData(AllocationInstanceIndex& handle, void* dest, int si
 
 	type = bufferHandles[allocation->memIndex].type;
 
-	if (!((type & MemoryTypeBits::HOST_MEMORY_TYPE) || (type & MemoryTypeBits::HOST_MEMORY_COHERENT_TYPE)))
+	if (!(type & (MemoryTypeBits::HOST_MEMORY_TYPE | MemoryTypeBits::HOST_MEMORY_COHERENT_TYPE)))
 	{
 		internalRendererLogger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("ReadData: Non readable memory from CPU"));
 		return -1;
@@ -4986,7 +4982,7 @@ void RenderInstance::SwapUpdateCommands()
 
 			MemoryType bufType = bufferHandles[alloc->memIndex].type;
 
-			if ((bufType & MemoryTypeBits::HOST_MEMORY_TYPE) || (bufType & MemoryTypeBits::HOST_MEMORY_COHERENT_TYPE))
+			if (bufType & (MemoryTypeBits::HOST_MEMORY_TYPE | MemoryTypeBits::HOST_MEMORY_COHERENT_TYPE))
 			{
 				driverHostMemoryUpdater.Create(rducm->data, rducm->size, rducm->allocationIndex, rducm->allocOffset, rducm->copiesWithin);
 			}
@@ -5394,13 +5390,19 @@ void RenderInstance::GeneratePipelineDescriptorBarriers(CommandRecorder* recorde
 void RenderInstance::GenerateDrawBindingsBarriers(CommandRecorder* recorder, PipelineHandle* handle)
 {
 	if (AllocationInstanceIndex() != handle->vertexBufferHandle)
-		InsertBufferBarrier(handle->vertexBufferHandle, StageBits::VERTEX_INPUT_BARRIER, BarrierActionBits::READ_VERTEX_INPUT, recorder->accumulator);
+	{
+		InsertDrawCommandBufferBarrier(handle->vertexBufferHandle, StageBits::VERTEX_INPUT_BARRIER, BarrierActionBits::READ_VERTEX_INPUT, recorder->accumulator);
+	}
 
 	if (AllocationInstanceIndex() != handle->indirectBufferHandle)
-		InsertBufferBarrier(handle->indirectBufferHandle, StageBits::INDIRECT_DRAW_BARRIER, BarrierActionBits::READ_INDIRECT_COMMAND, recorder->accumulator);
+	{
+		InsertDrawCommandBufferBarrier(handle->indirectBufferHandle, StageBits::INDIRECT_DRAW_BARRIER, BarrierActionBits::READ_INDIRECT_COMMAND, recorder->accumulator);
+	}
 
 	if (AllocationInstanceIndex() != handle->indirectCountBufferHandle)
-		InsertBufferBarrier(handle->indirectCountBufferHandle, StageBits::INDIRECT_DRAW_BARRIER, BarrierActionBits::READ_INDIRECT_COMMAND, recorder->accumulator);
+	{
+		InsertDrawCommandBufferBarrier(handle->indirectCountBufferHandle, StageBits::INDIRECT_DRAW_BARRIER, BarrierActionBits::READ_INDIRECT_COMMAND, recorder->accumulator);
+	}
 }
 
 void RenderInstance::GenerateComputeDispatchBindingsBarriers(CommandRecorder* recorder, PipelineHandle* handle, PipelineHandleIndex& pipelineIndex)
@@ -5434,8 +5436,8 @@ void RenderInstance::GenerateComputeDispatchBindingsBarriers(CommandRecorder* re
 
 		barrier->srcAccess = status->currAction[bufferLastAccessFrame];
 		barrier->dstAccess = newAction;
-		barrier->srcQueueFamily = VK_QUEUE_FAMILY_IGNORED;
-		barrier->dstQueueFamily = VK_QUEUE_FAMILY_IGNORED;
+		barrier->srcQueueFamily = QUEUE_FAMILY_IGNORED;
+		barrier->dstQueueFamily = QUEUE_FAMILY_IGNORED;
 		barrier->bufferHandle = bufferHandles[alloc->memIndex].bufferHandle;
 		barrier->offset = offset;
 		barrier->size = size;
@@ -5477,8 +5479,8 @@ void RenderInstance::TransitionImageLayout(EntryHandle imageIndex, int mipStart,
 	barrier.dstAccess = destBarrierAction;
 	barrier.newLayout = requestedLayout;
 	barrier.textureIndex = imageIndex;
-	barrier.srcQueueFamily = VK_QUEUE_FAMILY_IGNORED;
-	barrier.dstQueueFamily = VK_QUEUE_FAMILY_IGNORED;
+	barrier.srcQueueFamily = QUEUE_FAMILY_IGNORED;
+	barrier.dstQueueFamily = QUEUE_FAMILY_IGNORED;
 
 	struct MipArrayLevel
 	{
@@ -5509,12 +5511,26 @@ void RenderInstance::TransitionImageLayout(EntryHandle imageIndex, int mipStart,
 
 			BarrierAction currAction = status->currAction[currentMipArrayIndex];
 			PipelineStage currStage = status->currStage[currentMipArrayIndex];
-			ImageLayout currLayout = status->currentLayout[currentMipArrayIndex];;
+			ImageLayout currLayout = status->currentLayout[currentMipArrayIndex];
 
-			if ((currLayout != requestedLayout)
-				|| (currStage != destBarrierStage)
-				|| (currAction != destBarrierAction)
-				)
+			bool transition = false;
+
+			if (currLayout != requestedLayout)
+			{
+				transition = true;
+			}
+
+			if (currStage != destBarrierStage)
+			{
+				transition = true;
+			}
+			
+			if (currAction != destBarrierAction)
+			{
+				transition = true;
+			}
+			
+			if (transition)
 			{
 				if (!curr || currLayout != curr->layout)
 				{
@@ -5614,7 +5630,7 @@ void RenderInstance::TransitionImageLayout(EntryHandle imageIndex, int mipStart,
 
 			AgnosticImageMemoryBarrier* currentBarrier = nullptr;
 			
-			if (destBarrierStage & curr->stages)
+			if (destBarrierStage & curr->stages && destBarrierStage == StageBits::COMPUTE_BARRIER)
 			{
 				currentBarrier = (AgnosticImageMemoryBarrier*)accumulator->intraPassBarrierAllocator.Allocate(sizeof(AgnosticImageMemoryBarrier));
 				
@@ -5655,7 +5671,19 @@ IntraPassBarrier* RenderInstance::GetIntraPassBarrier(BarrierAccumulator* accum,
 
 	if (intraPassBarrier->pipelineInst != pipelineIndex || intraPassBarrier->barrierType != type)
 	{
-		intraPassBarrier = &accum->intraPassBarriers[accum->intraPassCount++];
+		int intraIndex = accum->intraPassCount;
+
+		if (intraIndex == MAX_INTRA_PASS_BARRIERS)
+		{
+			internalRendererLogger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("GetIntraPassBarrier: reached limit of intra pass barrier count"));
+			intraIndex = MAX_INTRA_PASS_BARRIERS - 1;
+		}
+		else
+		{
+			accum->intraPassCount++;
+		}
+
+		intraPassBarrier = &accum->intraPassBarriers[intraIndex];
 		intraPassBarrier->pipelineInst = pipelineIndex;
 		intraPassBarrier->barrierType = type;
 		intraPassBarrier->barrierCount = 0;
@@ -5683,25 +5711,28 @@ void RenderInstance::InsertBufferBarrier(AllocationInstanceIndex& allocationInde
 
 	ResourceStatus* status = resourceStatuses.Get(alloc->resourceStatus);
 
-	if 
-	(
-		(status->currAction[bufferLastAccessFrame] & (BarrierActionBits::READ_SHADER_RESOURCE | BarrierActionBits::READ_UNIFORM_BUFFER))
-		&& !(status->currAction[bufferLastAccessFrame] & BarrierActionBits::WRITE_SHADER_RESOURCE)
-		&& (header->action == ShaderResourceAction::SHADERREAD)
-		&& (status->currStage[bufferLastAccessFrame] & destBarrierStage)
-	)
+	if (status->currAction[bufferLastAccessFrame] & (BarrierActionBits::READ_SHADER_RESOURCE | BarrierActionBits::READ_UNIFORM_BUFFER))
 	{
-		return;
+		if (!(status->currAction[bufferLastAccessFrame] & BarrierActionBits::WRITE_SHADER_RESOURCE))
+		{
+			if (header->action == ShaderResourceAction::SHADERREAD)
+			{
+				if (status->currStage[bufferLastAccessFrame] & destBarrierStage)
+				{
+					return;
+				}
+			}
+		}
 	}
 
-	if (destBarrierStage & status->currStage[bufferLastAccessFrame])
+	if (destBarrierStage & status->currStage[bufferLastAccessFrame] && destBarrierStage == StageBits::COMPUTE_BARRIER)
 	{
 		barrier = (AgnosticBufferMemoryBarrier*)accumulator->intraPassBarrierAllocator.Allocate(sizeof(AgnosticBufferMemoryBarrier));
 
 		IntraPassBarrier* intraBarrier = GetIntraPassBarrier(accumulator, BarrierType::BUFFER_BARRIER, pipelineIndex, barrier);
 
-		intraBarrier->destStage |= destBarrierStage;
 		intraBarrier->srcStage |= status->currStage[bufferLastAccessFrame];
+		intraBarrier->destStage |= destBarrierStage;
 		intraBarrier->barrierCount++;
 	}
 	else
@@ -5729,8 +5760,8 @@ void RenderInstance::InsertBufferBarrier(AllocationInstanceIndex& allocationInde
 
 	barrier->srcAccess = status->currAction[bufferLastAccessFrame];
 	barrier->dstAccess = newAction;
-	barrier->srcQueueFamily = VK_QUEUE_FAMILY_IGNORED;
-	barrier->dstQueueFamily = VK_QUEUE_FAMILY_IGNORED;
+	barrier->srcQueueFamily = QUEUE_FAMILY_IGNORED;
+	barrier->dstQueueFamily = QUEUE_FAMILY_IGNORED;
 	barrier->bufferHandle = bufferHandles[alloc->memIndex].bufferHandle;
 	barrier->offset = offset;
 	barrier->size = size;
@@ -5739,7 +5770,7 @@ void RenderInstance::InsertBufferBarrier(AllocationInstanceIndex& allocationInde
 	status->currAction[bufferLastAccessFrame] = newAction;
 }
 
-void RenderInstance::InsertBufferBarrier(AllocationInstanceIndex& allocationIndex, PipelineStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator)
+void RenderInstance::InsertDrawCommandBufferBarrier(AllocationInstanceIndex& allocationIndex, PipelineStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator)
 {
 	RenderAllocation* bufferAlloc = allocations.Get(allocationIndex);
 
@@ -5758,8 +5789,8 @@ void RenderInstance::InsertBufferBarrier(AllocationInstanceIndex& allocationInde
 
 		barrier->srcAccess = status->currAction[resourceIndexToUpdate];
 		barrier->dstAccess = destBarrierAction;
-		barrier->srcQueueFamily = VK_QUEUE_FAMILY_IGNORED;
-		barrier->dstQueueFamily = VK_QUEUE_FAMILY_IGNORED;
+		barrier->srcQueueFamily = QUEUE_FAMILY_IGNORED;
+		barrier->dstQueueFamily = QUEUE_FAMILY_IGNORED;
 		barrier->bufferHandle = bufferHandles[bufferAlloc->memIndex].bufferHandle;
 		barrier->offset = bufferBaseOffset;
 		barrier->size = bufferSize;

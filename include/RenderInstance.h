@@ -10,6 +10,10 @@
 
 namespace API 
 {
+	VkAttachmentLoadOp ConvertAttachLoadOpToVulkanLoadOp(AttachmentLoadUsage loadOp);
+
+	VkAttachmentStoreOp ConvertAttachStoreOpToVulkanStoreOp(AttachmentStoreUsage storeOp);
+
 	VkFormat ConvertComponentFormatTypeToVulkanFormat(ComponentFormatType type);
 
 	VkCompareOp ConvertCompareOpToVulkanCompareOp(CompareOp testApp);
@@ -57,6 +61,8 @@ namespace API
 	VkSamplerAddressMode ConvertSamplerAddressModeToVulkanSamplerAddressMode(SamplerAddressMode addressMode);
 
 	VkSamplerMipmapMode ConvertSamplerMipmapModeToVulkanSamplerMipmapMode(SamplerMipmapMode mipmapMode);
+
+	VkStencilOpState ConvertFaceStencilDataToVulkan(const FaceStencilData& face);
 }
 
 struct RenderInstanceCreateInfo
@@ -120,6 +126,58 @@ struct CommandRecorder
 	uint32_t errorCount;
 };
 
+struct DriverImageCreationInfo
+{
+	uint32_t flags;
+	uint32_t imageWidth;
+	uint32_t imageHeight;
+	uint32_t mipCount;
+	uint32_t layerCount;
+	ImageUsageFlags usageFlags;
+	ImageLayout initialLayout;
+	uint32_t sampleCount;
+	ImageFormat format;
+	ImageType imageType;
+	size_t imageAddress;
+	size_t imageSize;
+	size_t imageAlignment;
+	EntryHandle imagePoolHandle;
+};
+
+struct DriverImageViewCreationInfo
+{
+	EntryHandle textureIndex;
+	uint32_t firstMip;
+	uint32_t mipCount;
+	uint32_t firstLayer;
+	uint32_t layerCount;
+	ImageFormat format;
+	ImageType imageType;
+	ImageViewAspectMask aspectMask;
+};
+
+struct DriverImageMemoryPoolCreationInfo
+{
+	uint32_t maxWidth;
+	uint32_t maxHeight;
+	uint32_t maxArrayLayers;
+	ImageFormat format;
+	ImageUsageFlags usageFlags;
+	MemoryType memoryType;
+	size_t poolSize;
+};
+
+struct DriverSamplerCreationInfo
+{
+	uint32_t baseLod;
+	uint32_t maxLod;
+	SamplerFilterMode minFilter;
+	SamplerFilterMode magFilter;
+	SamplerAddressMode addressMode;
+	SamplerMipmapMode mipmapMode;
+	CompareOp compareOp;
+};
+
 struct RenderInstance
 {
 	RenderInstance() = default;
@@ -143,7 +201,7 @@ struct RenderInstance
 
 	int CreateRenderPass(AttachmentGraphInstance* graph);
 
-	EntryHandle CreateVulkanComputePipelineTemplate(ShaderGraph* graph);
+	EntryHandle CreateDriverComputePipeline(ShaderGraph* graph);
 
 	uint32_t BeginFrame(SwapChainIndex swapChainIndex);
 
@@ -215,7 +273,7 @@ struct RenderInstance
 
 	int ReadData(AllocationInstanceIndex& handle, void* dest, int size, int offset);
 
-	int CreatePipelineFromGraphAndSpec(RenderDeviceIndex deviceSelection, GenericPipelineStateInfo* stateInfo, ShaderGraph* graph, EntryHandle* outHandles, uint32_t outHandlePointer, AttachmentGraphInstance* graphInstance, uint32_t graphRenderPassIndex);
+	int CreateDriverGraphicsPipeline(RenderDeviceIndex deviceSelection, GenericPipelineStateInfo* stateInfo, ShaderGraph* graph, EntryHandle* outHandles, uint32_t outHandlePointer, AttachmentGraphInstance* graphInstance, uint32_t graphRenderPassIndex);
 
 	int UpdateDriverMemory(void* data, AllocationInstanceIndex& allocationIndex, int size, int allocOffset, TransferType transferType);
 
@@ -577,6 +635,29 @@ int UploadImageDataToDeviceMemory(
 );
 
 void GetDriverCommandBufferObject(CommandRecorder* recorder, EntryHandle commandBufferIndex);
+
+int WaitOnSwapChain(RHIDevice* device, EntryHandle swapChainIndex);
+
+EntryHandle GetSwapChainViewHandles(RHIDevice* device, EntryHandle swapChainIndex, uint32_t imageIndex);
+
+uint32_t GetSwapChainImageCount(RHIDevice* device, EntryHandle swapChainIndex);
+
+int WaitOnDevice(RHIDevice* device, uint64_t timeout);
+
+int GetImageMemorySizeAndAlignment(RHIDevice* device, DriverImageCreationInfo* info);
+EntryHandle CreateDriverImageHandle(RHIDevice* device, DriverImageCreationInfo* info);
+
+EntryHandle CreateDriverImageViewHandle(RHIDevice* device, DriverImageViewCreationInfo* info);
+
+EntryHandle CreateDriverBufferView(RHIDevice* device, EntryHandle bufferHandle, ComponentFormatType format, size_t viewSize, size_t offset, uint32_t copiesOfRangeSize);
+
+EntryHandle CreateDriverImageMemoryPool(RHIDevice* device, DriverImageMemoryPoolCreationInfo* info);
+
+EntryHandle CreateDriverBufferMemoryPool(RHIDevice* device, size_t bufferSize, MemoryType memoryType);
+
+EntryHandle CreateDriverSampler(RHIDevice* device, DriverSamplerCreationInfo* info);
+
+EntryHandle CreateShaderCode(RHIDevice* device, char* shaderData, size_t length, ShaderStageType type);
 
 size_t GetDriverImageMemoryBarrierSize();
 size_t GetDriverBufferMemoryBarrierSize();

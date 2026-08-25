@@ -722,6 +722,25 @@ EntryHandle VKInstance::CreateGPUFromIndex(uint32_t gpuIndex)
 	return allocIndexInStorage;
 }
 
+int VKInstance::IsSupportedImageFormatForFeature(EntryHandle gpuIndex, VkFormat format, VkImageTiling tiling, VkFormatFeatureFlags formatFeature)
+{
+	VkPhysicalDevice gpuDevice = GetPhysicalDevice(gpuIndex);
+
+	format = VK::Utils::findSupportedFormat(gpuDevice,
+		&format,
+		1,
+		tiling,
+		formatFeature
+	);
+
+	if (format != VK_FORMAT_UNDEFINED)
+	{
+		return 1;
+	}
+
+	return 0;
+}
+
 int VKInstance::GetNumberOfGPUDevices()
 {
 	VkResult vkResult = VK_SUCCESS;

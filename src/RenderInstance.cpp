@@ -7,9 +7,9 @@
 
 #include "ShaderResourceSet.h"
 
-#include "VKInstance.h"
 #include "VKDevice.h"
 #include "VKDescriptorSetBuilder.h"
+#include "VKInstance.h"
 
 namespace GlobalRenderer 
 {
@@ -711,7 +711,43 @@ namespace API
 
 		return mode;
 	}
+
+	VkBufferUsageFlags ConvertBufferUsageToDriverBufferUsage(BufferUsage usage)
+	{
+		VkBufferUsageFlags result = 0;
+
+		if (usage & BUFFER_USAGE_TRANSFER_SRC_BIT)
+			result |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+
+		if (usage & BUFFER_USAGE_TRANSFER_DST_BIT)
+			result |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+
+		if (usage & BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT)
+			result |= VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+
+		if (usage & BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT)
+			result |= VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT;
+
+		if (usage & BUFFER_USAGE_UNIFORM_BUFFER_BIT)
+			result |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+
+		if (usage & BUFFER_USAGE_STORAGE_BUFFER_BIT)
+			result |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+
+		if (usage & BUFFER_USAGE_INDEX_BUFFER_BIT)
+			result |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+
+		if (usage & BUFFER_USAGE_VERTEX_BUFFER_BIT)
+			result |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+
+		if (usage & BUFFER_USAGE_INDIRECT_BUFFER_BIT)
+			result |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+
+		return result;
+	}
 }
+
+
 
 #define RENDER_MIN(a, b) ((a) > (b) ? (b) : (a))
 #define RENDER_MAX(a, b) ((a) < (b) ? (b) : (a))
@@ -1107,7 +1143,14 @@ int RenderInstance::RecreateSwapChain(SwapChainIndex& swapChainIndex, uint32_t w
 
 		DestroySwapChainAttachments();
 
-		CreateDriverSwapChainData(rhiDevice, data->swapChainIdx, width, height, true);
+		int createRet = CreateDriverSwapChainData(rhiDevice, data->swapChainIdx, width, height, true);
+
+		if (createRet)
+		{
+			GetLastDeviceDriverError(rhiDevice, STRING_VIEW_FROM_LITERAL("RecreateSwapChain: Failed"));
+
+			return ret;
+		}
 
 		for (uint32_t i = 0; i < data->imageCount; i++)
 		{
@@ -1850,6 +1893,7 @@ RenderShaderGraphIndex RenderInstance::CreateShaderGraphInstance(RenderDeviceInd
 
 GeneratedPipelineInstanceIndex RenderInstance::CreateGraphicRenderStateObject(RenderShaderGraphIndex& shaderGraphIndex, GenericRenderPipelineInfoIndex& pipelineDescriptionIndex, AttachmentGraphInstanceIndex* frameGraphAttachments, int* perFrameRenderPassSelection, int frameGraphCount)
 {
+
 	GeneratedPipelineInstanceIndex pipelineInstIndex{};
 
 	ShaderGraph* graph = shaderGraphs.shaderGraphPtrs.Get(shaderGraphIndex);
@@ -1858,6 +1902,8 @@ GeneratedPipelineInstanceIndex RenderInstance::CreateGraphicRenderStateObject(Re
 	{
 		return pipelineInstIndex;
 	}
+
+	RHIDevice* rhiDevice = GetDeviceHandle(graph->deviceIndex);
 
 	ShaderMap* map = &graph->shaderMaps[0];
 
@@ -1888,28 +1934,72 @@ GeneratedPipelineInstanceIndex RenderInstance::CreateGraphicRenderStateObject(Re
 				instData->frameGraphRenderPasses[i] = perFrameRenderPassSelection[i];
 			}
 
+			int shaderCount = graph->shaderMapCount;
+			int layoutCount = graph->resourceSetCount;
+			uint32_t templateCount = graph->resourceCount;
+			uint32_t pushRangeCount = 0;
+
+			EntryHandle* layoutHandles = (EntryHandle*)cacheAllocator->Allocate(sizeof(EntryHandle) * layoutCount);
+			EntryHandle* shaderHandles = (EntryHandle*)cacheAllocator->Allocate(sizeof(EntryHandle) * shaderCount);
+
+			for (int i = 0; i < shaderCount; i++)
+			{
+				ShaderMap* map = &graph->shaderMaps[i];
+				shaderHandles[i] = shaderGraphs.shaderDetails.Get(map->shaderReference)->shaderHandle;
+			}
+
+			for (int i = 0; i < layoutCount; i++)
+			{
+				ShaderResourceSetTemplate* resourceSet = &graph->shaderResourceSetTemplates[i];
+				layoutHandles[i] = shaderResourceTemplates[resourceSet->vulkanDescLayout].resourceTemplateInstanceHandle;
+				pushRangeCount += resourceSet->constantStageCount;
+			}
+
+			EntryHandle renderPassHandles[MAX_SAMPLE_COUNT_LEVEL];
+
+			GenericPipelineStateInfo* info = pipelineInfos.Get(pipelineDescriptionIndex);
+
+			GraphicsPipelineCreationInfo argInfo{};
+
+			argInfo.layoutCount = layoutCount;
+			argInfo.shaderCount = shaderCount;
+			argInfo.templateCount = templateCount;
+			argInfo.constantRangeCount = pushRangeCount;
+			argInfo.layoutHandles = layoutHandles;
+			argInfo.shaderHandles = shaderHandles;
+			argInfo.templates = graph->shaderResources;
+			argInfo.stateInfo = info;
+			argInfo.renderPasses = renderPassHandles;
+			argInfo.tempAllocator = cacheAllocator;
+
 			EntryHandle* pipelineHandles = &desc->pipelineIndices[0];
 
 			instData->pipelineCount = 0;
 
 			desc->instanceData.deviceIndex = graph->deviceIndex;
 
-			GenericPipelineStateInfo* info = pipelineInfos.Get(pipelineDescriptionIndex);
-
 			for (int i = 0; i < frameGraphCount; i++)
 			{
 				instData->frameGraphPipelineIndices[i] = pipelineVariationsCounter;
 
+				AttachmentGraphInstance* inst = attachmentGraphsInstances.Get(frameGraphAttachments[i]);
+
+				argInfo.renderPassMaxSampleCount = inst->passes[perFrameRenderPassSelection[i]].maxSampleCount;
+
+				for (int j = 0; j < argInfo.renderPassMaxSampleCount; j++)
+				{
+					argInfo.renderPasses[j] = renderPasses[inst->passes[perFrameRenderPassSelection[i]].baseRenderPass[j]].renderPassHandle;
+				}
+
 				int count = CreateDriverGraphicsPipeline(
-					graph->deviceIndex,
-					info,
-					graph,
-					pipelineHandles, pipelineVariationsCounter,
-					attachmentGraphsInstances.Get(frameGraphAttachments[i]), perFrameRenderPassSelection[i]
+					rhiDevice,
+					&argInfo,
+					pipelineHandles, pipelineVariationsCounter
 				);
 
 				if (count <= 0)
 				{
+					GetLastDeviceDriverError(rhiDevice, STRING_VIEW_FROM_LITERAL("CreateGraphicsPipeline : CreatedGraphicsPipeline failed"));
 					success = -1;
 					break;
 				}
@@ -1946,6 +2036,8 @@ GeneratedPipelineInstanceIndex RenderInstance::CreateComputePipelineStateObject(
 		return pipelineInstIndex;
 	}
 	
+	RHIDevice* device = GetDeviceHandle(graph->deviceIndex);
+
 	ShaderMap* map = &graph->shaderMaps[0];
 	
 	if (map->type == COMPUTESHADERSTAGE)
@@ -1958,7 +2050,47 @@ GeneratedPipelineInstanceIndex RenderInstance::CreateComputePipelineStateObject(
 
 			CleanInitializeGraphPipeline(desc);
 
-			EntryHandle pipelineID = CreateDriverComputePipeline(graph);
+			int pushRangeSize = 0;
+
+			for (int a = 0; a < graph->resourceSetCount; a++)
+			{
+				ShaderResourceSetTemplate* setLayout = &graph->shaderResourceSetTemplates[a];
+
+				pushRangeSize += setLayout->constantStageCount;
+			}
+
+			uint32_t* pushConstantSize = (uint32_t*)cacheAllocator->CAllocate(sizeof(uint32_t) * pushRangeSize);
+
+			for (int g = 0; g < graph->resourceCount; g++)
+			{
+				ShaderResourceTemplate* resource = &graph->shaderResources[g];
+
+				if (resource->type == ShaderResourceType::CONSTANT_BUFFER)
+				{
+					int pushRangeIndex = resource->rangeIndex;
+
+					pushConstantSize[pushRangeIndex] += resource->size;
+				}
+			}
+
+			EntryHandle* layoutHandles = (EntryHandle*)cacheAllocator->Allocate(sizeof(EntryHandle) * (graph->resourceSetCount));
+
+			for (int i = 0; i < graph->resourceSetCount; i++)
+			{
+				ShaderResourceSetTemplate* resourceSet = &graph->shaderResourceSetTemplates[i];
+
+				layoutHandles[i] = shaderResourceTemplates[resourceSet->vulkanDescLayout].resourceTemplateInstanceHandle;
+			}
+
+			ComputePipelineCreationInfo argInfo{};
+
+			argInfo.layouts = layoutHandles;
+			argInfo.layoutsCount = graph->resourceSetCount;
+			argInfo.pushRangeCount = pushRangeSize;
+			argInfo.pushRangeSize = pushConstantSize;
+			argInfo.shaderHandle = shaderGraphs.shaderDetails.Get(map->shaderReference)->shaderHandle;
+
+			EntryHandle pipelineID = CreateDriverComputePipeline(device, &argInfo);
 
 			if (EntryHandle() == pipelineID)
 			{
@@ -2005,7 +2137,80 @@ GenericRenderPipelineInfoIndex RenderInstance::CreateGenericRenderPipelineDescri
 	return infoIndex;
 }
 
+int RenderInstance::CreateShaderResourceMap(RHIDevice* device, ShaderGraph* graph)
+{
+	int setCount = graph->resourceSetCount;
 
+	int resourceCount = graph->resourceCount;
+
+	ShaderResourceTemplate* resources = graph->shaderResources;
+
+	int descriptorLayoutEnough = shaderResourceTemplates.DoIHaveNFreeElements(setCount);
+
+	if (!descriptorLayoutEnough)
+	{
+		return -1;
+	}
+
+	int success = 0;
+
+	for (int i = 0; i < setCount; i++)
+	{
+		ShaderResourceSetTemplateCreator creator{};
+
+		creator.bindingCount = graph->shaderResourceSetTemplates[i].bindingCount;
+
+		for (int j = 0; j < resourceCount; j++)
+		{
+			ShaderResourceTemplate* resource = &resources[j];
+
+			if (resource->set != i) continue;
+
+			if (resource->type == ShaderResourceType::CONSTANT_BUFFER) continue;
+
+			int bindingIndex = resource->binding;
+
+			int arrayCount = resource->arrayCount;
+
+			ShaderResourceAction action = resource->action;
+
+			ShaderResourceType resourceType = resource->type;
+
+			ShaderStageType stageType = resource->stages;
+
+			creator.info[bindingIndex].action = action;
+			creator.info[bindingIndex].arrayCount = arrayCount;
+			creator.info[bindingIndex].stageType = stageType;
+			creator.info[bindingIndex].action = action;
+			creator.info[bindingIndex].resourceType = resourceType;
+		}
+
+		ShaderResourceSetTemplate* set = &graph->shaderResourceSetTemplates[i];
+
+		ShaderResourceTemplateInstanceIndex currDescriptorLayout = shaderResourceTemplates.Allocate();
+
+		RenderShaderResourceTemplateInfo* info = shaderResourceTemplates.Get(currDescriptorLayout);
+
+		EntryHandle descHandle = CreateDriverShaderResourceLayout(device, &creator);
+
+		if (EntryHandle() == descHandle)
+		{
+			GetLastDeviceDriverError(device, STRING_VIEW_FROM_LITERAL("CreateShaderResourceMap: layout creation failed"));
+
+			success = -1;
+
+			break;
+		}
+
+		info->resourceTemplateInstanceHandle = descHandle;
+
+		info->deviceIndex = graph->deviceIndex;
+
+		set->vulkanDescLayout = currDescriptorLayout;
+	}
+
+	return success;
+}
 
 void RenderInstance::UploadHostTransfers(CommandRecorder* recorder)
 {
@@ -3278,18 +3483,14 @@ int RenderInstance::CreatePerFrameStagingBuffers(RenderDeviceIndex deviceSelecti
 {
 	RHIDevice* rhiDevice = GetDeviceHandle(deviceSelection);
 
-	VKDevice* dev = rhiDevice->device;
-
 	for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 	{
-		EntryHandle handle = rhiDevice->container.stagingBuffers[i] = dev->CreateBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			API::ConvertMemoryTypeToVkMemoryPropertyFlags(MemoryTypeBits::HOST_MEMORY_COHERENT_TYPE)
-		);
-
+		EntryHandle handle = rhiDevice->container.stagingBuffers[i] = CreateDriverBufferMemoryPool(rhiDevice, bufferSize, BUFFER_USAGE_TRANSFER_SRC_BIT, MemoryTypeBits::HOST_MEMORY_COHERENT_TYPE);
+		
 		if (EntryHandle() == handle)
 		{
 			for (int j = 0; j < i; j++)
-				dev->DestroyBuffer(rhiDevice->container.stagingBuffers[j]);
+				DestroyDriverBufferHandle(rhiDevice, rhiDevice->container.stagingBuffers[j]);
 
 			GetLastDeviceDriverError(rhiDevice, STRING_VIEW_FROM_LITERAL("CreatePerFrameStagingBuffers failed:"));
 			return -1;
@@ -3308,8 +3509,6 @@ SwapChainIndex RenderInstance::CreateSwapChainHandle(RenderDeviceIndex deviceSel
 
 	RHIDevice* rhiDevice = GetDeviceHandle(deviceSelection);
 
-	VKDevice* dev = rhiDevice->device;
-
 	RenderWindowSpecificData* winData = windowsSurfaces.Get(surfaceIndex);
 
 	if (!winData)
@@ -3324,7 +3523,7 @@ SwapChainIndex RenderInstance::CreateSwapChainHandle(RenderDeviceIndex deviceSel
 		return {};
 	}
 
-	EntryHandle swapChainIndex = dev->CreateSwapChain(MAX_FRAMES_IN_FLIGHT, MAX_FRAMES_IN_FLIGHT, API::ConvertImageFormatToVulkanFormat(mainBackBufferColorFormat), winData->vkRenderSurface);
+	EntryHandle swapChainIndex = CreateDriverSwapChain(rhiDevice, MAX_FRAMES_IN_FLIGHT, MAX_FRAMES_IN_FLIGHT, mainBackBufferColorFormat, winData->vkRenderSurface);
 
 	if (EntryHandle() == swapChainIndex)
 	{
@@ -3337,6 +3536,7 @@ SwapChainIndex RenderInstance::CreateSwapChainHandle(RenderDeviceIndex deviceSel
 
 	if (createRet)
 	{
+		GetLastDeviceDriverError(rhiDevice, STRING_VIEW_FROM_LITERAL("CreateDriverSwapChainData: Failed"));
 		DestroyDriverSwapChain(rhiDevice, swapChainIndex);
 		swapChains.Free(swapChainInternalIndex);
 		return {};
@@ -3352,7 +3552,7 @@ SwapChainIndex RenderInstance::CreateSwapChainHandle(RenderDeviceIndex deviceSel
 
 	uint32_t imageCount = swcData->imageCount = GetSwapChainImageCount(rhiDevice, swapChainIndex);
 
-	EntryHandle* renderWait = dev->CreateSemaphores(MAX_FRAMES_IN_FLIGHT);
+	EntryHandle* renderWait = CreateDriverSemaphores(rhiDevice, MAX_FRAMES_IN_FLIGHT);
 
 	if (!renderWait)
 	{
@@ -3365,7 +3565,7 @@ SwapChainIndex RenderInstance::CreateSwapChainHandle(RenderDeviceIndex deviceSel
 		swcData->rendererWaitSemaphores[i] = renderWait[i];
 	}
 
-	EntryHandle* renderFinished = dev->CreateSemaphores(imageCount);
+	EntryHandle* renderFinished = CreateDriverSemaphores(rhiDevice, imageCount);
 
 	if (!renderFinished)
 	{
@@ -3466,22 +3666,9 @@ ImageFormat RenderInstance::FindSupportedDepthFormat(RenderDeviceIndex deviceSel
 {
 	RHIDevice* rhiDevice = GetDeviceHandle(deviceSelection);
 
-	VKDevice* dev = rhiDevice->device;
-
-	VkFormat format;
-
 	for (uint32_t i = 0; i < requestSize; i++)
 	{
-		format = API::ConvertImageFormatToVulkanFormat(requestedFormats[i]);
-
-		format = VK::Utils::findSupportedFormat(dev->gpu,
-			&format,
-			1,
-			VK_IMAGE_TILING_OPTIMAL,
-			VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
-		);
-
-		if (format != VK_FORMAT_UNDEFINED)
+		if (FindDriverSupportedDepthFormat(vkInstance, physicalDeviceIndices[rhiDevice->container.gpuIndex.index].physicalDeviceIndex, requestedFormats[i]))
 		{
 			return requestedFormats[i];
 		}
@@ -4463,8 +4650,6 @@ void RenderInstance::EndFrame(RenderDeviceIndex deviceSelection, GPUCommandStrea
 
 	RHIDevice* rhiDevice = GetDeviceHandle(deviceSelection);
 
-	VKDevice* dev = rhiDevice->device;
-
 	int commandCountIter = 0;
 
 	GPUCommandStreamAllocator* stream = gpuCommandStreams.Get(commandStreamIndex);
@@ -4498,7 +4683,8 @@ void RenderInstance::EndFrame(RenderDeviceIndex deviceSelection, GPUCommandStrea
 
 			if (previousFrame < MAX_FRAMES_IN_FLIGHT && (rhiDevice->container.queryCounts[previousFrame] >= queryOffset + queryCount))
 			{
-				dev->ReadbackResultsFromQueries(
+				ReadBackQueryResults(
+					rhiDevice,
 					rhiDevice->container.queryPoolIndex,
 					(rhiDevice->container.maxQueryResults * previousFrame) + queryOffset,
 					queryCount,
@@ -4646,8 +4832,6 @@ int RenderInstance::ReadData(AllocationInstanceIndex& handle, void* dest, int si
 
 	RHIDevice* rhiDevice = GetDeviceHandle(allocation->deviceIndex);
 
-	VKDevice* dev = rhiDevice->device;
-
 	size_t allocOffset = 0;
 
 	MemoryType type = HOST_MEMORY_TYPE;
@@ -4664,7 +4848,7 @@ int RenderInstance::ReadData(AllocationInstanceIndex& handle, void* dest, int si
 
 	EntryHandle index = bufferHandles[allocation->memIndex].bufferHandle;
 
-	int readRet = dev->ReadHostBuffer(dest, index, size, allocOffset+offset);
+	int readRet = ReadDriverHostData(rhiDevice, index,  dest, size, allocOffset+offset);
 
 	if (readRet)
 	{
@@ -5114,8 +5298,6 @@ BufferMemoryIndex RenderInstance::CreateUniversalBuffer(RenderDeviceIndex device
 {
 	RHIDevice* rhiDevice = GetDeviceHandle(deviceSelection);
 
-	VKDevice* dev = rhiDevice->device;
-
 	BufferMemoryIndex bufferIndex = bufferHandles.Allocate();
 
 	if (BufferMemoryIndex() == bufferIndex)
@@ -5123,18 +5305,20 @@ BufferMemoryIndex RenderInstance::CreateUniversalBuffer(RenderDeviceIndex device
 		return {};
 	}
 
-	EntryHandle bufferHandle = dev->CreateBuffer(
-		size,
-		VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT |
-		VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT |
-		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
-		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
-		VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
-		VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-		VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
-		VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-		VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 
-		API::ConvertMemoryTypeToVkMemoryPropertyFlags(bufferMemoryType));
+	EntryHandle bufferHandle = CreateDriverBufferMemoryPool(
+		rhiDevice, 
+		size, 
+		BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT |
+		BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT |
+		BUFFER_USAGE_UNIFORM_BUFFER_BIT |
+		BUFFER_USAGE_VERTEX_BUFFER_BIT |
+		BUFFER_USAGE_INDEX_BUFFER_BIT |
+		BUFFER_USAGE_STORAGE_BUFFER_BIT |
+		BUFFER_USAGE_INDIRECT_BUFFER_BIT |
+		BUFFER_USAGE_TRANSFER_DST_BIT |
+		BUFFER_USAGE_TRANSFER_SRC_BIT, 
+		bufferMemoryType
+	);
 
 	if (EntryHandle() == bufferHandle)
 	{
@@ -5224,8 +5408,6 @@ ShaderResourceManagerIndex RenderInstance::CreateDescriptorHeap(RenderDeviceInde
 {
 	RHIDevice* rhiDevice = GetDeviceHandle(deviceSelection);
 
-	VKDevice* dev = rhiDevice->device;
-
 	ShaderResourceManagerIndex descriptorManagerIndex = descriptorManagers.Allocate();
 
 	if (ShaderResourceManagerIndex() == descriptorManagerIndex)
@@ -5239,60 +5421,17 @@ ShaderResourceManagerIndex RenderInstance::CreateDescriptorHeap(RenderDeviceInde
 
 	manager->Create(storageAllocator, maxShaderResourceSets, STRING_VIEW_FROM_LITERAL("Descriptor Manager"), internalRendererLogger);
 
-	DescriptorPoolBuilder builder = dev->CreateDescriptorPoolBuilder(numDescriptorTypesCount, VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT);
+	EntryHandle handle = CreateDriverDescriptorHeap(rhiDevice, types, descriptorCountPerFrame, numDescriptorTypesCount, maxDescriptorSets, MAX_FRAMES_IN_FLIGHT);
 
-	for (uint32_t i = 0; i < numDescriptorTypesCount; i++)
-	{
-		uint32_t individualCount = descriptorCountPerFrame[i];
-
-		switch (types[i])
-		{
-		case DescriptorTypes::UNIFORM_DESCRIPTOR:
-		{
-			builder.AddUniformPoolSize(MAX_FRAMES_IN_FLIGHT * individualCount);
-			break;
-		}
-		case DescriptorTypes::UNORDERED_ACCESS_DESCRIPTOR:
-		{
-			builder.AddStoragePoolSize(MAX_FRAMES_IN_FLIGHT * individualCount);
-			break;
-		}
-		case DescriptorTypes::SAMPLED_IMAGE_DESCRIPTOR:
-		{
-			builder.AddSampledImage(MAX_FRAMES_IN_FLIGHT * individualCount);
-			break;
-		}
-		case DescriptorTypes::STORAGE_IMAGE_DESCRIPTOR:
-		{
-			builder.AddStorageImage(MAX_FRAMES_IN_FLIGHT * individualCount);
-			break;
-		}
-		case DescriptorTypes::SAMPLER_DESCRIPTOR:
-		{
-			builder.AddSampler(MAX_FRAMES_IN_FLIGHT * individualCount);
-			break;
-		}
-		case DescriptorTypes::COMBINED_IMAGE_SAMPLER_DESCRIPTOR:
-		{
-			builder.AddImageSamplerCombined(MAX_FRAMES_IN_FLIGHT * individualCount);
-			break;
-		}
-		default:
-		{
-			break;
-		}
-		}
-	};
-	
-	manager->deviceResourceHeap = dev->CreateDesciptorPool(&builder, MAX_FRAMES_IN_FLIGHT * maxDescriptorSets);
-	manager->deviceIndex = deviceSelection;
-
-	if (EntryHandle() == manager->deviceResourceHeap)
+	if (EntryHandle() == handle)
 	{
 		GetLastDeviceDriverError(rhiDevice, STRING_VIEW_FROM_LITERAL("CreateDescriptorHeap : driver of heap creation failed"));
 		DestroyDescriptorManager(descriptorManagerIndex);
 		return {};
 	}
+
+	manager->deviceIndex = deviceSelection;
+	manager->deviceResourceHeap = handle;
 
 	return descriptorManagerIndex;
 }

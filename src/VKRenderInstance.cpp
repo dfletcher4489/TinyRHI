@@ -9,345 +9,6 @@
 #define RENDER_MAX(a, b) ((a) < (b) ? (b) : (a))
 #define RENDER_PWR2UP(size, align) (((size) + ((align)-1)) & ~((align)-1))
 
-int RenderInstance::CreateDriverGraphicsPipeline(RenderDeviceIndex deviceSelection, GenericPipelineStateInfo* stateInfo, ShaderGraph* graph, EntryHandle* outHandles, uint32_t outHandlePointer, AttachmentGraphInstance* graphInstance, uint32_t graphRenderPassIndex)
-{
-	RHIDevice* rhiDevice = GetDeviceHandle(deviceSelection);
-
-	VKDevice* dev = rhiDevice->device;
-
-	EntryHandle* layoutHandles = (EntryHandle*)cacheAllocator->Allocate(sizeof(EntryHandle) * graph->resourceSetCount);
-	EntryHandle* shaderHandle = (EntryHandle*)cacheAllocator->Allocate(sizeof(EntryHandle) * graph->shaderMapCount);
-
-	for (int i = 0; i < graph->shaderMapCount; i++)
-	{
-		ShaderMap* map = &graph->shaderMaps[i];
-		shaderHandle[i] = shaderGraphs.shaderDetails.Get(map->shaderReference)->shaderHandle;
-	}
-
-	int pushConstantRangeCount = 0;
-
-	for (int i = 0; i < graph->resourceSetCount; i++)
-	{
-		ShaderResourceSetTemplate* resourceSet = &graph->shaderResourceSetTemplates[i];
-		layoutHandles[i] = shaderResourceTemplates[resourceSet->vulkanDescLayout].resourceTemplateInstanceHandle;
-		pushConstantRangeCount += resourceSet->constantStageCount;
-	}
-
-	uint32_t* pushConstantsSizes = (uint32_t*)cacheAllocator->CAllocate(sizeof(uint32_t) * pushConstantRangeCount);
-	VkShaderStageFlags* shaderStages = (VkShaderStageFlags*)cacheAllocator->CAllocate(sizeof(VkShaderStageFlags) * pushConstantRangeCount);
-
-	for (int i = 0; i < graph->resourceCount; i++)
-	{
-		ShaderResourceTemplate* resource = &graph->shaderResources[i];
-		if (resource->type == ShaderResourceType::CONSTANT_BUFFER)
-		{
-			int rangeIndex = resource->rangeIndex;
-
-			pushConstantsSizes[rangeIndex] += resource->size;
-
-			shaderStages[rangeIndex] |= API::ConvertShaderStageToVulkanShaderStage(resource->stages);
-		}
-	}
-
-	const uint32_t dynamicStateCount = 2;
-
-	VKGraphicsPipelineBuilder* pipelineBuilder = dev->CreateGraphicsPipelineBuilder(EntryHandle(), stateInfo->blendAttachmentCount, graph->resourceSetCount, dynamicStateCount, pushConstantRangeCount);
-
-	uint32_t globalPushOffset = 0;
-
-	for (int i = 0; i < pushConstantRangeCount; i++)
-	{
-		pipelineBuilder->AddPushConstantRange(globalPushOffset, pushConstantsSizes[i], shaderStages[i], i);
-		globalPushOffset += pushConstantsSizes[i];
-	}
-
-	VkDynamicState dynamicStates[dynamicStateCount] = {
-		VK_DYNAMIC_STATE_VIEWPORT,
-		VK_DYNAMIC_STATE_SCISSOR
-	};
-
-	pipelineBuilder->CreateDynamicStateInfo(dynamicStates, 2);
-
-	VkVertexInputBindingDescription* bindingDescriptions = (VkVertexInputBindingDescription*)cacheAllocator->Allocate(sizeof(VkVertexInputBindingDescription) * (stateInfo->vertexBufferDescCount));
-
-	int descCount = 0;
-
-	for (int i = 0; i < stateInfo->vertexBufferDescCount; i++)
-	{
-		bindingDescriptions[i] = VK::Utils::CreateVertexInputBindingDescription(i, stateInfo->vertexBufferDesc[i].perInputSize);
-
-		descCount += stateInfo->vertexBufferDesc[i].descCount;
-	}
-
-	VkVertexInputAttributeDescription* vertexBufferInput = (VkVertexInputAttributeDescription*)cacheAllocator->Allocate(sizeof(VkVertexInputAttributeDescription) * (descCount));
-
-	int vertexBufferIter = 0;
-
-	for (int i = 0; i < stateInfo->vertexBufferDescCount; i++)
-	{
-		API::ConvertVertexInputToVKVertexAttrDescription(stateInfo->vertexBufferDesc[i].descriptions, stateInfo->vertexBufferDesc[i].descCount, i, &vertexBufferInput[vertexBufferIter]);
-
-		vertexBufferIter += stateInfo->vertexBufferDesc[i].descCount;
-	}
-
-	pipelineBuilder->CreateVertexInput(bindingDescriptions, stateInfo->vertexBufferDescCount, vertexBufferInput, descCount);
-
-	pipelineBuilder->CreateInputAssembly(API::ConvertTopology(stateInfo->primType), false);
-
-	pipelineBuilder->CreateViewportState(1, 1);
-
-	pipelineBuilder->CreateRasterizer(API::ConvertCullMode(stateInfo->cullMode), API::ConvertTriangleWinding(stateInfo->windingOrder), stateInfo->lineWidth);
-
-	for (int i = 0; i < stateInfo->blendAttachmentCount; i++)
-	{
-		BlendAttachments* attach = &stateInfo->blendAttachments[i];
-
-		pipelineBuilder->CreateColorBlendAttachment(i, VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
-			attach->blendingEnabled,
-			API::ConvertBlendFactorToVulkanBlendFactor(attach->srcColorFactor),
-			API::ConvertBlendFactorToVulkanBlendFactor(attach->dstColorFactor),
-			API::ConvertBlendFactorToVulkanBlendFactor(attach->srcAlphaFactor),
-			API::ConvertBlendFactorToVulkanBlendFactor(attach->dstAlphaFactor),
-			API::ConvertBlendOpToVulkanBlendOp(attach->colorOp),
-			API::ConvertBlendOpToVulkanBlendOp(attach->alphaOp)
-		);
-	}
-
-	pipelineBuilder->CreateColorBlending(stateInfo->blendEnable, API::ConvertBlendLogicOpToVulkanLogicOp(stateInfo->blendOp));
-
-	VkStencilOpState frontState = API::ConvertFaceStencilDataToVulkan(stateInfo->frontFace);
-	VkStencilOpState backState = API::ConvertFaceStencilDataToVulkan(stateInfo->backFace);
-
-	pipelineBuilder->CreateDepthStencil(API::ConvertCompareOpToVulkanCompareOp(stateInfo->depthTest), stateInfo->depthEnable, stateInfo->depthWrite, stateInfo->StencilEnable, &frontState, &backState);
-
-	AttachmentRenderPassInstance* rendPassInst = &graphInstance->passes[graphRenderPassIndex];
-
-	uint32_t sampleCount = (uint32_t)rendPassInst->maxSampleCount;
-
-	uint32_t lowSample = (sampleCount > 1) ? 1 : 0;
-
-	int pipelinesCreated = 0;
-
-	for (; pipelinesCreated >= 0 && pipelinesCreated < sampleCount; pipelinesCreated++)
-	{
-		int msaaLevel = (1 << (lowSample + pipelinesCreated));
-		if (msaaLevel > stateInfo->sampleCountHigh) break;
-
-		pipelineBuilder->CreateMultiSampling((VkSampleCountFlagBits)msaaLevel);
-		pipelineBuilder->renderPass = dev->GetRenderPass(renderPasses[graphInstance->passes[graphRenderPassIndex].baseRenderPass[pipelinesCreated]].renderPassHandle);
-
-		EntryHandle handle = pipelineBuilder->CreateGraphicsPipeline(layoutHandles, graph->resourceSetCount, shaderHandle, graph->shaderMapCount);
-
-		if (EntryHandle() == handle)
-		{
-			GetLastDeviceDriverError(rhiDevice, STRING_VIEW_FROM_LITERAL("CreatePipelinesFromGraphAndSpec : CreatedGraphicsPipeline failed"));
-
-			pipelinesCreated = -1;
-
-			continue;
-		}
-
-		outHandles[outHandlePointer + pipelinesCreated] = handle;
-	}
-
-	return pipelinesCreated;
-}
-
-EntryHandle RenderInstance::CreateDriverComputePipeline(ShaderGraph* graph)
-{
-	RHIDevice* rhiDevice = GetDeviceHandle(graph->deviceIndex);
-
-	VKDevice* dev = rhiDevice->device;
-
-	EntryHandle* layoutHandles = (EntryHandle*)cacheAllocator->Allocate(sizeof(EntryHandle) * (graph->resourceSetCount));
-
-	ShaderMap* map = &graph->shaderMaps[0];
-
-	EntryHandle shaderHandle = shaderGraphs.shaderDetails.Get(map->shaderReference)->shaderHandle;
-
-	int pushRangeSize = 0;
-
-	for (int a = 0; a < graph->resourceSetCount; a++)
-	{
-		ShaderResourceSetTemplate* setLayout = &graph->shaderResourceSetTemplates[a];
-
-		pushRangeSize += setLayout->constantStageCount;
-	}
-
-	int* pushConstantSize = (int*)cacheAllocator->CAllocate(sizeof(int) * pushRangeSize);
-
-	for (int g = 0; g < graph->resourceCount; g++)
-	{
-		ShaderResourceTemplate* resource = &graph->shaderResources[g];
-
-		if (resource->type == ShaderResourceType::CONSTANT_BUFFER)
-		{
-			int pushRangeIndex = resource->rangeIndex;
-
-			pushConstantSize[pushRangeIndex] += resource->size;
-		}
-	}
-
-	int descriptorCount = graph->resourceSetCount;
-
-	VKComputePipelineBuilder* pipelineBuilder = dev->CreateComputePipelineBuilder(descriptorCount, pushRangeSize);
-
-	uint32_t globalOffset = 0;
-
-	for (int g = 0; g < pushRangeSize; g++)
-	{
-		pipelineBuilder->AddPushConstantRange(globalOffset, pushConstantSize[g], VK_SHADER_STAGE_COMPUTE_BIT, g);
-
-		globalOffset += pushConstantSize[g];
-	}
-
-	for (int i = 0; i < descriptorCount; i++)
-	{
-		ShaderResourceSetTemplate* resourceSet = &graph->shaderResourceSetTemplates[i];
-
-		layoutHandles[i] = shaderResourceTemplates[resourceSet->vulkanDescLayout].resourceTemplateInstanceHandle;
-	}
-
-	return pipelineBuilder->CreateComputePipeline(layoutHandles, descriptorCount, shaderHandle);
-}
-
-int RenderInstance::CreateShaderResourceMap(RHIDevice* device, ShaderGraph* graph)
-{
-	VKDevice* dev = device->device;
-
-	int resourceSetCount = graph->resourceSetCount;
-
-	int descriptorLayoutIndex = shaderResourceTemplates.DoIHaveNFreeElements(resourceSetCount);
-
-	if (!descriptorLayoutIndex)
-	{
-		return -1;
-	}
-
-	DescriptorSetLayoutBuilder** descriptorBuilders = (DescriptorSetLayoutBuilder**)cacheAllocator->Allocate(sizeof(DescriptorSetLayoutBuilder*) * resourceSetCount);
-
-	for (int j = 0; j < resourceSetCount; j++)
-	{
-		ShaderResourceSetTemplate* set = &graph->shaderResourceSetTemplates[j];
-		descriptorBuilders[j] = dev->CreateDescriptorSetLayoutBuilder(set->bindingCount);
-	}
-
-	for (int j = 0; j < graph->resourceCount; j++)
-	{
-		ShaderResourceTemplate* resource = &graph->shaderResources[j];
-
-		VkShaderStageFlags stageFlags = API::ConvertShaderStageToVulkanShaderStage(resource->stages);
-
-		if (resource->type == ShaderResourceType::CONSTANT_BUFFER)
-		{
-			continue;
-		}
-
-		DescriptorSetLayoutBuilder* descriptorBuilder = descriptorBuilders[resource->set];
-
-		int arrayCount = resource->arrayCount;
-
-		VkDescriptorBindingFlags bindingFlags = 0;
-
-		if (arrayCount & UNBOUNDED_DESCRIPTOR_ARRAY)
-		{
-			bindingFlags |= VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
-		}
-
-		static bool useUpdateAfterBind = false;
-
-		arrayCount &= DESCRIPTOR_COUNT_MASK;
-
-		switch (resource->type)
-		{
-		case ShaderResourceType::UNIFORM_BUFFER:
-			descriptorBuilder->AddBufferLayout(resource->binding, stageFlags, arrayCount, bindingFlags);
-			break;
-		case ShaderResourceType::IMAGESTORE2D:
-			descriptorBuilder->AddStorageImageLayout(resource->binding, stageFlags, arrayCount, bindingFlags);
-			break;
-		case ShaderResourceType::IMAGE2D:
-			if (useUpdateAfterBind)
-			{
-				bindingFlags |=
-					VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
-					VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
-					VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
-
-				descriptorBuilder->layoutFlags |= VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
-			}
-			descriptorBuilder->AddImageResourceLayout(resource->binding, stageFlags, arrayCount, bindingFlags);
-			break;
-		case ShaderResourceType::SAMPLERSTATE:
-			if (useUpdateAfterBind)
-			{
-				bindingFlags |=
-					VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
-					VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
-					VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
-
-				descriptorBuilder->layoutFlags |= VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
-			}
-			descriptorBuilder->AddSamplerStateLayout(resource->binding, stageFlags, arrayCount, bindingFlags);
-
-			break;
-		case ShaderResourceType::SAMPLER2D:
-		case ShaderResourceType::SAMPLER3D:
-		case ShaderResourceType::SAMPLERCUBE:
-			if (useUpdateAfterBind)
-			{
-				bindingFlags |=
-					VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
-					VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
-					VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
-
-				descriptorBuilder->layoutFlags |= VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
-			}
-			descriptorBuilder->AddBindlessCombinedSamplersLayout(resource->binding, stageFlags, arrayCount, bindingFlags);
-			break;
-		case ShaderResourceType::STORAGE_BUFFER:
-			descriptorBuilder->AddStorageBufferLayout(resource->binding, stageFlags, arrayCount, bindingFlags);
-			break;
-		case ShaderResourceType::BUFFER_VIEW:
-			if (resource->action == ShaderResourceAction::SHADERREAD)
-				descriptorBuilder->AddUniformBufferViewLayout(resource->binding, stageFlags, arrayCount, bindingFlags);
-			else if (resource->action == ShaderResourceAction::SHADERWRITE)
-				descriptorBuilder->AddStorageBufferViewLayout(resource->binding, stageFlags, arrayCount, bindingFlags);
-			break;
-		}
-	}
-
-	int success = 0;
-
-	for (int j = 0; j < resourceSetCount; j++)
-	{
-		ShaderResourceSetTemplate* set = &graph->shaderResourceSetTemplates[j];
-
-		ShaderResourceTemplateInstanceIndex currDescriptorLayout = shaderResourceTemplates.Allocate();
-
-		RenderShaderResourceTemplateInfo* info = shaderResourceTemplates.Get(currDescriptorLayout);
-
-		EntryHandle descHandle = dev->CreateDescriptorSetLayout(descriptorBuilders[j]);
-
-		if (EntryHandle() == descHandle)
-		{
-			GetLastDeviceDriverError(device, STRING_VIEW_FROM_LITERAL("CreateShaderResourceMap: layout creation failed"));
-
-			success = -1;
-
-			break;
-		}
-
-		info->resourceTemplateInstanceHandle = descHandle;
-
-		info->deviceIndex = graph->deviceIndex;
-
-		set->vulkanDescLayout = currDescriptorLayout;
-	}
-
-	return success;
-}
-
 uint32_t RenderInstance::BeginFrame(SwapChainIndex swapChainIndex)
 {
 	RenderSwapchainData* swcData = swapChains.Get(swapChainIndex);
@@ -436,35 +97,6 @@ int RenderInstance::SubmitFrame(SwapChainIndex swapChainIndex, uint32_t imageInd
 	return res;
 }
 
-int RenderInstance::CreateDriverSwapChainData(RHIDevice* rhiDevice, EntryHandle swapChainIndex, uint32_t width, uint32_t height, bool recreate)
-{
-	VKDevice* dev = rhiDevice->device;
-
-	VKSwapChain* swapChain = dev->GetSwapChain(swapChainIndex);
-
-	int success = 0;
-
-	if (recreate)
-	{
-		swapChain->ResetSwapChain();
-		success = swapChain->RecreateSwapChain(width, height);
-	}
-	else
-	{
-		success = swapChain->CreateSwapChain(width, height, rhiDevice->container.graphicsComputeTransfer, rhiDevice->container.presentQueue);
-	}
-
-	if (!success)
-	{
-		EntryHandle* views = swapChain->CreateSwapchainViews();
-		if (views) return success;
-	}
-
-	GetLastDeviceDriverError(rhiDevice, STRING_VIEW_FROM_LITERAL("CreateDriverSwapChainData: Failed"));
-
-	return -1;
-}
-
 RenderDeviceIndex RenderInstance::CreateLogicalDevice(LogicalDeviceCreateInfo* createInfo)
 {
 	RenderDeviceIndex ret{};
@@ -499,6 +131,7 @@ RenderDeviceIndex RenderInstance::CreateLogicalDevice(LogicalDeviceCreateInfo* c
 	CleanInitializeRHIDevice(rhiDevice);
 
 	rhiDevice->container.relatedPhysDeviceInfo = &physicalDevice->information;
+	rhiDevice->container.gpuIndex = createInfo->physicalDeviceIndex;
 
 	uint32_t deviceExtNameCount = vkInstance->GetLogicalDeviceExtensionsCount(createInfo->requestedDeviceFeatures);
 
@@ -1558,4 +1191,356 @@ EntryHandle CreateShaderCode(RHIDevice* device, char* shaderData, size_t length,
 	VkShaderStageFlags shaderFlags = API::ConvertShaderStageToVulkanShaderStage(type);
 
 	return device->device->CreateShader(shaderData, length , shaderFlags);
+}
+
+int CreateDriverGraphicsPipeline(RHIDevice* device,
+	GraphicsPipelineCreationInfo* info,
+	EntryHandle* outHandles, uint32_t outHandlePointer
+)
+{
+	uint32_t* pushConstantsSizes = (uint32_t*)info->tempAllocator->CAllocate(sizeof(uint32_t) * info->constantRangeCount);
+	VkShaderStageFlags* shaderStages = (VkShaderStageFlags*)info->tempAllocator->CAllocate(sizeof(VkShaderStageFlags) * info->constantRangeCount);
+
+	for (int i = 0; i < info->templateCount; i++)
+	{
+		ShaderResourceTemplate* resource = &info->templates[i];
+
+		if (resource->type == ShaderResourceType::CONSTANT_BUFFER)
+		{
+			int rangeIndex = resource->rangeIndex;
+
+			pushConstantsSizes[rangeIndex] += resource->size;
+
+			shaderStages[rangeIndex] |= API::ConvertShaderStageToVulkanShaderStage(resource->stages);
+		}
+	}
+
+	const uint32_t dynamicStateCount = 2;
+
+	VKGraphicsPipelineBuilder* pipelineBuilder = device->device->CreateGraphicsPipelineBuilder(EntryHandle(), info->stateInfo->blendAttachmentCount, info->layoutCount, dynamicStateCount, info->constantRangeCount);
+
+	uint32_t globalPushOffset = 0;
+
+	for (int i = 0; i < info->constantRangeCount; i++)
+	{
+		pipelineBuilder->AddPushConstantRange(globalPushOffset, pushConstantsSizes[i], shaderStages[i], i);
+		globalPushOffset += pushConstantsSizes[i];
+	}
+
+	VkDynamicState dynamicStates[dynamicStateCount] = {
+		VK_DYNAMIC_STATE_VIEWPORT,
+		VK_DYNAMIC_STATE_SCISSOR
+	};
+
+	pipelineBuilder->CreateDynamicStateInfo(dynamicStates, 2);
+
+	VkVertexInputBindingDescription* bindingDescriptions = (VkVertexInputBindingDescription*)info->tempAllocator->Allocate(sizeof(VkVertexInputBindingDescription) * (info->stateInfo->vertexBufferDescCount));
+
+	int descCount = 0;
+
+	for (int i = 0; i < info->stateInfo->vertexBufferDescCount; i++)
+	{
+		bindingDescriptions[i] = VK::Utils::CreateVertexInputBindingDescription(i, info->stateInfo->vertexBufferDesc[i].perInputSize);
+
+		descCount += info->stateInfo->vertexBufferDesc[i].descCount;
+	}
+
+	VkVertexInputAttributeDescription* vertexBufferInput = (VkVertexInputAttributeDescription*)info->tempAllocator->Allocate(sizeof(VkVertexInputAttributeDescription) * (descCount));
+
+	int vertexBufferIter = 0;
+
+	for (int i = 0; i < info->stateInfo->vertexBufferDescCount; i++)
+	{
+		API::ConvertVertexInputToVKVertexAttrDescription(info->stateInfo->vertexBufferDesc[i].descriptions, info->stateInfo->vertexBufferDesc[i].descCount, i, &vertexBufferInput[vertexBufferIter]);
+
+		vertexBufferIter += info->stateInfo->vertexBufferDesc[i].descCount;
+	}
+
+	pipelineBuilder->CreateVertexInput(bindingDescriptions, info->stateInfo->vertexBufferDescCount, vertexBufferInput, descCount);
+
+	pipelineBuilder->CreateInputAssembly(API::ConvertTopology(info->stateInfo->primType), false);
+
+	pipelineBuilder->CreateViewportState(1, 1);
+
+	pipelineBuilder->CreateRasterizer(API::ConvertCullMode(info->stateInfo->cullMode), API::ConvertTriangleWinding(info->stateInfo->windingOrder), info->stateInfo->lineWidth);
+
+	for (int i = 0; i < info->stateInfo->blendAttachmentCount; i++)
+	{
+		BlendAttachments* attach = &info->stateInfo->blendAttachments[i];
+
+		pipelineBuilder->CreateColorBlendAttachment(i, VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
+			attach->blendingEnabled,
+			API::ConvertBlendFactorToVulkanBlendFactor(attach->srcColorFactor),
+			API::ConvertBlendFactorToVulkanBlendFactor(attach->dstColorFactor),
+			API::ConvertBlendFactorToVulkanBlendFactor(attach->srcAlphaFactor),
+			API::ConvertBlendFactorToVulkanBlendFactor(attach->dstAlphaFactor),
+			API::ConvertBlendOpToVulkanBlendOp(attach->colorOp),
+			API::ConvertBlendOpToVulkanBlendOp(attach->alphaOp)
+		);
+	}
+
+	pipelineBuilder->CreateColorBlending(info->stateInfo->blendEnable, API::ConvertBlendLogicOpToVulkanLogicOp(info->stateInfo->blendOp));
+
+	VkStencilOpState frontState = API::ConvertFaceStencilDataToVulkan(info->stateInfo->frontFace);
+	VkStencilOpState backState = API::ConvertFaceStencilDataToVulkan(info->stateInfo->backFace);
+
+	pipelineBuilder->CreateDepthStencil(API::ConvertCompareOpToVulkanCompareOp(info->stateInfo->depthTest), info->stateInfo->depthEnable, info->stateInfo->depthWrite, info->stateInfo->StencilEnable, &frontState, &backState);
+
+	uint32_t sampleCount = info->renderPassMaxSampleCount;
+
+	uint32_t lowSample = (info->renderPassMaxSampleCount > 1) ? 1 : 0;
+
+	int pipelinesCreated = 0;
+
+	for (; pipelinesCreated < sampleCount; pipelinesCreated++)
+	{
+		int msaaLevel = (1 << (lowSample + pipelinesCreated));
+		if (msaaLevel > info->stateInfo->sampleCountHigh) break;
+
+		pipelineBuilder->CreateMultiSampling((VkSampleCountFlagBits)msaaLevel);
+		pipelineBuilder->renderPass = device->device->GetRenderPass(info->renderPasses[pipelinesCreated]);
+
+		EntryHandle handle = pipelineBuilder->CreateGraphicsPipeline(info->layoutHandles, info->layoutCount, info->shaderHandles, info->shaderCount);
+
+		if (EntryHandle() == handle)
+		{
+			pipelinesCreated = -1;
+
+			break;
+		}
+
+		outHandles[outHandlePointer + pipelinesCreated] = handle;
+	}
+
+	return pipelinesCreated;
+}
+
+EntryHandle CreateDriverComputePipeline(RHIDevice* device, ComputePipelineCreationInfo* info)
+{
+	EntryHandle* layoutHandles = info->layouts;
+
+	EntryHandle shaderHandle = info->shaderHandle;
+
+	int pushRangeSize = info->pushRangeCount;
+
+	int descriptorCount = info->layoutsCount;
+
+	VKComputePipelineBuilder* pipelineBuilder = device->device->CreateComputePipelineBuilder(descriptorCount, pushRangeSize);
+
+	uint32_t globalOffset = 0;
+
+	for (int g = 0; g < pushRangeSize; g++)
+	{
+		pipelineBuilder->AddPushConstantRange(globalOffset, info->pushRangeSize[g], VK_SHADER_STAGE_COMPUTE_BIT, g);
+
+		globalOffset += info->pushRangeSize[g];
+	}
+
+	return pipelineBuilder->CreateComputePipeline(layoutHandles, descriptorCount, shaderHandle);
+}
+
+int CreateDriverSwapChainData(RHIDevice* rhiDevice, EntryHandle swapChainIndex, uint32_t width, uint32_t height, bool recreate)
+{
+	VKDevice* dev = rhiDevice->device;
+
+	VKSwapChain* swapChain = dev->GetSwapChain(swapChainIndex);
+
+	int success = 0;
+
+	if (recreate)
+	{
+		swapChain->ResetSwapChain();
+		success = swapChain->RecreateSwapChain(width, height);
+	}
+	else
+	{
+		success = swapChain->CreateSwapChain(width, height, rhiDevice->container.graphicsComputeTransfer, rhiDevice->container.presentQueue);
+	}
+
+	if (!success)
+	{
+		EntryHandle* views = swapChain->CreateSwapchainViews();
+		if (views) return success;
+	}
+
+	return -1;
+}
+
+EntryHandle CreateDriverShaderResourceLayout(RHIDevice* device, ShaderResourceSetTemplateCreator* creator)
+{
+	VKDevice* dev = device->device;
+
+	DescriptorSetLayoutBuilder* descriptorBuilder = dev->CreateDescriptorSetLayoutBuilder(creator->bindingCount);
+
+	for (int j = 0; j < creator->bindingCount; j++)
+	{
+		BindingInfo* info = &creator->info[j];
+
+		VkShaderStageFlags stageFlags = API::ConvertShaderStageToVulkanShaderStage(info->stageType);
+
+		int arrayCount = info->arrayCount;
+
+		VkDescriptorBindingFlags bindingFlags = 0;
+
+		if (arrayCount & UNBOUNDED_DESCRIPTOR_ARRAY)
+		{
+			bindingFlags |= VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
+		}
+
+		static bool useUpdateAfterBind = false;
+
+		arrayCount &= DESCRIPTOR_COUNT_MASK;
+
+		switch (info->resourceType)
+		{
+		case ShaderResourceType::UNIFORM_BUFFER:
+			descriptorBuilder->AddBufferLayout(j, stageFlags, arrayCount, bindingFlags);
+			break;
+		case ShaderResourceType::IMAGESTORE2D:
+			descriptorBuilder->AddStorageImageLayout(j, stageFlags, arrayCount, bindingFlags);
+			break;
+		case ShaderResourceType::IMAGE2D:
+			if (useUpdateAfterBind)
+			{
+				bindingFlags |=
+					VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+					VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
+					VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
+
+				descriptorBuilder->layoutFlags |= VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+			}
+			descriptorBuilder->AddImageResourceLayout(j, stageFlags, arrayCount, bindingFlags);
+			break;
+		case ShaderResourceType::SAMPLERSTATE:
+			if (useUpdateAfterBind)
+			{
+				bindingFlags |=
+					VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+					VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
+					VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
+
+				descriptorBuilder->layoutFlags |= VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+			}
+			descriptorBuilder->AddSamplerStateLayout(j, stageFlags, arrayCount, bindingFlags);
+
+			break;
+		case ShaderResourceType::SAMPLER2D:
+		case ShaderResourceType::SAMPLER3D:
+		case ShaderResourceType::SAMPLERCUBE:
+			if (useUpdateAfterBind)
+			{
+				bindingFlags |=
+					VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+					VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
+					VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
+
+				descriptorBuilder->layoutFlags |= VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+			}
+			descriptorBuilder->AddBindlessCombinedSamplersLayout(j, stageFlags, arrayCount, bindingFlags);
+			break;
+		case ShaderResourceType::STORAGE_BUFFER:
+			descriptorBuilder->AddStorageBufferLayout(j, stageFlags, arrayCount, bindingFlags);
+			break;
+		case ShaderResourceType::BUFFER_VIEW:
+			if (info->action == ShaderResourceAction::SHADERREAD)
+				descriptorBuilder->AddUniformBufferViewLayout(j, stageFlags, arrayCount, bindingFlags);
+			else if (info->action == ShaderResourceAction::SHADERWRITE || info->action == ShaderResourceAction::SHADERREADWRITE)
+				descriptorBuilder->AddStorageBufferViewLayout(j, stageFlags, arrayCount, bindingFlags);
+			break;
+		}
+	}
+
+	EntryHandle descHandle = dev->CreateDescriptorSetLayout(descriptorBuilder);
+
+	return descHandle;
+}
+
+EntryHandle CreateDriverDescriptorHeap(RHIDevice* device, DescriptorTypes* types, uint32_t* descriptorCountPerFrame, uint32_t numDescriptorTypesCount, uint32_t maxDescriptorSets, uint32_t framesInFlight)
+{
+	DescriptorPoolBuilder builder = device->device->CreateDescriptorPoolBuilder(numDescriptorTypesCount, VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT);
+
+	for (uint32_t i = 0; i < numDescriptorTypesCount; i++)
+	{
+		uint32_t individualCount = descriptorCountPerFrame[i];
+
+		switch (types[i])
+		{
+		case DescriptorTypes::UNIFORM_DESCRIPTOR:
+		{
+			builder.AddUniformPoolSize(framesInFlight * individualCount);
+			break;
+		}
+		case DescriptorTypes::UNORDERED_ACCESS_DESCRIPTOR:
+		{
+			builder.AddStoragePoolSize(framesInFlight * individualCount);
+			break;
+		}
+		case DescriptorTypes::SAMPLED_IMAGE_DESCRIPTOR:
+		{
+			builder.AddSampledImage(framesInFlight * individualCount);
+			break;
+		}
+		case DescriptorTypes::STORAGE_IMAGE_DESCRIPTOR:
+		{
+			builder.AddStorageImage(framesInFlight * individualCount);
+			break;
+		}
+		case DescriptorTypes::SAMPLER_DESCRIPTOR:
+		{
+			builder.AddSampler(framesInFlight * individualCount);
+			break;
+		}
+		case DescriptorTypes::COMBINED_IMAGE_SAMPLER_DESCRIPTOR:
+		{
+			builder.AddImageSamplerCombined(framesInFlight * individualCount);
+			break;
+		}
+		default:
+		{
+			break;
+		}
+		}
+	};
+
+	return device->device->CreateDesciptorPool(&builder, framesInFlight * maxDescriptorSets);
+}
+
+EntryHandle CreateDriverBufferMemoryPool(RHIDevice* device, size_t poolSize, BufferUsage usage, MemoryType memoryType)
+{
+	return device->device->CreateBuffer(poolSize, API::ConvertBufferUsageToDriverBufferUsage(usage), API::ConvertMemoryTypeToVkMemoryPropertyFlags(memoryType));
+}
+
+int ReadDriverHostData(RHIDevice* device, EntryHandle bufferHandle, void* dataOut, size_t size, size_t offset)
+{
+	return device->device->ReadHostBuffer(dataOut, bufferHandle, size, offset);
+}
+
+EntryHandle CreateDriverSwapChain(RHIDevice* device, uint32_t requestedImageCount, uint32_t maxFramesInFlight, ImageFormat requestedFormat, EntryHandle renderSurfaceIndex)
+{
+	return device->device->CreateSwapChain(requestedImageCount, maxFramesInFlight, API::ConvertImageFormatToVulkanFormat(requestedFormat), renderSurfaceIndex);
+}
+
+EntryHandle* CreateDriverSemaphores(RHIDevice* device, uint32_t semaphoreCount)
+{
+	return device->device->CreateSemaphores(semaphoreCount);
+}
+
+int ReadBackQueryResults(RHIDevice* device, EntryHandle queryPoolIndex, uint32_t queryOffset, uint32_t queryCount, void* queryResults, size_t queryResultsSizeBytes, size_t individualQueryResultSize, int queryFlags)
+{
+	return device->device->ReadbackResultsFromQueries(
+		queryPoolIndex,
+		queryOffset,
+		queryCount,
+		queryResults,
+		queryResultsSizeBytes,
+		individualQueryResultSize,
+		(queryFlags ? VK_QUERY_RESULT_WAIT_BIT : 0)
+	);
+}
+
+int FindDriverSupportedDepthFormat(VKInstance* instance, EntryHandle gpuIndex, ImageFormat format)
+{
+	VkFormat vkFormat = API::ConvertImageFormatToVulkanFormat(format);
+
+	return instance->IsSupportedImageFormatForFeature(gpuIndex, vkFormat, VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
 }

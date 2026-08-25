@@ -812,6 +812,7 @@ struct RenderLogicalDeviceContainer
 	uint32_t queryCounts[MAX_INSTANCE_FRAME_IN_FLIGHT];
 	int maxQueryResults = 0;
 	int queriesAreActive = 0;
+	RenderPhysicalDeviceIndex gpuIndex;
 };
 
 struct RenderBufferDescription

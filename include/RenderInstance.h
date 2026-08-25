@@ -63,6 +63,8 @@ namespace API
 	VkSamplerMipmapMode ConvertSamplerMipmapModeToVulkanSamplerMipmapMode(SamplerMipmapMode mipmapMode);
 
 	VkStencilOpState ConvertFaceStencilDataToVulkan(const FaceStencilData& face);
+
+	VkBufferUsageFlags ConvertBufferUsageToDriverBufferUsage(BufferUsage usage);
 }
 
 struct RenderInstanceCreateInfo
@@ -178,6 +180,44 @@ struct DriverSamplerCreationInfo
 	CompareOp compareOp;
 };
 
+struct GraphicsPipelineCreationInfo
+{
+	ShaderResourceTemplate* templates;
+	Allocator* tempAllocator;
+	EntryHandle* renderPasses;
+	EntryHandle* shaderHandles;
+	EntryHandle* layoutHandles;
+	GenericPipelineStateInfo* stateInfo;
+	uint32_t layoutCount;
+	uint32_t shaderCount;
+	uint32_t templateCount;
+	uint32_t constantRangeCount;
+	uint32_t renderPassMaxSampleCount;
+};
+
+struct ComputePipelineCreationInfo
+{
+	EntryHandle* layouts;
+	EntryHandle shaderHandle;
+	uint32_t* pushRangeSize;
+	uint32_t layoutsCount;
+	uint32_t pushRangeCount;
+};
+
+struct BindingInfo
+{
+	int arrayCount;
+	ShaderStageType stageType;
+	ShaderResourceType resourceType;
+	ShaderResourceAction action;
+};
+
+struct ShaderResourceSetTemplateCreator
+{
+	int bindingCount;
+	BindingInfo info[MAX_SHADER_RESOURCES];
+};
+
 struct RenderInstance
 {
 	RenderInstance() = default;
@@ -201,8 +241,6 @@ struct RenderInstance
 
 	int CreateRenderPass(AttachmentGraphInstance* graph);
 
-	EntryHandle CreateDriverComputePipeline(ShaderGraph* graph);
-
 	uint32_t BeginFrame(SwapChainIndex swapChainIndex);
 
 	int SubmitFrame(SwapChainIndex swapChainIndex, uint32_t imageIndex);
@@ -210,8 +248,6 @@ struct RenderInstance
 	void WaitOnRender(RenderDeviceIndex deviceSelection);
 
 	GenericRenderPipelineInfoIndex CreateGenericRenderPipelineDescription(StringView pipelineDescriptionFileName);
-
-	int CreateDriverSwapChainData(RHIDevice* rhiDevice, EntryHandle swapChainIndex, uint32_t width, uint32_t height, bool recreate);
 
 	void UploadHostTransfers(CommandRecorder* recorder);
 
@@ -272,8 +308,6 @@ struct RenderInstance
 	int AddPipelineToComputeQueue(PipelineQueueIndex& queueIndex, PipelineHandleIndex& psoIndex);
 
 	int ReadData(AllocationInstanceIndex& handle, void* dest, int size, int offset);
-
-	int CreateDriverGraphicsPipeline(RenderDeviceIndex deviceSelection, GenericPipelineStateInfo* stateInfo, ShaderGraph* graph, EntryHandle* outHandles, uint32_t outHandlePointer, AttachmentGraphInstance* graphInstance, uint32_t graphRenderPassIndex);
 
 	int UpdateDriverMemory(void* data, AllocationInstanceIndex& allocationIndex, int size, int allocOffset, TransferType transferType);
 
@@ -653,11 +687,34 @@ EntryHandle CreateDriverBufferView(RHIDevice* device, EntryHandle bufferHandle, 
 
 EntryHandle CreateDriverImageMemoryPool(RHIDevice* device, DriverImageMemoryPoolCreationInfo* info);
 
-EntryHandle CreateDriverBufferMemoryPool(RHIDevice* device, size_t bufferSize, MemoryType memoryType);
-
 EntryHandle CreateDriverSampler(RHIDevice* device, DriverSamplerCreationInfo* info);
 
 EntryHandle CreateShaderCode(RHIDevice* device, char* shaderData, size_t length, ShaderStageType type);
+
+int CreateDriverGraphicsPipeline(RHIDevice* device,
+	GraphicsPipelineCreationInfo* info,
+	EntryHandle* outHandles, uint32_t outHandlePointer
+);
+
+EntryHandle CreateDriverComputePipeline(RHIDevice* device, ComputePipelineCreationInfo* info);
+
+EntryHandle CreateDriverShaderResourceLayout(RHIDevice* device, ShaderResourceSetTemplateCreator* creator);
+
+int CreateDriverSwapChainData(RHIDevice* rhiDevice, EntryHandle swapChainIndex, uint32_t width, uint32_t height, bool recreate);
+
+EntryHandle CreateDriverDescriptorHeap(RHIDevice* device, DescriptorTypes* types, uint32_t* descriptorCountPerFrame, uint32_t numDescriptorTypesCount, uint32_t maxDescriptorSets, uint32_t frameInFlight);
+
+EntryHandle CreateDriverBufferMemoryPool(RHIDevice* device, size_t poolSize, BufferUsage usage, MemoryType memoryType);
+
+int ReadDriverHostData(RHIDevice* device, EntryHandle bufferHandle, void* dataOut, size_t size, size_t offset);
+
+EntryHandle CreateDriverSwapChain(RHIDevice* device, uint32_t requestedImageCount, uint32_t maxFramesInFlight, ImageFormat requestedFormat, EntryHandle renderSurfaceIndex);
+
+EntryHandle* CreateDriverSemaphores(RHIDevice* device, uint32_t semaphoreCount);
+
+int ReadBackQueryResults(RHIDevice* device, EntryHandle queryPoolIndex, uint32_t queryOffset, uint32_t queryCount, void* queryResults, size_t queryResultsSizeBytes, size_t individualQueryResultSize, int queryFlags);
+
+int FindDriverSupportedDepthFormat(VKInstance* instance, EntryHandle gpuIndex, ImageFormat format);
 
 size_t GetDriverImageMemoryBarrierSize();
 size_t GetDriverBufferMemoryBarrierSize();

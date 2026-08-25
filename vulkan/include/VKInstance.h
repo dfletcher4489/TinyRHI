@@ -218,6 +218,8 @@ struct VKInstance
 
 	EntryHandle CreateGPUFromIndex(uint32_t gpuIndex);
 
+	int IsSupportedImageFormatForFeature(EntryHandle gpuIndex, VkFormat format, VkImageTiling tiling, VkFormatFeatureFlags formatFeature);
+
 	VkInstance instance = VK_NULL_HANDLE;
 	
 	const char** instanceLayers;

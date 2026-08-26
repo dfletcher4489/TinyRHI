@@ -981,3 +981,114 @@ struct RenderTargetInfo
 	EntryHandle driverRenderTargetInfo;
 	RenderDeviceIndex deviceIndex;
 };
+
+struct DriverImageCreationInfo
+{
+	uint32_t flags;
+	uint32_t imageWidth;
+	uint32_t imageHeight;
+	uint32_t mipCount;
+	uint32_t layerCount;
+	ImageUsageFlags usageFlags;
+	ImageLayout initialLayout;
+	uint32_t sampleCount;
+	ImageFormat format;
+	ImageType imageType;
+	size_t imageAddress;
+	size_t imageSize;
+	size_t imageAlignment;
+	EntryHandle imagePoolHandle;
+};
+
+struct DriverImageViewCreationInfo
+{
+	EntryHandle textureIndex;
+	uint32_t firstMip;
+	uint32_t mipCount;
+	uint32_t firstLayer;
+	uint32_t layerCount;
+	ImageFormat format;
+	ImageType imageType;
+	ImageViewAspectMask aspectMask;
+};
+
+struct DriverImageMemoryPoolCreationInfo
+{
+	uint32_t maxWidth;
+	uint32_t maxHeight;
+	uint32_t maxArrayLayers;
+	ImageFormat format;
+	ImageUsageFlags usageFlags;
+	MemoryType memoryType;
+	size_t poolSize;
+};
+
+struct DriverSamplerCreationInfo
+{
+	uint32_t baseLod;
+	uint32_t maxLod;
+	SamplerFilterMode minFilter;
+	SamplerFilterMode magFilter;
+	SamplerAddressMode addressMode;
+	SamplerMipmapMode mipmapMode;
+	CompareOp compareOp;
+};
+
+struct GraphicsPipelineCreationInfo
+{
+	ShaderResourceTemplate* templates;
+	Allocator* tempAllocator;
+	EntryHandle* renderPasses;
+	EntryHandle* shaderHandles;
+	EntryHandle* layoutHandles;
+	GenericPipelineStateInfo* stateInfo;
+	uint32_t layoutCount;
+	uint32_t shaderCount;
+	uint32_t templateCount;
+	uint32_t constantRangeCount;
+	uint32_t renderPassMaxSampleCount;
+};
+
+struct ComputePipelineCreationInfo
+{
+	EntryHandle* layouts;
+	EntryHandle shaderHandle;
+	uint32_t* pushRangeSize;
+	uint32_t layoutsCount;
+	uint32_t pushRangeCount;
+};
+
+struct ResourceSetTemplateBindingInfo
+{
+	int arrayCount;
+	ShaderStageType stageType;
+	ShaderResourceType resourceType;
+	ShaderResourceAction action;
+};
+
+struct ShaderResourceSetTemplateCreator
+{
+	int bindingCount;
+	ResourceSetTemplateBindingInfo info[MAX_SHADER_RESOURCES];
+};
+
+struct ResourceSetInstanceBindingInfo
+{
+	EntryHandle driverResourceHandle[3];
+	size_t allocSize;
+	size_t allocOffset;
+	ShaderResourceType resourceType;
+	ShaderResourceAction action;
+	ImageLayout destinationLayout;
+	int bindingIndex;
+	int perResourceDescriptorSlotStart;
+	int destArraySlot;
+	int descriptorCopies;
+	int allocCopies;
+};
+
+struct ShaderResourceSetInstanceCreator
+{
+	int updateCount;
+	ResourceSetInstanceBindingInfo info[MAX_SHADER_RESOURCES * 16];
+};

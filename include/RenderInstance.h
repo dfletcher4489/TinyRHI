@@ -3,69 +3,9 @@
 #include "allocator/AppAllocator.h"
 #include "IndexTypes.h"
 #include "math/VertexTypes.h"
-#include "VKTypes.h"
 #include "WindowManager.h"
 
 #include "VKRenderInstance.h"
-
-namespace API 
-{
-	VkAttachmentLoadOp ConvertAttachLoadOpToVulkanLoadOp(AttachmentLoadUsage loadOp);
-
-	VkAttachmentStoreOp ConvertAttachStoreOpToVulkanStoreOp(AttachmentStoreUsage storeOp);
-
-	VkFormat ConvertComponentFormatTypeToVulkanFormat(ComponentFormatType type);
-
-	VkCompareOp ConvertCompareOpToVulkanCompareOp(CompareOp testApp);
-
-	VkFormat ConvertImageFormatToVulkanFormat(ImageFormat format);
-
-	VkPrimitiveTopology ConvertTopology(PrimitiveType type);
-
-	VkAccessFlags ConvertBarrierActionToVulkanAccessFlags(BarrierAction action);
-
-	VkPipelineStageFlags ConvertBarrierStageToVulkanPipelineStage(PipelineStage sourceStage);
-
-	VkShaderStageFlags ConvertShaderStageToVulkanShaderStage(ShaderStageType type);
-
-	VkImageLayout ConvertImageLayoutToVulkanImageLayout(ImageLayout layout);
-
-	void ConvertVertexInputToVKVertexAttrDescription(VertexInputDescription* inputDescs, int numInputDescs, int vertexBufferLocation, VkVertexInputAttributeDescription* attrs);
-
-	VkCullModeFlags ConvertCullMode(CullMode mode);
-
-	VkFrontFace ConvertTriangleWinding(TriangleWinding winding);
-
-	void ConvertGPUFeatureRequestToVkPhysicalDeviceProperties(const GPUFeatureRequest* request,
-		VkPhysicalDeviceFeatures2* features2,
-		VkPhysicalDeviceVulkan12Features* features12);
-
-	VkImageType ConvertImageTypeToVulkanImageType(ImageType imageType);
-
-	VkImageAspectFlags ConvertImageViewAspectMaskToVulkanImageAspectFlags(ImageViewAspectMask aspectMask);
-
-	VkImageViewType ConvertImageTypeToVulkanImageViewType(ImageType imageType);
-
-	VkImageUsageFlags ConvertImageUsageFlagsToVulkanImageUsageFlags(ImageUsageFlags flags);
-
-	VkMemoryPropertyFlags ConvertMemoryTypeToVkMemoryPropertyFlags(MemoryType memType);
-
-	VkBlendFactor ConvertBlendFactorToVulkanBlendFactor(BlendFactor factor);
-
-	VkBlendOp ConvertBlendOpToVulkanBlendOp(BlendOp op);
-
-	VkLogicOp ConvertBlendLogicOpToVulkanLogicOp(BlendLogicOp op);
-
-	VkFilter ConvertSamplerFilterModeToVulkanFilter(SamplerFilterMode filterMode);
-
-	VkSamplerAddressMode ConvertSamplerAddressModeToVulkanSamplerAddressMode(SamplerAddressMode addressMode);
-
-	VkSamplerMipmapMode ConvertSamplerMipmapModeToVulkanSamplerMipmapMode(SamplerMipmapMode mipmapMode);
-
-	VkStencilOpState ConvertFaceStencilDataToVulkan(const FaceStencilData& face);
-
-	VkBufferUsageFlags ConvertBufferUsageToDriverBufferUsage(BufferUsage usage);
-}
 
 struct RenderInstanceCreateInfo
 {
@@ -117,105 +57,6 @@ struct LogicalDeviceCreateInfo
 	uint32_t maxQueries;
 	WindowIndex surfaceIndexForPresent;
 	RenderPhysicalDeviceIndex physicalDeviceIndex;
-};
-
-struct CommandRecorder
-{
-	RHIDevice* device;
-	BarrierAccumulator* accumulator;
-	RecordingBufferObject rbo;
-	uint64_t errorCodes[64];
-	uint32_t errorCount;
-};
-
-struct DriverImageCreationInfo
-{
-	uint32_t flags;
-	uint32_t imageWidth;
-	uint32_t imageHeight;
-	uint32_t mipCount;
-	uint32_t layerCount;
-	ImageUsageFlags usageFlags;
-	ImageLayout initialLayout;
-	uint32_t sampleCount;
-	ImageFormat format;
-	ImageType imageType;
-	size_t imageAddress;
-	size_t imageSize;
-	size_t imageAlignment;
-	EntryHandle imagePoolHandle;
-};
-
-struct DriverImageViewCreationInfo
-{
-	EntryHandle textureIndex;
-	uint32_t firstMip;
-	uint32_t mipCount;
-	uint32_t firstLayer;
-	uint32_t layerCount;
-	ImageFormat format;
-	ImageType imageType;
-	ImageViewAspectMask aspectMask;
-};
-
-struct DriverImageMemoryPoolCreationInfo
-{
-	uint32_t maxWidth;
-	uint32_t maxHeight;
-	uint32_t maxArrayLayers;
-	ImageFormat format;
-	ImageUsageFlags usageFlags;
-	MemoryType memoryType;
-	size_t poolSize;
-};
-
-struct DriverSamplerCreationInfo
-{
-	uint32_t baseLod;
-	uint32_t maxLod;
-	SamplerFilterMode minFilter;
-	SamplerFilterMode magFilter;
-	SamplerAddressMode addressMode;
-	SamplerMipmapMode mipmapMode;
-	CompareOp compareOp;
-};
-
-struct GraphicsPipelineCreationInfo
-{
-	ShaderResourceTemplate* templates;
-	Allocator* tempAllocator;
-	EntryHandle* renderPasses;
-	EntryHandle* shaderHandles;
-	EntryHandle* layoutHandles;
-	GenericPipelineStateInfo* stateInfo;
-	uint32_t layoutCount;
-	uint32_t shaderCount;
-	uint32_t templateCount;
-	uint32_t constantRangeCount;
-	uint32_t renderPassMaxSampleCount;
-};
-
-struct ComputePipelineCreationInfo
-{
-	EntryHandle* layouts;
-	EntryHandle shaderHandle;
-	uint32_t* pushRangeSize;
-	uint32_t layoutsCount;
-	uint32_t pushRangeCount;
-};
-
-struct BindingInfo
-{
-	int arrayCount;
-	ShaderStageType stageType;
-	ShaderResourceType resourceType;
-	ShaderResourceAction action;
-};
-
-struct ShaderResourceSetTemplateCreator
-{
-	int bindingCount;
-	BindingInfo info[MAX_SHADER_RESOURCES];
 };
 
 struct RenderInstance
@@ -484,7 +325,7 @@ struct RenderInstance
 
 	static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 3;
 
-	VKInstance *vkInstance = nullptr;
+	RHIInstance vkInstance;
 
 	RenderPhysicalDeviceContainer* physicalDeviceIndices{};
 
@@ -576,9 +417,9 @@ namespace GlobalRenderer
 	extern RenderInstance gRenderInstance;
 }
 
-int DestroyDriverPhysicalDevice(VKInstance* instance, EntryHandle handle);
-int DestroyDriverLogicalDevice(VKInstance* instance, EntryHandle handle);
-int DestroyDriverWindowsSurface(VKInstance* device, EntryHandle handle);
+int DestroyDriverPhysicalDevice(RHIInstance* instance, EntryHandle handle);
+int DestroyDriverLogicalDevice(RHIInstance* instance, EntryHandle handle);
+int DestroyDriverWindowsSurface(RHIInstance* instance, EntryHandle handle);
 int DestroyDriverSwapChain(RHIDevice* device, EntryHandle handle);
 int DestroyDriverBufferHandle(RHIDevice* device, EntryHandle handle);
 int DestroyDriverImagePool(RHIDevice* device, EntryHandle handle);
@@ -679,6 +520,7 @@ uint32_t GetSwapChainImageCount(RHIDevice* device, EntryHandle swapChainIndex);
 int WaitOnDevice(RHIDevice* device, uint64_t timeout);
 
 int GetImageMemorySizeAndAlignment(RHIDevice* device, DriverImageCreationInfo* info);
+
 EntryHandle CreateDriverImageHandle(RHIDevice* device, DriverImageCreationInfo* info);
 
 EntryHandle CreateDriverImageViewHandle(RHIDevice* device, DriverImageViewCreationInfo* info);
@@ -714,7 +556,21 @@ EntryHandle* CreateDriverSemaphores(RHIDevice* device, uint32_t semaphoreCount);
 
 int ReadBackQueryResults(RHIDevice* device, EntryHandle queryPoolIndex, uint32_t queryOffset, uint32_t queryCount, void* queryResults, size_t queryResultsSizeBytes, size_t individualQueryResultSize, int queryFlags);
 
-int FindDriverSupportedDepthFormat(VKInstance* instance, EntryHandle gpuIndex, ImageFormat format);
+int FindDriverSupportedDepthFormat(RHIInstance* instance, EntryHandle gpuIndex, ImageFormat format);
+
+int FindDriverSupportBackbufferFormat(RHIInstance* instance, EntryHandle gpuIndex, EntryHandle surfaceIndex, ImageFormat requestedFormat);
+
+EntryHandle CreateDriverShaderResourceSet(RHIDevice* device, ShaderResourceSetInstanceCreator* creator, EntryHandle descriptorHeapIndex, EntryHandle descriptorLayoutHandle, uint32_t numberOfSubResourceHandle, uint32_t variableSizeRequestForLastDescriptor);
+
+int UpdateDriverShaderResourceSet(RHIDevice* device, ShaderResourceSetInstanceCreator* creator, EntryHandle descriptorSetHandle);
+
+void CreateDriverInstanceMemory(RHIInstance* instance, Allocator* allocator);
+
+void DestroyDriverInstance(RHIInstance* instance);
+
+int CreateDriverInstance(RHIInstance* instance, WindowManagementType windowType, uint32_t driverSpecificMemory, uint32_t driverCacheSize, uint32_t instancePermanentSpecificMemory, uint32_t instanceCacheMemory, Logger* logger, Allocator* allocator);
+
+EntryHandle CreateDriverWindowSurface(RHIInstance* instance, OSWindowInternalData* windowData);
 
 size_t GetDriverImageMemoryBarrierSize();
 size_t GetDriverBufferMemoryBarrierSize();

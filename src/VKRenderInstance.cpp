@@ -1,6 +1,8 @@
 #include "RenderInstance.h"
 
+#include "VKInstance.h"
 #include "VKDescriptorLayoutBuilder.h"
+#include "VKDescriptorSetBuilder.h"
 #include "VKRenderPassBuilder.h"
 #include "VKPipelineBuilder.h"
 #include "VKSwapChain.h"
@@ -8,6 +10,1050 @@
 #define RENDER_MIN(a, b) ((a) > (b) ? (b) : (a))
 #define RENDER_MAX(a, b) ((a) < (b) ? (b) : (a))
 #define RENDER_PWR2UP(size, align) (((size) + ((align)-1)) & ~((align)-1))
+
+namespace API
+{
+	VkAttachmentLoadOp ConvertAttachLoadOpToVulkanLoadOp(AttachmentLoadUsage loadOp)
+	{
+		VkAttachmentLoadOp ret = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		switch (loadOp)
+		{
+		case AttachmentLoadUsage::ATTACHNOCARE:
+			break;
+		case AttachmentLoadUsage::ATTACHCLEAR:
+			ret = VK_ATTACHMENT_LOAD_OP_CLEAR;
+			break;
+		}
+		return ret;
+	}
+
+	VkAttachmentStoreOp ConvertAttachStoreOpToVulkanStoreOp(AttachmentStoreUsage storeOp)
+	{
+		VkAttachmentStoreOp ret = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		switch (storeOp)
+		{
+		case AttachmentStoreUsage::ATTACHDISCARD:
+			break;
+		case AttachmentStoreUsage::ATTACHSTORE:
+			ret = VK_ATTACHMENT_STORE_OP_STORE;
+			break;
+		}
+		return ret;
+	}
+
+	VkFormat ConvertComponentFormatTypeToVulkanFormat(ComponentFormatType type)
+	{
+		VkFormat format = VK_FORMAT_UNDEFINED;
+		switch (type)
+		{
+		case ComponentFormatType::RAW_8BIT_BUFFER:
+			format = VK_FORMAT_R8_UINT;
+			break;
+		case ComponentFormatType::R32_UINT:
+			format = VK_FORMAT_R32_UINT;
+			break;
+		case ComponentFormatType::R32_SINT:
+			format = VK_FORMAT_R32_SINT;
+			break;
+		case ComponentFormatType::R32G32B32A32_SFLOAT:
+			format = VK_FORMAT_R32G32B32A32_SFLOAT;
+			break;
+		case ComponentFormatType::R32G32B32_SFLOAT:
+			format = VK_FORMAT_R32G32B32_SFLOAT;
+			break;
+		case ComponentFormatType::R32G32_SFLOAT:
+			format = VK_FORMAT_R32G32_SFLOAT;
+			break;
+		case ComponentFormatType::R32_SFLOAT:
+			format = VK_FORMAT_R32_SFLOAT;
+			break;
+		case ComponentFormatType::R32G32_SINT:
+			format = VK_FORMAT_R32G32_SINT;
+			break;
+		case ComponentFormatType::R8G8_UINT:
+			format = VK_FORMAT_R8G8_UINT;
+			break;
+		case ComponentFormatType::R16G16_SINT:
+			format = VK_FORMAT_R16G16_SINT;
+			break;
+		case ComponentFormatType::R16G16B16_SINT:
+			format = VK_FORMAT_R16G16B16_SINT;
+			break;
+		default:
+			break;
+		}
+
+		return format;
+	}
+
+	VkCompareOp ConvertCompareOpToVulkanCompareOp(CompareOp testApp)
+	{
+		VkCompareOp ret = VK_COMPARE_OP_ALWAYS;
+
+		switch (testApp)
+		{
+		case CompareOp::NEVER:
+			ret = VK_COMPARE_OP_NEVER;
+			break;
+
+		case CompareOp::LESS:
+			ret = VK_COMPARE_OP_LESS;
+			break;
+
+		case CompareOp::EQUAL:
+			ret = VK_COMPARE_OP_EQUAL;
+			break;
+
+		case CompareOp::LESSEQUAL:
+			ret = VK_COMPARE_OP_LESS_OR_EQUAL;
+			break;
+
+		case CompareOp::GREATER:
+			ret = VK_COMPARE_OP_GREATER;
+			break;
+
+		case CompareOp::NOTEQUAL:
+			ret = VK_COMPARE_OP_NOT_EQUAL;
+			break;
+
+		case CompareOp::GREATEREQUAL:
+			ret = VK_COMPARE_OP_GREATER_OR_EQUAL;
+			break;
+
+		case CompareOp::ALLPASS:
+			ret = VK_COMPARE_OP_ALWAYS;
+			break;
+
+		default:
+			break;
+		}
+
+		return ret;
+	}
+
+	VkFormat ConvertImageFormatToVulkanFormat(ImageFormat format)
+	{
+		VkFormat vkFormat = VK_FORMAT_MAX_ENUM;
+		switch (format)
+		{
+		case ImageFormat::DXT1:
+			vkFormat = VK_FORMAT_BC1_RGB_SRGB_BLOCK;
+			break;
+		case ImageFormat::DXT3:
+			vkFormat = VK_FORMAT_BC3_SRGB_BLOCK;
+			break;
+		case ImageFormat::R8G8B8A8:
+			vkFormat = VK_FORMAT_R8G8B8A8_SRGB;
+			break;
+		case ImageFormat::R8G8B8A8_UNORM:
+			vkFormat = VK_FORMAT_R8G8B8A8_UNORM;
+			break;
+		case ImageFormat::B8G8R8A8_UNORM:
+			vkFormat = VK_FORMAT_B8G8R8A8_UNORM;
+			break;
+		case ImageFormat::B8G8R8A8:
+			vkFormat = VK_FORMAT_B8G8R8A8_SRGB;
+			break;
+		case ImageFormat::D24UNORMS8STENCIL:
+			vkFormat = VK_FORMAT_D24_UNORM_S8_UINT;
+			break;
+		case ImageFormat::D32FLOATS8STENCIL:
+			vkFormat = VK_FORMAT_D32_SFLOAT_S8_UINT;
+			break;
+
+		case ImageFormat::D32FLOAT:
+			vkFormat = VK_FORMAT_D32_SFLOAT;
+			break;
+		case ImageFormat::R32_UINT:
+			vkFormat = VK_FORMAT_R32_UINT;
+			break;
+		}
+		return vkFormat;
+	}
+
+
+	ImageFormat ConvertVkFormatToAppFormat(VkFormat vkFormat)
+	{
+		ImageFormat format = ImageFormat::IMAGE_UNKNOWN;
+		switch (vkFormat)
+		{
+		case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
+			format = ImageFormat::DXT1;
+			break;
+		case VK_FORMAT_BC3_SRGB_BLOCK:
+			format = ImageFormat::DXT3;
+			break;
+		case VK_FORMAT_R8G8B8A8_SRGB:
+			format = ImageFormat::R8G8B8A8;
+			break;
+		case VK_FORMAT_R8G8B8A8_UNORM:
+			format = ImageFormat::R8G8B8A8_UNORM;
+			break;
+		case VK_FORMAT_D24_UNORM_S8_UINT:
+			format = ImageFormat::D24UNORMS8STENCIL;
+			break;
+
+		case VK_FORMAT_D32_SFLOAT_S8_UINT:
+			format = ImageFormat::D32FLOATS8STENCIL;
+			break;
+
+		case VK_FORMAT_D32_SFLOAT:
+			format = ImageFormat::D32FLOAT;
+			break;
+		case VK_FORMAT_B8G8R8A8_SRGB:
+			format = ImageFormat::B8G8R8A8;
+			break;
+
+		}
+		return format;
+	}
+
+	VkPrimitiveTopology ConvertTopology(PrimitiveType type)
+	{
+		VkPrimitiveTopology top = VK_PRIMITIVE_TOPOLOGY_MAX_ENUM;
+
+		switch (type)
+		{
+		case TRIANGLES:
+			top = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+			break;
+
+		case TRISTRIPS:
+			top = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+			break;
+
+		case TRIFAN:
+			top = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN;
+			break;
+
+		case POINTSLIST:
+			top = VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
+			break;
+
+		case LINELIST:
+			top = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+			break;
+
+		case LINESTRIPS:
+			top = VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
+			break;
+
+		default:
+			break;
+		}
+
+		return top;
+	}
+
+	VkAccessFlags ConvertBarrierActionToVulkanAccessFlags(BarrierAction action)
+	{
+		VkAccessFlags flags = 0;
+		flags |= (VK_ACCESS_SHADER_WRITE_BIT) * ((action & WRITE_SHADER_RESOURCE) != 0);
+		flags |= (VK_ACCESS_SHADER_READ_BIT) * ((action & READ_SHADER_RESOURCE) != 0);
+		flags |= (VK_ACCESS_UNIFORM_READ_BIT) * ((action & READ_UNIFORM_BUFFER) != 0);
+		flags |= (VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT) * ((action & READ_VERTEX_INPUT) != 0);
+		flags |= (VK_ACCESS_INDIRECT_COMMAND_READ_BIT) * ((action & READ_INDIRECT_COMMAND) != 0);
+		flags |= (VK_ACCESS_TRANSFER_WRITE_BIT) * ((action & TRANSFER_WRITE_DATA_RESOURCE) != 0);
+		flags |= (VK_ACCESS_INDEX_READ_BIT) * ((action & READ_INDEX_INPUT) != 0);
+		return flags;
+	}
+
+	VkPipelineStageFlags ConvertBarrierStageToVulkanPipelineStage(PipelineStage sourceStage)
+	{
+		VkPipelineStageFlags flags = 0;
+		flags |= (VK_PIPELINE_STAGE_VERTEX_SHADER_BIT) * ((sourceStage & VERTEX_SHADER_BARRIER) != 0);
+		flags |= (VK_PIPELINE_STAGE_VERTEX_INPUT_BIT) * ((sourceStage & VERTEX_INPUT_BARRIER) != 0);
+		flags |= (VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT) * ((sourceStage & COMPUTE_BARRIER) != 0);
+		flags |= (VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT) * ((sourceStage & BEGINNING_OF_PIPE) != 0);
+		flags |= (VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT) * ((sourceStage & FRAGMENT_BARRIER) != 0);
+		flags |= (VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT) * ((sourceStage & INDIRECT_DRAW_BARRIER) != 0);
+		flags |= (VK_PIPELINE_STAGE_TRANSFER_BIT) * ((sourceStage & TRANSFER_BARRIER) != 0);
+		flags |= (VK_PIPELINE_STAGE_VERTEX_INPUT_BIT) * ((sourceStage & INDEX_INPUT_BARRIER) != 0);
+		flags |= (VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT) * ((sourceStage & END_OF_PIPE) != 0);
+		return flags;
+	}
+
+	VkShaderStageFlags ConvertShaderStageToVulkanShaderStage(ShaderStageType type)
+	{
+		VkShaderStageFlags flags = 0;
+		flags |= (VK_SHADER_STAGE_VERTEX_BIT) * ((type & VERTEXSHADERSTAGE) != 0);
+		flags |= (VK_SHADER_STAGE_FRAGMENT_BIT) * ((type & FRAGMENTSHADERSTAGE) != 0);
+		flags |= (VK_SHADER_STAGE_COMPUTE_BIT) * ((type & COMPUTESHADERSTAGE) != 0);
+		return flags;
+	}
+
+	VkImageLayout ConvertImageLayoutToVulkanImageLayout(ImageLayout layout)
+	{
+		VkImageLayout outLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+		switch (layout)
+		{
+		case ImageLayout::UNDEFINED:
+			break;
+		case ImageLayout::WRITEABLE:
+			outLayout = VK_IMAGE_LAYOUT_GENERAL;
+			break;
+		case ImageLayout::SHADERREADABLE:
+			outLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			break;
+		case ImageLayout::COLORATTACHMENT:
+			outLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			break;
+		case ImageLayout::DEPTHSTENCILATTACHMENT:
+			outLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+			break;
+		case ImageLayout::PRESENT:
+			outLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+			break;
+		case ImageLayout::TRANSFER_DEST_OPTIMAL:
+			outLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+			break;
+		case ImageLayout::TRANSFER_SRC_OPTIMAL:
+			outLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+			break;
+		}
+
+		return outLayout;
+	}
+
+	void ConvertVertexInputToVKVertexAttrDescription(VertexInputDescription* inputDescs, int numInputDescs, int vertexBufferLocation, VkVertexInputAttributeDescription* attrs)
+	{
+		for (int i = 0; i < numInputDescs; i++)
+		{
+			VkVertexInputAttributeDescription& attr = attrs[i];
+
+			attr.location = i;
+			attr.format = ConvertComponentFormatTypeToVulkanFormat(inputDescs[i].format);
+			attr.offset = inputDescs[i].byteoffset;
+			attr.binding = vertexBufferLocation;
+		}
+	}
+
+	VkFrontFace ConvertTriangleWinding(TriangleWinding winding)
+	{
+		VkFrontFace face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+
+		switch (winding)
+		{
+		case CW:
+			face = VK_FRONT_FACE_CLOCKWISE;
+			break;
+
+		case CCW:
+			face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+			break;
+
+		default:
+			break;
+		}
+
+		return face;
+	}
+
+	VkCullModeFlags ConvertCullMode(CullMode mode)
+	{
+		VkCullModeFlags ret = VK_CULL_MODE_NONE;
+
+		switch (mode)
+		{
+		case CullMode::CULL_NONE:
+			ret = VK_CULL_MODE_NONE;
+			break;
+
+		case CullMode::CULL_BACK:
+			ret = VK_CULL_MODE_BACK_BIT;
+			break;
+
+		case CullMode::CULL_FRONT:
+			ret = VK_CULL_MODE_FRONT_BIT;
+			break;
+
+		default:
+			break;
+		}
+
+		return ret;
+	}
+
+	VkStencilOp ConvertStencilOpToVulkan(StencilOp op)
+	{
+		switch (op)
+		{
+		case StencilOp::REPLACE:
+			return VK_STENCIL_OP_REPLACE;
+
+		case StencilOp::KEEP:
+			return VK_STENCIL_OP_KEEP;
+
+		case StencilOp::ZERO:
+			return VK_STENCIL_OP_ZERO;
+
+		default:
+			return VK_STENCIL_OP_KEEP;
+		}
+	}
+
+	VkStencilOpState ConvertFaceStencilDataToVulkan(const FaceStencilData& face)
+	{
+		VkStencilOpState state{};
+		state.failOp = ConvertStencilOpToVulkan(face.failOp);
+		state.passOp = ConvertStencilOpToVulkan(face.passOp);
+		state.depthFailOp = ConvertStencilOpToVulkan(face.depthFailOp);
+		state.compareOp = ConvertCompareOpToVulkanCompareOp(face.stencilCompare);
+
+		state.compareMask = static_cast<uint32_t>(face.compareMask);
+		state.writeMask = static_cast<uint32_t>(face.writeMask);
+		state.reference = static_cast<uint32_t>(face.reference);
+
+		return state;
+	}
+
+	void ConvertGPUFeatureRequestToVkPhysicalDeviceProperties(
+		const GPUFeatureRequest* request,
+		VkPhysicalDeviceFeatures2* features2,
+		VkPhysicalDeviceVulkan12Features* features12)
+	{
+
+		features12->sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+		features12->pNext = nullptr;
+
+		features12->descriptorBindingPartiallyBound =
+			request->requireDescriptorBindingPartiallyBound ? VK_TRUE : VK_FALSE;
+		features12->descriptorBindingSampledImageUpdateAfterBind =
+			request->requireDescriptorBindingSampledImageUpdateAfterBind ? VK_TRUE : VK_FALSE;
+		features12->descriptorBindingUpdateUnusedWhilePending =
+			request->requireDescriptorBindingUpdateUnusedWhilePending ? VK_TRUE : VK_FALSE;
+		features12->descriptorBindingVariableDescriptorCount =
+			request->requireDescriptorBindingVariableDescriptorCount ? VK_TRUE : VK_FALSE;
+		features12->shaderSampledImageArrayNonUniformIndexing =
+			request->requireShaderSampledImageArrayNonUniformIndexing ? VK_TRUE : VK_FALSE;
+		features12->storageBuffer8BitAccess =
+			request->requireStorageBuffer8BitAccess ? VK_TRUE : VK_FALSE;
+		features12->drawIndirectCount =
+			request->requireDrawIndirectCount ? VK_TRUE : VK_FALSE;
+		features12->runtimeDescriptorArray =
+			request->requireRuntimeDescriptorArray ? VK_TRUE : VK_FALSE;
+		features12->timelineSemaphore = request->requireTimelineSemaphores ? VK_TRUE : VK_FALSE;
+
+		features2->sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+		features2->pNext = features12;
+
+		features2->features.geometryShader =
+			request->requireGeometryShader ? VK_TRUE : VK_FALSE;
+		features2->features.textureCompressionBC =
+			request->requireTextureCompressionBC ? VK_TRUE : VK_FALSE;
+		features2->features.tessellationShader =
+			request->requireTessellationShader ? VK_TRUE : VK_FALSE;
+		features2->features.samplerAnisotropy =
+			request->requireSamplerAnisotropy ? VK_TRUE : VK_FALSE;
+		features2->features.multiDrawIndirect =
+			request->requireMultiDrawIndirect ? VK_TRUE : VK_FALSE;
+		features2->features.wideLines =
+			request->requireWideLines ? VK_TRUE : VK_FALSE;
+
+		features2->features.logicOp = request->requireLogicOp ? VK_TRUE : VK_FALSE;
+	}
+
+	VkImageAspectFlags ConvertImageViewAspectMaskToVulkanImageAspectFlags(ImageViewAspectMask aspectMask)
+	{
+		return
+			((aspectMask & COLOR_IMAGE_ASPECT) ? VK_IMAGE_ASPECT_COLOR_BIT : 0) |
+			((aspectMask & DEPTH_IMAGE_ASPECT) ? VK_IMAGE_ASPECT_DEPTH_BIT : 0) |
+			((aspectMask & STENCIL_IMAGE_ASPECT) ? VK_IMAGE_ASPECT_STENCIL_BIT : 0);
+	}
+
+	VkImageType ConvertImageTypeToVulkanImageType(ImageType imageType)
+	{
+		VkImageType result = VK_IMAGE_TYPE_2D;
+
+		switch (imageType)
+		{
+		case ImageType::IMAGE_1D:
+			result = VK_IMAGE_TYPE_1D;
+			break;
+
+		case ImageType::IMAGE_2D:
+			result = VK_IMAGE_TYPE_2D;
+			break;
+
+		case ImageType::IMAGE_3D:
+			result = VK_IMAGE_TYPE_3D;
+			break;
+
+		case ImageType::IMAGE_CUBE:
+			result = VK_IMAGE_TYPE_2D;
+			break;
+
+		default:
+			result = VK_IMAGE_TYPE_2D;
+			break;
+		}
+
+		return result;
+	}
+
+	VkImageViewType ConvertImageTypeToVulkanImageViewType(ImageType imageType)
+	{
+		VkImageViewType result = VK_IMAGE_VIEW_TYPE_2D;
+
+		switch (imageType)
+		{
+		case ImageType::IMAGE_1D:
+			result = VK_IMAGE_VIEW_TYPE_1D;
+			break;
+
+		case ImageType::IMAGE_2D:
+			result = VK_IMAGE_VIEW_TYPE_2D;
+			break;
+
+		case ImageType::IMAGE_3D:
+			result = VK_IMAGE_VIEW_TYPE_3D;
+			break;
+
+		case ImageType::IMAGE_CUBE:
+			result = VK_IMAGE_VIEW_TYPE_CUBE;
+			break;
+
+		default:
+			result = VK_IMAGE_VIEW_TYPE_2D;
+			break;
+		}
+
+		return result;
+	}
+
+	VkImageUsageFlags ConvertImageUsageFlagsToVulkanImageUsageFlags(ImageUsageFlags flags)
+	{
+		VkImageUsageFlags vkFlags = 0;
+
+		vkFlags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT * ((flags & TRANSFER_SRC) != 0);
+		vkFlags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT * ((flags & TRANSFER_DEST) != 0);
+		vkFlags |= VK_IMAGE_USAGE_SAMPLED_BIT * ((flags & SAMPLED) != 0);
+		vkFlags |= VK_IMAGE_USAGE_STORAGE_BIT * ((flags & STORAGE) != 0);
+		vkFlags |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT * ((flags & DEPTH_ATTACHMENT) != 0);
+		vkFlags |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT * ((flags & STENCIL_ATTACHMENT) != 0);
+		vkFlags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT * ((flags & COLOR_ATTACHMENT) != 0);
+		vkFlags |= VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT * ((flags & TRANSIENT_ATTACHMENT) != 0);
+
+		return vkFlags;
+	}
+
+	VkMemoryPropertyFlags ConvertMemoryTypeToVkMemoryPropertyFlags(MemoryType memType)
+	{
+		VkMemoryPropertyFlags retFlags = 0;
+		retFlags |= VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT * ((memType & MemoryTypeBits::DEVICE_MEMORY_TYPE) != 0);
+		retFlags |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT * (((memType & MemoryTypeBits::HOST_MEMORY_TYPE) != 0) || ((memType & MemoryTypeBits::HOST_MEMORY_COHERENT_TYPE) != 0));
+		retFlags |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT * ((memType & MemoryTypeBits::HOST_MEMORY_COHERENT_TYPE) != 0);
+		return retFlags;
+	}
+
+	VkBlendFactor ConvertBlendFactorToVulkanBlendFactor(BlendFactor factor)
+	{
+		VkBlendFactor vkFactor = VK_BLEND_FACTOR_ZERO;
+
+		switch (factor)
+		{
+		case BlendFactor::FACTOR_ZERO:
+			vkFactor = VK_BLEND_FACTOR_ZERO;
+			break;
+
+		case BlendFactor::FACTOR_ONE:
+			vkFactor = VK_BLEND_FACTOR_ONE;
+			break;
+
+		case BlendFactor::FACTOR_SRC_COLOR:
+			vkFactor = VK_BLEND_FACTOR_SRC_COLOR;
+			break;
+
+		case BlendFactor::FACTOR_DST_COLOR:
+			vkFactor = VK_BLEND_FACTOR_DST_COLOR;
+			break;
+
+		case BlendFactor::FACTOR_SRC_ALPHA:
+			vkFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+			break;
+
+		case BlendFactor::FACTOR_DST_ALPHA:
+			vkFactor = VK_BLEND_FACTOR_DST_ALPHA;
+			break;
+
+		case BlendFactor::FACTOR_ONE_MINUS_SRC_ALPHA:
+			vkFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+			break;
+
+		case BlendFactor::FACTOR_ONE_MINUS_DST_ALPHA:
+			vkFactor = VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
+			break;
+		}
+
+		return vkFactor;
+	}
+
+	VkBlendOp ConvertBlendOpToVulkanBlendOp(BlendOp op)
+	{
+		VkBlendOp vkOp = VK_BLEND_OP_ADD;
+
+		switch (op)
+		{
+		case BlendOp::BLEND_ADD:
+			vkOp = VK_BLEND_OP_ADD;
+			break;
+
+		case BlendOp::BLEND_SUB:
+			vkOp = VK_BLEND_OP_SUBTRACT;
+			break;
+
+		case BlendOp::BLEND_REVERSE_SUB:
+			vkOp = VK_BLEND_OP_REVERSE_SUBTRACT;
+			break;
+
+		case BlendOp::BLEND_MIN:
+			vkOp = VK_BLEND_OP_MIN;
+			break;
+
+		case BlendOp::BLEND_MAX:
+			vkOp = VK_BLEND_OP_MAX;
+			break;
+		}
+
+		return vkOp;
+	}
+
+	VkLogicOp ConvertBlendLogicOpToVulkanLogicOp(BlendLogicOp op)
+	{
+		VkLogicOp vkOp = VK_LOGIC_OP_CLEAR;
+
+		switch (op)
+		{
+		case BlendLogicOp::LOGIC_CLEAR:
+			vkOp = VK_LOGIC_OP_CLEAR;
+			break;
+
+		case BlendLogicOp::LOGIC_AND:
+			vkOp = VK_LOGIC_OP_AND;
+			break;
+
+		case BlendLogicOp::LOGIC_COPY:
+			vkOp = VK_LOGIC_OP_COPY;
+			break;
+		}
+
+		return vkOp;
+	}
+
+	VkFilter ConvertSamplerFilterModeToVulkanFilter(SamplerFilterMode filterMode)
+	{
+		VkFilter filter = VK_FILTER_NEAREST;
+
+		switch (filterMode)
+		{
+		case SamplerFilterMode::FILTER_NEAREST:
+			filter = VK_FILTER_NEAREST;
+			break;
+
+		case SamplerFilterMode::FILTER_LINEAR:
+			filter = VK_FILTER_LINEAR;
+			break;
+		}
+
+		return filter;
+	}
+
+	VkSamplerAddressMode ConvertSamplerAddressModeToVulkanSamplerAddressMode(SamplerAddressMode addressMode)
+	{
+		VkSamplerAddressMode mode = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+
+		switch (addressMode)
+		{
+		case SamplerAddressMode::ADDRESS_REPEAT:
+			mode = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+			break;
+
+		case SamplerAddressMode::ADDRESS_MIRRORED_REPEAT:
+			mode = VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
+			break;
+
+		case SamplerAddressMode::ADDRESS_CLAMP_TO_EDGE:
+			mode = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+			break;
+
+		case SamplerAddressMode::ADDRESS_CLAMP_TO_BORDER:
+			mode = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+			break;
+
+		case SamplerAddressMode::ADDRESS_MIRROR_CLAMP_TO_EDGE:
+			mode = VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE;
+			break;
+		}
+
+		return mode;
+	}
+
+	VkSamplerMipmapMode ConvertSamplerMipmapModeToVulkanSamplerMipmapMode(SamplerMipmapMode mipmapMode)
+	{
+		VkSamplerMipmapMode mode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+
+		switch (mipmapMode)
+		{
+		case SamplerMipmapMode::MIPMAP_MODE_NEAREST:
+			mode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+			break;
+
+		case SamplerMipmapMode::MIPMAP_MODE_LINEAR:
+			mode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+			break;
+		}
+
+		return mode;
+	}
+
+	VkBufferUsageFlags ConvertBufferUsageToDriverBufferUsage(BufferUsage usage)
+	{
+		VkBufferUsageFlags result = 0;
+
+		if (usage & BUFFER_USAGE_TRANSFER_SRC_BIT)
+			result |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+
+		if (usage & BUFFER_USAGE_TRANSFER_DST_BIT)
+			result |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+
+		if (usage & BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT)
+			result |= VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+
+		if (usage & BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT)
+			result |= VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT;
+
+		if (usage & BUFFER_USAGE_UNIFORM_BUFFER_BIT)
+			result |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+
+		if (usage & BUFFER_USAGE_STORAGE_BUFFER_BIT)
+			result |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+
+		if (usage & BUFFER_USAGE_INDEX_BUFFER_BIT)
+			result |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+
+		if (usage & BUFFER_USAGE_VERTEX_BUFFER_BIT)
+			result |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+
+		if (usage & BUFFER_USAGE_INDIRECT_BUFFER_BIT)
+			result |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+
+		return result;
+	}
+}
+
+static VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(
+	VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+	VkDebugUtilsMessageTypeFlagsEXT messageType,
+	const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+	void* pUserData) {
+
+	if (messageSeverity < VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
+	{
+		return VK_FALSE;
+	}
+
+	Logger* logger = (Logger*)pUserData;
+
+	logger->AddLogMessage(LOGERROR, pCallbackData->pMessage, strlen(pCallbackData->pMessage));
+
+	logger->ProcessMessage();
+
+	return VK_FALSE;
+}
+
+#ifdef _MSC_VER
+#include <intrin.h>
+#endif
+
+static int findLSB(unsigned int input)
+{
+	if (!input) return -1;
+#ifdef _MSC_VER
+	unsigned long index;
+	_BitScanForward(&index, input);
+	return index;
+#else
+	return __builtin_ctz(input);
+#endif
+}
+
+static int findMSB(unsigned int input)
+{
+	if (!input) return -1;
+
+#ifdef _MSC_VER
+	unsigned long index;
+	_BitScanReverse(&index, input);
+	return index;
+#else
+	return 31 - __builtin_clz(input);
+#endif
+}
+
+RenderPhysicalDeviceIndex RenderInstance::CreatePhysicalDeviceAdapter(GPUFeatureRequest* requestedPhysicalFeatures, LogicalDeviceFeatures* requestedDeviceFeatures)
+{
+	if (physicalDeviceCounter == maxPhysicalDevices)
+	{
+		internalRendererLogger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("CreatePhysicalDeviceAdapter : too many gpus allocated"));
+		return {};
+	}
+
+	uint32_t deviceExtNameCount = vkInstance.mainInstance->GetLogicalDeviceExtensionsCount(requestedDeviceFeatures);
+
+	const char** deviceFeatureNames = (const char**)cacheAllocator->Allocate(sizeof(char*) * deviceExtNameCount);
+
+	vkInstance.mainInstance->GetLogicalDeviceExtensions(requestedDeviceFeatures, deviceFeatureNames);
+
+	int driverGpuIndex = -1;
+
+	EntryHandle physicalIndex = vkInstance.mainInstance->CreatePhysicalDevice(requestedPhysicalFeatures, deviceFeatureNames, deviceExtNameCount, &driverGpuIndex);
+
+	if (EntryHandle() == physicalIndex)
+	{
+		GetLastInstanceDriverError(STRING_VIEW_FROM_LITERAL("CreatePhysicalDeviceAdapter : failed to create gpu adapter on driver"));
+		return {};
+	}
+
+	int physicalEntryIndex = physicalDeviceCounter++;
+
+	RenderPhysicalDeviceContainer* container = &physicalDeviceIndices[physicalEntryIndex];
+
+	CleanInitializePhysicalDeviceIndices(container);
+
+	container->physicalDeviceIndex = physicalIndex;
+	container->information.minUniformAlignment = vkInstance.mainInstance->GetMinimumUniformBufferAlignment(physicalIndex);
+	container->information.minStorageAlignment = vkInstance.mainInstance->GetMinimumStorageBufferAlignment(physicalIndex);
+	container->information.maxMSAALevels = findMSB(vkInstance.mainInstance->GetMaxMSAALevels(physicalIndex));
+	container->information.deviceTimeStampPeriodNS = vkInstance.mainInstance->GetTimeStampPeriod(physicalIndex);
+	container->information.optimalImageCopyOffsetAlignment = vkInstance.mainInstance->GetOptimalImageCopyOffsetAlignment(physicalIndex);
+	container->internalDriverDeviceListIdentifier = driverGpuIndex;
+
+	RenderPhysicalDeviceIndex indexRet(physicalEntryIndex);
+
+	return indexRet;
+}
+
+int RenderInstance::OpenPhysicalDevicePicker()
+{
+	if (physicalDeviceCounter == maxPhysicalDevices)
+	{
+		internalRendererLogger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("OpenPhysicalDevicePicker: Too many GPUs allocated based on CreateInfo"));
+		return -1;
+	}
+
+	int gpuCount = vkInstance.mainInstance->GetNumberOfGPUDevices();
+
+	if (gpuCount <= 0)
+	{
+		GetLastInstanceDriverError(STRING_VIEW_FROM_LITERAL("OpenPhysicalDevicePicker: No GPU reported back"));
+		return -1;
+	}
+
+	physicalDevicesOnComputerPerDriver = gpuCount;
+
+	return 0;
+}
+
+void RenderInstance::ClosePhysicalDevicePicker()
+{
+	vkInstance.mainInstance->FreePotentialGPUs();
+}
+
+RenderPhysicalDeviceIndex RenderInstance::CreatePhysicalDeviceAdapterWithQuerying(GPUFeatureRequest* requestedPhysicalFeatures, LogicalDeviceFeatures* requestedDeviceFeatures)
+{
+	if (physicalDeviceCounter == maxPhysicalDevices)
+	{
+		internalRendererLogger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("CreatePhysicalDeviceAdapterWithQuerying: Too many GPUs allocated based on CreateInfo"));
+		return {};
+	}
+
+	uint32_t deviceExtNameCount = vkInstance.mainInstance->GetLogicalDeviceExtensionsCount(requestedDeviceFeatures);
+
+	const char** deviceFeatureNames = (const char**)cacheAllocator->Allocate(sizeof(char*) * deviceExtNameCount);
+
+	vkInstance.mainInstance->GetLogicalDeviceExtensions(requestedDeviceFeatures, deviceFeatureNames);
+
+	int gpuIndex = 0;
+
+	uint64_t expectedDeviceExtMask = (1ULL << deviceExtNameCount) - 1;
+
+	int* physicalDeviceExlusionList = nullptr;
+
+	if (physicalDeviceCounter)
+	{
+		physicalDeviceExlusionList = (int*)cacheAllocator->Allocate(sizeof(int) * physicalDeviceCounter);
+
+		for (int i = 0; i < physicalDeviceCounter; i++)
+		{
+			RenderPhysicalDeviceContainer* container = &physicalDeviceIndices[i];
+
+			physicalDeviceExlusionList[i] = container->internalDriverDeviceListIdentifier;
+		}
+	}
+
+	char topLineMessageBuffer[64];
+
+	for (; gpuIndex < physicalDevicesOnComputerPerDriver; gpuIndex++)
+	{
+		bool alreadyUsed = false;
+
+		for (int i = 0; i < physicalDeviceCounter; i++)
+		{
+			if (physicalDeviceExlusionList[i] == gpuIndex)
+			{
+				alreadyUsed = true;
+				break;
+			}
+		}
+
+		if (alreadyUsed) continue;
+
+		GPUFeatureRequest currentRequest{};
+		uint64_t currentDeviceExtMask = 0;
+
+		if (vkInstance.mainInstance->QuerySpecificPhysicalDeviceFeatures(requestedPhysicalFeatures, &currentRequest, deviceFeatureNames, deviceExtNameCount, gpuIndex, &currentDeviceExtMask))
+			break;
+
+		int size = snprintf(topLineMessageBuffer, sizeof(topLineMessageBuffer), "GPU at index %d has mismatched values\n", gpuIndex);
+
+		internalRendererLogger->AddLogMessage(LOGINFO, topLineMessageBuffer, size);
+
+		if (!(currentRequest.deviceType & requestedPhysicalFeatures->deviceType))
+			internalRendererLogger->AddLogMessage(LOGINFO, STRING_VIEW_FROM_LITERAL("Desired GPU type is not what was requested\n"));
+
+		if (currentRequest.desiredMaxImageWidth < requestedPhysicalFeatures->desiredMaxImageWidth)
+			internalRendererLogger->AddLogMessage(LOGINFO, STRING_VIEW_FROM_LITERAL("Desired Max Image Width is less than requested\n"));
+
+		if (currentRequest.desiredMaxImageHeight < requestedPhysicalFeatures->desiredMaxImageHeight)
+			internalRendererLogger->AddLogMessage(LOGINFO, STRING_VIEW_FROM_LITERAL("Desired Max Image Height is less than requested\n"));
+
+		if (requestedPhysicalFeatures->requireDescriptorBindingPartiallyBound &&
+			!currentRequest.requireDescriptorBindingPartiallyBound)
+			internalRendererLogger->AddLogMessage(LOGINFO, STRING_VIEW_FROM_LITERAL("Descriptor Binding Partially Bound is not supported\n"));
+
+		if (requestedPhysicalFeatures->requireDescriptorBindingSampledImageUpdateAfterBind &&
+			!currentRequest.requireDescriptorBindingSampledImageUpdateAfterBind)
+			internalRendererLogger->AddLogMessage(LOGINFO, STRING_VIEW_FROM_LITERAL("Descriptor Binding Sampled Image Update After Bind is not supported\n"));
+
+		if (requestedPhysicalFeatures->requireDescriptorBindingUpdateUnusedWhilePending &&
+			!currentRequest.requireDescriptorBindingUpdateUnusedWhilePending)
+			internalRendererLogger->AddLogMessage(LOGINFO, STRING_VIEW_FROM_LITERAL("Descriptor Binding Update Unused While Pending is not supported\n"));
+
+		if (requestedPhysicalFeatures->requireDescriptorBindingVariableDescriptorCount &&
+			!currentRequest.requireDescriptorBindingVariableDescriptorCount)
+			internalRendererLogger->AddLogMessage(LOGINFO, STRING_VIEW_FROM_LITERAL("Descriptor Binding Variable Descriptor Count is not supported\n"));
+
+		if (requestedPhysicalFeatures->requireShaderSampledImageArrayNonUniformIndexing &&
+			!currentRequest.requireShaderSampledImageArrayNonUniformIndexing)
+			internalRendererLogger->AddLogMessage(LOGINFO, STRING_VIEW_FROM_LITERAL("Shader Sampled Image Array Non Uniform Indexing is not supported\n"));
+
+		if (requestedPhysicalFeatures->requireStorageBuffer8BitAccess &&
+			!currentRequest.requireStorageBuffer8BitAccess)
+			internalRendererLogger->AddLogMessage(LOGINFO, STRING_VIEW_FROM_LITERAL("Storage Buffer 8 Bit Access is not supported\n"));
+
+		if (requestedPhysicalFeatures->requireDrawIndirectCount &&
+			!currentRequest.requireDrawIndirectCount)
+			internalRendererLogger->AddLogMessage(LOGINFO, STRING_VIEW_FROM_LITERAL("Draw Indirect Count is not supported\n"));
+
+		if (requestedPhysicalFeatures->requireRuntimeDescriptorArray &&
+			!currentRequest.requireRuntimeDescriptorArray)
+			internalRendererLogger->AddLogMessage(LOGINFO, STRING_VIEW_FROM_LITERAL("Runtime Descriptor Array is not supported\n"));
+
+		if (requestedPhysicalFeatures->requireGeometryShader &&
+			!currentRequest.requireGeometryShader)
+			internalRendererLogger->AddLogMessage(LOGINFO, STRING_VIEW_FROM_LITERAL("Geometry Shader is not supported\n"));
+
+		if (requestedPhysicalFeatures->requireTextureCompressionBC &&
+			!currentRequest.requireTextureCompressionBC)
+			internalRendererLogger->AddLogMessage(LOGINFO, STRING_VIEW_FROM_LITERAL("Texture Compression BC is not supported\n"));
+
+		if (requestedPhysicalFeatures->requireTessellationShader &&
+			!currentRequest.requireTessellationShader)
+			internalRendererLogger->AddLogMessage(LOGINFO, STRING_VIEW_FROM_LITERAL("Tessellation Shader is not supported\n"));
+
+		if (requestedPhysicalFeatures->requireSamplerAnisotropy &&
+			!currentRequest.requireSamplerAnisotropy)
+			internalRendererLogger->AddLogMessage(LOGINFO, STRING_VIEW_FROM_LITERAL("Sampler Anisotropy is not supported\n"));
+
+		if (requestedPhysicalFeatures->requireMultiDrawIndirect &&
+			!currentRequest.requireMultiDrawIndirect)
+			internalRendererLogger->AddLogMessage(LOGINFO, STRING_VIEW_FROM_LITERAL("Multi Draw Indirect is not supported\n"));
+
+		if (requestedPhysicalFeatures->requireWideLines &&
+			!currentRequest.requireWideLines)
+			internalRendererLogger->AddLogMessage(LOGINFO, STRING_VIEW_FROM_LITERAL("Wide Lines is not supported\n"));
+
+		if (currentDeviceExtMask != expectedDeviceExtMask)
+		{
+			for (uint32_t i = 0; i < deviceExtNameCount; i++)
+			{
+				if (!(currentDeviceExtMask & (1ull << i)))
+				{
+					internalRendererLogger->AddLogMessage(LOGINFO, STRING_VIEW_FROM_LITERAL("Device extenstion not supported : "));
+					internalRendererLogger->AddLogMessage(LOGINFO, deviceFeatureNames[i], strlen(deviceFeatureNames[i]));
+					internalRendererLogger->AddLogMessage(LOGINFO, "\n", 1);
+				}
+			}
+		}
+	}
+
+	if (gpuIndex == physicalDevicesOnComputerPerDriver)
+	{
+		internalRendererLogger->ProcessMessage();
+		return {};
+	}
+
+	EntryHandle physicalIndex = vkInstance.mainInstance->CreateGPUFromIndex(gpuIndex);
+
+	if (EntryHandle() == physicalIndex)
+	{
+		GetLastInstanceDriverError(STRING_VIEW_FROM_LITERAL("CreatePhysicalDeviceAdapterWithQuerying: GPU creation by driver failed"));
+		return {};
+	}
+
+	int physicalEntryIndex = physicalDeviceCounter++;
+
+	RenderPhysicalDeviceContainer* container = &physicalDeviceIndices[physicalEntryIndex];
+
+	CleanInitializePhysicalDeviceIndices(container);
+
+	container->physicalDeviceIndex = physicalIndex;
+	container->information.minUniformAlignment = vkInstance.mainInstance->GetMinimumUniformBufferAlignment(physicalIndex);
+	container->information.minStorageAlignment = vkInstance.mainInstance->GetMinimumStorageBufferAlignment(physicalIndex);
+	container->information.maxMSAALevels = findMSB(vkInstance.mainInstance->GetMaxMSAALevels(physicalIndex));
+	container->information.deviceTimeStampPeriodNS = vkInstance.mainInstance->GetTimeStampPeriod(physicalIndex);
+	container->information.optimalImageCopyOffsetAlignment = vkInstance.mainInstance->GetOptimalImageCopyOffsetAlignment(physicalIndex);
+	container->internalDriverDeviceListIdentifier = gpuIndex;
+
+	RenderPhysicalDeviceIndex indexRet{};
+
+	indexRet = physicalEntryIndex;
+
+	return indexRet;
+}
+
+void RenderInstance::GetLastDeviceDriverError(RHIDevice* device, StringView messageHeader)
+{
+	internalRendererLogger->AddLogMessage(LOGERROR, messageHeader);
+
+	int strLength = 0;
+
+	char* string = device->device->PopErrorOffQueue(&strLength);
+
+	internalRendererLogger->AddLogMessage(LOGERROR, string, strLength);
+}
+
+void RenderInstance::GetLastInstanceDriverError(StringView messageHeader)
+{
+	internalRendererLogger->AddLogMessage(LOGERROR, messageHeader);
+
+	int strLength = 0;
+
+	char* string = vkInstance.mainInstance->PopErrorOffQueue(&strLength);
+
+	internalRendererLogger->AddLogMessage(LOGERROR, string, strLength);
+}
 
 uint32_t RenderInstance::BeginFrame(SwapChainIndex swapChainIndex)
 {
@@ -133,18 +1179,18 @@ RenderDeviceIndex RenderInstance::CreateLogicalDevice(LogicalDeviceCreateInfo* c
 	rhiDevice->container.relatedPhysDeviceInfo = &physicalDevice->information;
 	rhiDevice->container.gpuIndex = createInfo->physicalDeviceIndex;
 
-	uint32_t deviceExtNameCount = vkInstance->GetLogicalDeviceExtensionsCount(createInfo->requestedDeviceFeatures);
+	uint32_t deviceExtNameCount = vkInstance.mainInstance->GetLogicalDeviceExtensionsCount(createInfo->requestedDeviceFeatures);
 
 	const char** deviceFeatureNames = (const char**)cacheAllocator->Allocate(sizeof(char*) * deviceExtNameCount);
 
-	vkInstance->GetLogicalDeviceExtensions(createInfo->requestedDeviceFeatures, deviceFeatureNames);
+	vkInstance.mainInstance->GetLogicalDeviceExtensions(createInfo->requestedDeviceFeatures, deviceFeatureNames);
 
 	VkPhysicalDeviceVulkan12Features features12{};
 	VkPhysicalDeviceFeatures2 features2{};
 
 	API::ConvertGPUFeatureRequestToVkPhysicalDeviceProperties(createInfo->requestedPhysicalFeatures, &features2, &features12);
 
-	EntryHandle deviceIndex = vkInstance->CreateLogicalDevice(physicalIndex);
+	EntryHandle deviceIndex = vkInstance.mainInstance->CreateLogicalDevice(physicalIndex);
 
 	if (EntryHandle() == deviceIndex)
 	{
@@ -155,7 +1201,7 @@ RenderDeviceIndex RenderInstance::CreateLogicalDevice(LogicalDeviceCreateInfo* c
 
 	rhiDevice->container.logicalDeviceIndex = deviceIndex;
 
-	VKDevice* majorDevice = vkInstance->GetLogicalDevice(deviceIndex);
+	VKDevice* majorDevice = vkInstance.mainInstance->GetLogicalDevice(deviceIndex);
 
 	rhiDevice->device = majorDevice;
 
@@ -177,7 +1223,7 @@ RenderDeviceIndex RenderInstance::CreateLogicalDevice(LogicalDeviceCreateInfo* c
 		return ret;
 	}
 
-	queueSuccessful = majorDevice->GetPresentQueue(&queueIndices[1], &queueCounts[1], vkInstance->GetRenderSurface(windowsSurfaces[createInfo->surfaceIndexForPresent]()), famPropsContainer);
+	queueSuccessful = majorDevice->GetPresentQueue(&queueIndices[1], &queueCounts[1], vkInstance.mainInstance->GetRenderSurface(windowsSurfaces[createInfo->surfaceIndexForPresent]()), famPropsContainer);
 
 	if (queueSuccessful)
 	{
@@ -228,7 +1274,7 @@ RenderDeviceIndex RenderInstance::CreateLogicalDevice(LogicalDeviceCreateInfo* c
 	{
 		GetLastDeviceDriverError(rhiDevice, STRING_VIEW_FROM_LITERAL("CreateLogicalDevice: device creation when creating logical device"));
 
-		vkInstance->DestroyLogicalDevice(deviceIndex);
+		vkInstance.mainInstance->DestroyLogicalDevice(deviceIndex);
 
 		logicalDeviceCounter--;
 
@@ -432,33 +1478,33 @@ int RenderInstance::CreateRenderPass(AttachmentGraphInstance* graphInstance)
 	return totalRenderPassesCreated;
 }
 
-int DestroyDriverPhysicalDevice(VKInstance* instance, EntryHandle handle)
+int DestroyDriverPhysicalDevice(RHIInstance* instance, EntryHandle handle)
 {
 	if (EntryHandle() == handle)
 	{
 		return -1;
 	}
-	instance->DestroyPhysicalDevice(handle);
+	instance->mainInstance->DestroyPhysicalDevice(handle);
 	return 0;
 }
 
-int DestroyDriverLogicalDevice(VKInstance* instance, EntryHandle handle)
+int DestroyDriverLogicalDevice(RHIInstance* instance, EntryHandle handle)
 {
 	if (EntryHandle() == handle)
 	{
 		return -1;
 	}
-	instance->DestroyLogicalDevice(handle);
+	instance->mainInstance->DestroyLogicalDevice(handle);
 	return 0;
 }
 
-int DestroyDriverWindowsSurface(VKInstance* device, EntryHandle handle)
+int DestroyDriverWindowsSurface(RHIInstance* instance, EntryHandle handle)
 {
 	if (EntryHandle() == handle)
 	{
 		return -1;
 	}
-	device->DestroyRenderSurface(handle);
+	instance->mainInstance->DestroyRenderSurface(handle);
 	return 0;
 }
 
@@ -1374,7 +2420,7 @@ EntryHandle CreateDriverShaderResourceLayout(RHIDevice* device, ShaderResourceSe
 
 	for (int j = 0; j < creator->bindingCount; j++)
 	{
-		BindingInfo* info = &creator->info[j];
+		ResourceSetTemplateBindingInfo* info = &creator->info[j];
 
 		VkShaderStageFlags stageFlags = API::ConvertShaderStageToVulkanShaderStage(info->stageType);
 
@@ -1538,9 +2584,196 @@ int ReadBackQueryResults(RHIDevice* device, EntryHandle queryPoolIndex, uint32_t
 	);
 }
 
-int FindDriverSupportedDepthFormat(VKInstance* instance, EntryHandle gpuIndex, ImageFormat format)
+int FindDriverSupportedDepthFormat(RHIInstance* instance, EntryHandle gpuIndex, ImageFormat format)
 {
 	VkFormat vkFormat = API::ConvertImageFormatToVulkanFormat(format);
 
-	return instance->IsSupportedImageFormatForFeature(gpuIndex, vkFormat, VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
+	return instance->mainInstance->IsSupportedImageFormatForFeature(gpuIndex, vkFormat, VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
+}
+
+int FindDriverSupportBackbufferFormat(RHIInstance* instance, EntryHandle gpuIndex, EntryHandle surfaceIndex, ImageFormat requestedFormat)
+{
+	VkFormat vkFormat = API::ConvertImageFormatToVulkanFormat(requestedFormat);
+
+	bool ret = instance->mainInstance->ValidateSwapChainFormatSupport(gpuIndex, vkFormat, surfaceIndex);
+
+	return ret;
+}
+
+static int WriteToDescriptorSet(VKDevice* dev, ShaderResourceSetInstanceCreator* creator, DescriptorSetBuilder* builder)
+{
+	int updateCount = creator->updateCount;
+
+	for (int i = 0; i < updateCount; i++)
+	{
+		ShaderResourceAction action = creator->info[i].action;
+		ShaderResourceType type = creator->info[i].resourceType;
+
+		int bindingIndex = creator->info[i].bindingIndex;
+		int copiesToMake = creator->info[i].descriptorCopies;
+		int startForCopies = creator->info[i].perResourceDescriptorSlotStart;
+		int destArraySlot = creator->info[i].destArraySlot;
+
+		switch (type)
+		{
+		case ShaderResourceType::SAMPLERSTATE:
+		{
+			EntryHandle samplerHandle = creator->info[i].driverResourceHandle[0];
+
+			builder->AddSamplerDescription(samplerHandle, destArraySlot, bindingIndex, startForCopies, copiesToMake);
+
+			break;
+		}
+		case ShaderResourceType::IMAGE2D:
+		{
+			EntryHandle viewHandle = creator->info[i].driverResourceHandle[0];
+
+			builder->AddImageResourceDescription(viewHandle, API::ConvertImageLayoutToVulkanImageLayout(creator->info[i].destinationLayout), destArraySlot, bindingIndex, startForCopies, copiesToMake);
+
+			break;
+		}
+		case ShaderResourceType::IMAGESTORE2D:
+		{
+			EntryHandle viewHandle = creator->info[i].driverResourceHandle[0];
+
+			builder->AddStorageImageDescription(viewHandle, API::ConvertImageLayoutToVulkanImageLayout(creator->info[i].destinationLayout), destArraySlot, bindingIndex, startForCopies, copiesToMake);
+
+			break;
+		}
+		case ShaderResourceType::SAMPLER3D:
+		case ShaderResourceType::SAMPLER2D:
+		case ShaderResourceType::SAMPLERCUBE:
+		{
+			EntryHandle viewHandle = creator->info[i].driverResourceHandle[0];
+
+			EntryHandle samplerHandle = creator->info[i].driverResourceHandle[1];
+
+			builder->AddCombinedTextureArray(viewHandle, samplerHandle, API::ConvertImageLayoutToVulkanImageLayout(creator->info[i].destinationLayout), destArraySlot, bindingIndex, startForCopies, copiesToMake);
+
+			break;
+		}
+		case ShaderResourceType::STORAGE_BUFFER:
+		{
+			EntryHandle buffer = creator->info[i].driverResourceHandle[0];
+
+			if (creator->info[i].allocCopies > 1)
+				builder->AddStorageBuffer(dev->GetBufferHandle(buffer), creator->info[i].allocSize, bindingIndex, copiesToMake, creator->info[i].allocOffset, startForCopies, destArraySlot);
+			else
+				builder->AddStorageBufferDirect(dev->GetBufferHandle(buffer), creator->info[i].allocSize, bindingIndex, copiesToMake, creator->info[i].allocOffset, startForCopies, destArraySlot);
+			break;
+		}
+		case ShaderResourceType::UNIFORM_BUFFER:
+		{
+			EntryHandle buffer = creator->info[i].driverResourceHandle[0];
+
+			if (creator->info[i].allocCopies > 1)
+				builder->AddUniformBuffer(dev->GetBufferHandle(buffer), creator->info[i].allocSize, bindingIndex, copiesToMake, creator->info[i].allocOffset, startForCopies, destArraySlot);
+			else
+				builder->AddUniformBufferDirect(dev->GetBufferHandle(buffer), creator->info[i].allocSize, bindingIndex, copiesToMake, creator->info[i].allocOffset, startForCopies, destArraySlot);
+			break;
+		}
+		case ShaderResourceType::BUFFER_VIEW:
+		{
+			int frameCount = creator->info[i].allocCopies;
+
+			EntryHandle viewHandle = creator->info[i].driverResourceHandle[0];
+
+			for (int g = 0; g < copiesToMake; g++)
+			{
+				VkBufferView handle = dev->GetBufferView(viewHandle, (frameCount > 1) ? startForCopies + g : 0);
+
+				if (action == ShaderResourceAction::SHADERREAD)
+				{
+					builder->AddUniformBufferView(handle, bindingIndex, startForCopies + g, 1, destArraySlot);
+				}
+				else if (action == ShaderResourceAction::SHADERWRITE || action == ShaderResourceAction::SHADERREADWRITE)
+				{
+					builder->AddStorageBufferView(handle, bindingIndex, startForCopies + g, 1, destArraySlot);
+				}
+			}
+
+			break;
+		}
+		}
+	}
+
+	return 0;
+}
+
+EntryHandle CreateDriverShaderResourceSet(RHIDevice* device, ShaderResourceSetInstanceCreator* creator, EntryHandle descriptorHeapIndex, EntryHandle descriptorLayoutHandle, uint32_t numberOfSubResourceHandle, uint32_t variableSizeRequestForLastDescriptor)
+{
+	VKDevice* dev = device->device;
+
+	DescriptorSetBuilder* builder = device->device->CreateDescriptorSetBuilder(descriptorHeapIndex, descriptorLayoutHandle, numberOfSubResourceHandle, variableSizeRequestForLastDescriptor);
+
+	WriteToDescriptorSet(dev, creator, builder);
+
+	return builder->AddDescriptorsToCache();
+}
+
+int UpdateDriverShaderResourceSet(RHIDevice* device, ShaderResourceSetInstanceCreator* creator, EntryHandle descriptorSetHandle)
+{
+	VKDevice* dev = device->device;
+
+	DescriptorSetBuilder* builder = device->device->UpdateDescriptorSet(descriptorSetHandle);
+
+	WriteToDescriptorSet(dev, creator, builder);
+
+	return 0;
+}
+
+void CreateDriverInstanceMemory(RHIInstance* instance, Allocator* allocator)
+{
+	instance->mainInstance = (VKInstance*)allocator->Allocate(sizeof(VKInstance), alignof(VKInstance));
+}
+
+void DestroyDriverInstance(RHIInstance* instance)
+{
+	if (instance->mainInstance) instance->mainInstance->~VKInstance();
+}
+
+int CreateDriverInstance(
+	RHIInstance* instance, WindowManagementType windowType,
+	uint32_t driverSpecificMemory, uint32_t driverCacheSize, 
+	uint32_t instancePermanentSpecificMemory, uint32_t instanceCacheMemory, 
+	Logger* logger, Allocator* allocator)
+{
+	void* driverInstanceDataHead = allocator->Allocate(driverSpecificMemory + driverCacheSize);
+	void* instanceDataHead = allocator->Allocate(instancePermanentSpecificMemory + instanceCacheMemory);
+
+	instance->mainInstance->SetInstanceDataAndSize(driverInstanceDataHead, driverSpecificMemory, driverCacheSize);
+
+	VKInstanceDebugData vkDebugData{};
+
+	vkDebugData.userCallback = vulkanDebugCallback;
+	vkDebugData.userData = logger;
+	vkDebugData.flags = 0;
+	vkDebugData.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+	vkDebugData.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT; // | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT;
+	vkDebugData.enables[0] = VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT;
+	vkDebugData.enablesFeaturesCount = 0;
+
+	VKInstanceDebugData* vkDebugDataTemp = &vkDebugData;
+
+	RenderingInstanceFeatures instanceFeaturesRequest{};
+
+	instanceFeaturesRequest.useSurface = true;
+	instanceFeaturesRequest.useSwapChainMaintenance = true;
+	instanceFeaturesRequest.useValidation = true;
+	instanceFeaturesRequest.useDebugExt = true;
+	instanceFeaturesRequest.windowManagementType = windowType;
+
+	int ret = instance->mainInstance->CreateRenderInstance(instanceDataHead, instancePermanentSpecificMemory, instanceCacheMemory, vkDebugDataTemp, &instanceFeaturesRequest);
+
+	return ret;
+}
+
+EntryHandle CreateDriverWindowSurface(RHIInstance* instance, OSWindowInternalData* windowData)
+{
+#if defined(_WIN32)
+	EntryHandle renderSurfaceIndex = instance->mainInstance->CreateWindowedSurface(windowData->inst, windowData->wnd);
+#else
+	EntryHandle renderSurfaceIndex = EntryHandle();
+#endif
+	return renderSurfaceIndex;
 }

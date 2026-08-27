@@ -2951,11 +2951,16 @@ uint32_t VKDevice::GetQueueManagerFamilyIndex(EntryHandle queueManagerIndex)
 	return queueManager->queueFamilyIndex;
 }
 
-RecordingBufferObject VKDevice::GetRecordingBufferObject(EntryHandle handle)
+RecordingBufferObject* VKDevice::GetRecordingBufferObject(EntryHandle handle)
 {
 	VKCommandBuffer* buffer = GetCommandBuffer(handle);
 
-	return { this, *buffer };
+	RecordingBufferObject* obj = (RecordingBufferObject*)AllocFromDeviceCache(sizeof(RecordingBufferObject));
+
+	obj->vkDeviceHandle = this;
+	obj->cbBufferHandler = *buffer;
+
+	return obj;
 }
 
 

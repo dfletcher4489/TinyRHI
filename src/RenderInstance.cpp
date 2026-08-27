@@ -790,8 +790,6 @@ int RenderInstance::CreateAttachmentResources(
 
 	RHIDevice* rhiDevice = GetDeviceHandle(graphInstance->deviceIndex);
 
-	VKDevice* dev = rhiDevice->device;
-
 	AttachmentRenderPassInstance* currentRenderPass = &graphInstance->passes[renderPassIndex];
 
 	int attachmentCount = currentRenderPass->attachInstCount;
@@ -914,14 +912,12 @@ int RenderInstance::CreateAttachmentResources(
 
 			if (EntryHandle() != rtInfo->driverRenderTargetInfo)
 			{
-				dev->DestroyRenderTarget(rtInfo->driverRenderTargetInfo);
+				DestroyDriverMainRenderTarget(rhiDevice, rtInfo->driverRenderTargetInfo);
 			}
 
-			rtInfo->driverRenderTargetInfo = dev->CreateRenderTarget(rpInfo->renderPassHandle, imageCount, width, height, 0, 0);
+			rtInfo->driverRenderTargetInfo = CreateDriverRenderTarget(rhiDevice, rpInfo->renderPassHandle, imageCount, width, height, 0, 0);
 
 			rtInfo->deviceIndex = graphInstance->deviceIndex;
-
-			RenderTarget* renderTarget = dev->GetRenderTarget(rtInfo->driverRenderTargetInfo);
 
 			for (int d = 0; d < imageCount; d++)
 			{
@@ -947,12 +943,13 @@ int RenderInstance::CreateAttachmentResources(
 					attachmentViews[e] = imageViewDesc->viewIndex;
 				}
 
-				renderTarget->framebufferIndices[d] =
-					dev->CreateFrameBuffer(
-						attachmentViews,
+				CreateDriverRenderTargetFrameBuffer(
+						rhiDevice,
+						rtInfo->driverRenderTargetInfo,
+						attachmentViews,		
 						attachmentCount,
-						rpInfo->renderPassHandle,
-						{ width, height }
+						d,
+						width, height 
 					);
 			}
 		}
@@ -3785,7 +3782,7 @@ void RenderInstance::EndFrame(RenderDeviceIndex deviceSelection, GPUCommandStrea
 					rhiDevice->container.queryResults,
 					sizeof(uint32_t) * rhiDevice->container.maxQueryResults,
 					sizeof(uint32_t),
-					VK_QUERY_RESULT_WAIT_BIT
+					1
 				);
 
 				for (uint32_t i = 0; i < queryCount; i += 2)

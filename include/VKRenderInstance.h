@@ -2,7 +2,6 @@
 #include "RenderInstanceManagement.h"
 
 #include "VKTypes.h"
-#include "VKDevice.h"
 
 struct RHIInstance
 {
@@ -19,7 +18,7 @@ struct CommandRecorder
 {
 	RHIDevice* device;
 	BarrierAccumulator* accumulator;
-	RecordingBufferObject rbo;
+	RecordingBufferObject* rbo;
 	uint64_t errorCodes[64];
 	uint32_t errorCount;
 };

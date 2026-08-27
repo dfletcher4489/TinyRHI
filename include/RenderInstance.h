@@ -572,6 +572,10 @@ int CreateDriverInstance(RHIInstance* instance, WindowManagementType windowType,
 
 EntryHandle CreateDriverWindowSurface(RHIInstance* instance, OSWindowInternalData* windowData);
 
+EntryHandle CreateDriverRenderTarget(RHIDevice* device, EntryHandle renderPassIndex, uint32_t framebufferCount, uint32_t width, uint32_t height, uint32_t wOffset, uint32_t hOffset);
+
+int CreateDriverRenderTargetFrameBuffer(RHIDevice* device, EntryHandle renderTargetHandle, EntryHandle* imageViews,  uint32_t attachmentsCount, uint32_t frameBufferIndex, uint32_t width, uint32_t height);
+
 size_t GetDriverImageMemoryBarrierSize();
 size_t GetDriverBufferMemoryBarrierSize();
 size_t GetDriverImageMemoryBarrierAlign();

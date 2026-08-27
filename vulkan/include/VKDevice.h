@@ -499,7 +499,7 @@ struct VKDevice
 
 	uint32_t GetQueueManagerFamilyIndex(EntryHandle queueManagerIndex);
 
-	RecordingBufferObject GetRecordingBufferObject(EntryHandle handle);
+	RecordingBufferObject* GetRecordingBufferObject(EntryHandle handle);
 
 	VkRenderPass GetRenderPass(EntryHandle handle);
 

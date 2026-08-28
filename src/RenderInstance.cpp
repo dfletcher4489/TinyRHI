@@ -4007,7 +4007,12 @@ int RenderInstance::UpdateDriverMemory(void* data, AllocationInstanceIndex alloc
 
 	int oneStrideSize = alloc->requestedSize * alloc->structureCopies;
 
-	if (oneStrideSize <= allocOffset  || oneStrideSize < size)
+	if (
+		allocOffset < 0 ||
+		size < 0 ||
+		oneStrideSize <= allocOffset  || 
+		oneStrideSize < size || 
+		oneStrideSize < (allocOffset + size))
 	{
 		internalRendererLogger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("UpdateDriverMemory : Bad arguments to function"));
 		return -1;

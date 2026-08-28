@@ -172,43 +172,6 @@ namespace API
 		return vkFormat;
 	}
 
-
-	ImageFormat ConvertVkFormatToAppFormat(VkFormat vkFormat)
-	{
-		ImageFormat format = ImageFormat::IMAGE_UNKNOWN;
-		switch (vkFormat)
-		{
-		case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
-			format = ImageFormat::DXT1;
-			break;
-		case VK_FORMAT_BC3_SRGB_BLOCK:
-			format = ImageFormat::DXT3;
-			break;
-		case VK_FORMAT_R8G8B8A8_SRGB:
-			format = ImageFormat::R8G8B8A8;
-			break;
-		case VK_FORMAT_R8G8B8A8_UNORM:
-			format = ImageFormat::R8G8B8A8_UNORM;
-			break;
-		case VK_FORMAT_D24_UNORM_S8_UINT:
-			format = ImageFormat::D24UNORMS8STENCIL;
-			break;
-
-		case VK_FORMAT_D32_SFLOAT_S8_UINT:
-			format = ImageFormat::D32FLOATS8STENCIL;
-			break;
-
-		case VK_FORMAT_D32_SFLOAT:
-			format = ImageFormat::D32FLOAT;
-			break;
-		case VK_FORMAT_B8G8R8A8_SRGB:
-			format = ImageFormat::B8G8R8A8;
-			break;
-
-		}
-		return format;
-	}
-
 	VkPrimitiveTopology ConvertTopology(PrimitiveType type)
 	{
 		VkPrimitiveTopology top = VK_PRIMITIVE_TOPOLOGY_MAX_ENUM;
@@ -1120,8 +1083,6 @@ int RenderInstance::SubmitFrame(SwapChainIndex swapChainIndex, uint32_t imageInd
 			signalCount,
 			rhiDevice->container.currentCommandBufferIndex[currentFrame]
 		);
-
-		rhiDevice->container.deviceTimelineSyncObject.currentValue++;
 	}
 
 	if (res)
@@ -1129,6 +1090,8 @@ int RenderInstance::SubmitFrame(SwapChainIndex swapChainIndex, uint32_t imageInd
 		GetLastDeviceDriverError(rhiDevice, STRING_VIEW_FROM_LITERAL("SubmitFrame - Submit Command Buffer failed:"));
 		return res;
 	}
+
+	rhiDevice->container.deviceTimelineSyncObject.currentValue++;
 
 	if (rhiDevice->container.presentQueue != rhiDevice->container.graphicsComputeTransfer)
 	{

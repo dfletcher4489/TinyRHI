@@ -45,6 +45,39 @@ static int findMSB(unsigned int input)
 #endif
 }
 
+static size_t GetTexelSizeRoundedUpToPowerOfTwo(ImageFormat vkFormat)
+{
+	size_t texelSize = 4;
+	switch (vkFormat)
+	{
+	case ImageFormat::DXT1:
+		texelSize = 16;
+		break;
+	case ImageFormat::DXT3:
+		texelSize = 16;
+		break;
+	case ImageFormat::R8G8B8A8:
+		texelSize = 4;
+		break;
+	case ImageFormat::R8G8B8A8_UNORM:
+		texelSize = 4;
+		break;
+	case ImageFormat::D24UNORMS8STENCIL:
+		texelSize = 4;
+		break;
+	case ImageFormat::D32FLOATS8STENCIL:
+		texelSize = 8;
+		break;
+	case ImageFormat::D32FLOAT:
+		texelSize = 4;
+		break;
+	case ImageFormat::B8G8R8A8:
+		texelSize = 4;
+		break;
+	}
+	return texelSize;
+}
+
 void GetAllocationDetails(RenderAllocation* alloc, size_t* requestedSize, size_t* offset, int* resourceIndex, int currentFrame)
 {
 	size_t rsize = alloc->requestedSize * alloc->structureCopies;
@@ -102,7 +135,7 @@ void RenderInstance::CreateRenderInstance(RenderInstanceCreateInfo* info, Alloca
 	cacheAllocator = instanceCacheAllocator;
 	storageAllocator = instanceStorageAllocator;
 
-	CreateDriverInstanceMemory(&vkInstance, storageAllocator);
+	CreateDriverInstanceMemory(&mainRenderInstance, storageAllocator);
 
 	internalRendererLogger = (Logger*)AllocateFromStorageAllocator(sizeof(Logger), alignof(Logger));
 	internalRendererLogger->InitLogger((char*)AllocateFromStorageAllocator(info->internalLoggerRingSize, 64), info->internalLoggerRingSize);
@@ -167,7 +200,7 @@ void RenderInstance::CreateRenderInstance(RenderInstanceCreateInfo* info, Alloca
 
 	shaderResourceTemplates.Create(storageAllocator, info->maxShaderResourceTemplates, STRING_VIEW_FROM_LITERAL("Shader Resource Templates Allocator"), internalRendererLogger);
 
-	allocations.Create(storageAllocator, info->maxAllocations + info->maxSubAllocations, STRING_VIEW_FROM_LITERAL("Allocations Allocator"), internalRendererLogger);
+	allocations.Create(storageAllocator, info->maxAllocations, STRING_VIEW_FROM_LITERAL("Allocations Allocator"), internalRendererLogger);
 
 	descriptorManagers.Create(storageAllocator, info->maxDescriptorManagers, STRING_VIEW_FROM_LITERAL("Descriptor Managers Allocator"), internalRendererLogger);
 
@@ -186,25 +219,8 @@ void RenderInstance::CreateRenderInstance(RenderInstanceCreateInfo* info, Alloca
 	maxLogicalDevices = info->maxLogicalDevices;
 	maxPhysicalDevices = info->maxGPUS;
 
-	barriersQueue = (uint32_t*)AllocateFromStorageAllocator(sizeof(uint32_t) * info->maxConcurrentRecordings);
-
-	barrierAccumulators = (BarrierAccumulator*)AllocateFromStorageAllocator(sizeof(BarrierAccumulator) * info->maxConcurrentRecordings);
-
-	maxBarrierAccumulationCount = info->maxConcurrentRecordings;
-
-	currentBarrierAccumulationTop = 0;
-
-	for (uint32_t i = 0; i < info->maxConcurrentRecordings; i++)
-	{
-		CreateDriverSpecificBarrierArenas(&barrierAccumulators[i], info->maxTextureHandles, info->maxAllocations);
-		barriersQueue[i] = i;
-	}
-
 	return;
 }
-
-#define MAX_MIPS_FOR_BARRIER 16
-#define MAX_ARRAYS_FOR_BARRIER 8
 
 void RenderInstance::CreateDriverSpecificBarrierArenas(BarrierAccumulator* barrierAccumulator, int maxTextures, int maxAllocations)
 {
@@ -248,14 +264,14 @@ void RenderInstance::CreateDriverSpecificBarrierArenas(BarrierAccumulator* barri
 	barrierAccumulator->intraPassBarrierAllocator.Reset();
 }
 
-uint32_t RenderInstance::PopBarrierAccumulator()
+uint32_t RenderInstance::PopBarrierAccumulator(RHIDevice* rhiDevice)
 {
-	if (currentBarrierAccumulationTop == maxBarrierAccumulationCount)
+	if (rhiDevice->container.currentBarrierAccumulationTop == rhiDevice->container.maxBarrierAccumulationCount)
 		return ~0ul;
 
-	uint32_t barrierAccumIndex = barriersQueue[currentBarrierAccumulationTop++];
+	uint32_t barrierAccumIndex = rhiDevice->container.barriersQueue[rhiDevice->container.currentBarrierAccumulationTop++];
 
-	BarrierAccumulator* barrierAccumulator = &barrierAccumulators[barrierAccumIndex];
+	BarrierAccumulator* barrierAccumulator = &rhiDevice->container.barrierAccumulators[barrierAccumIndex];
 
 	ResetIntraBarrierAccumulator(barrierAccumulator);
 
@@ -276,17 +292,17 @@ void RenderInstance::ResetIntraBarrierAccumulator(BarrierAccumulator* accumulato
 	accumulator->intraPassBarrierAllocator.Reset();
 }
 
-void RenderInstance::ReturnBarrierAccumulator(uint32_t returnIndex)
+void RenderInstance::ReturnBarrierAccumulator(RHIDevice* rhiDevice, uint32_t returnIndex)
 {
-	if (!currentBarrierAccumulationTop)
+	if (!rhiDevice->container.currentBarrierAccumulationTop)
 		return;
 
-	barriersQueue[--currentBarrierAccumulationTop] = returnIndex;
+	rhiDevice->container.barriersQueue[--rhiDevice->container.currentBarrierAccumulationTop] = returnIndex;
 }
 
 RenderInstance::~RenderInstance()
 {
-	DestroyDriverInstance(&vkInstance);
+	DestroyDriverInstance(&mainRenderInstance);
 };
 
 void RenderInstance::DestroySwapChainAttachments()
@@ -345,7 +361,7 @@ void RenderInstance::DestroySwapChainAttachments()
 	}
 }
 
-int RenderInstance::RecreateSwapChain(SwapChainIndex& swapChainIndex, uint32_t width, uint32_t height)
+int RenderInstance::RecreateSwapChain(SwapChainIndex swapChainIndex, uint32_t width, uint32_t height)
 {
 	int ret = 0;
 
@@ -509,7 +525,7 @@ void RenderInstance::WaitOnRender(RenderDeviceIndex deviceSelection)
 	WaitOnDevice(rhiDevice, UINT64_MAX);
 }
 
-int RenderInstance::CreateSwapChainAttachment(AttachmentGraphInstanceIndex& graphIndex, int renderPassIndex, SwapChainIndex swapChainIndex, AttachmentClear* clears, DeviceSlabAllocator* rtvAllocator, DeviceSlabAllocator* dsvAllocator, ImageMemoryIndex rtvPoolIndex, ImageMemoryIndex dsvPoolIndex)
+int RenderInstance::CreateSwapChainAttachment(AttachmentGraphInstanceIndex graphIndex, int renderPassIndex, SwapChainIndex swapChainIndex, AttachmentClear* clears, DeviceSlabAllocator* rtvAllocator, DeviceSlabAllocator* dsvAllocator, ImageMemoryIndex rtvPoolIndex, ImageMemoryIndex dsvPoolIndex)
 {
 	RenderSwapchainData* swcData = swapChains.Get(swapChainIndex);
 
@@ -521,7 +537,7 @@ int RenderInstance::CreateSwapChainAttachment(AttachmentGraphInstanceIndex& grap
 	return CreateAttachmentResources(graphIndex, renderPassIndex, swcData->imageCount, swcData->textureIds, swcData->width, swcData->height, RenderPassType::SWAPCHAIN_IMAGE_COUNT, clears, rtvAllocator, dsvAllocator, rtvPoolIndex, dsvPoolIndex);
 }
 
-int RenderInstance::CreatePerFrameAttachment(AttachmentGraphInstanceIndex& graphIndex, int renderPassIndex, int imageCount, uint32_t width, uint32_t height, AttachmentClear* clears, DeviceSlabAllocator* rtvAllocator, DeviceSlabAllocator* dsvAllocator, ImageMemoryIndex rtvPoolIndex, ImageMemoryIndex dsvPoolIndex)
+int RenderInstance::CreatePerFrameAttachment(AttachmentGraphInstanceIndex graphIndex, int renderPassIndex, int imageCount, uint32_t width, uint32_t height, AttachmentClear* clears, DeviceSlabAllocator* rtvAllocator, DeviceSlabAllocator* dsvAllocator, ImageMemoryIndex rtvPoolIndex, ImageMemoryIndex dsvPoolIndex)
 {
 	return CreateAttachmentResources(graphIndex, renderPassIndex, imageCount, nullptr, width, height, RenderPassType::PER_FRAME_IMAGE_COUNT, clears, rtvAllocator, dsvAllocator, rtvPoolIndex, dsvPoolIndex);
 }
@@ -636,7 +652,7 @@ TextureIndex RenderInstance::CreateAttachmentImage
 		return {};
 	}
 
-	size_t actualMemAddr = attachmentAllocator->Allocate(info.imageSize, info.imageAlignment);
+	int actualMemAddr = attachmentAllocator->Allocate(info.imageSize, info.imageAlignment);
 
 	if (actualMemAddr < 0)
 	{
@@ -673,7 +689,7 @@ TextureIndex RenderInstance::CreateAttachmentImage
 	return indexRet;
 }
 
-int RenderInstance::CreateAttachmentImageView(TextureIndex& textureIndex, uint32_t firstMip, uint32_t mipCount, uint32_t firstArrayLayer, uint32_t arrayLayerCount, ImageViewAspectMask mask, ImageLayout desiredLayout)
+int RenderInstance::CreateAttachmentImageView(TextureIndex textureIndex, uint32_t firstMip, uint32_t mipCount, uint32_t firstArrayLayer, uint32_t arrayLayerCount, ImageViewAspectMask mask, ImageLayout desiredLayout)
 {
 	TextureViewIndex viewIndex;
 
@@ -738,7 +754,7 @@ int RenderInstance::CreateAttachmentImageView(TextureIndex& textureIndex, uint32
 	return texViewCount;
 }
 
-int RenderInstance::CreateAttachmentImageView(AttachmentGraphInstanceIndex& attachmentGraphInstance, int attachmentResourceIndex, uint32_t firstMip, uint32_t mipCount, uint32_t firstArrayLayer, uint32_t arrayLayerCount, ImageViewAspectMask mask, ImageLayout desiredLayout)
+int RenderInstance::CreateAttachmentImageView(AttachmentGraphInstanceIndex attachmentGraphInstance, int attachmentResourceIndex, uint32_t firstMip, uint32_t mipCount, uint32_t firstArrayLayer, uint32_t arrayLayerCount, ImageViewAspectMask mask, ImageLayout desiredLayout)
 {
 	AttachmentGraphInstance* graphInstance = attachmentGraphsInstances.Get(attachmentGraphInstance);
 
@@ -769,6 +785,12 @@ int RenderInstance::CreateAttachmentImageView(AttachmentGraphInstanceIndex& atta
 			TextureIndex textureHandle = resource->textureIds[currSampleCount][i];
 
 			texViewIndex = CreateAttachmentImageView(textureHandle, firstMip, mipCount, firstArrayLayer, arrayLayerCount, mask, desiredLayout);
+
+			if (texViewIndex < 0)
+			{
+				internalRendererLogger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("CreateAttachmentImageView : creating image view failed"));
+				return -1;
+			}
 		}
 	}
 
@@ -776,7 +798,7 @@ int RenderInstance::CreateAttachmentImageView(AttachmentGraphInstanceIndex& atta
 }
 
 int RenderInstance::CreateAttachmentResources(
-	AttachmentGraphInstanceIndex& graphIndex, int renderPassIndex, int imageCount,
+	AttachmentGraphInstanceIndex graphIndex, int renderPassIndex, int imageCount,
 	TextureIndex* backBufferTexturesIds, uint32_t width, uint32_t height, 
 	RenderPassType rpType, AttachmentClear* clears,
 	DeviceSlabAllocator* rtvAllocator, DeviceSlabAllocator* dsvAllocator, ImageMemoryIndex rtvPoolIndex, ImageMemoryIndex dsvPoolIndex)
@@ -880,7 +902,7 @@ int RenderInstance::CreateAttachmentResources(
 
 					int viewSuccess = CreateAttachmentImageView(textureIndex, 0, 1, 0, 1, mask, imageViewLayout);
 
-					if (TextureIndex() == textureIndex || viewSuccess < 0)
+					if (viewSuccess < 0)
 					{
 						success = -1;
 						break;
@@ -904,6 +926,8 @@ int RenderInstance::CreateAttachmentResources(
 			{
 				rtIndex = mainRenderTargets.Allocate();
 				currentRenderPass->baseRenderTarget[sampleCount] = rtIndex;
+				RenderTargetInfo* lrtInfo = mainRenderTargets.Get(rtIndex);
+				CleanInitializeRenderTargetInfo(lrtInfo);
 			}
 
 			RenderTargetInfo* rtInfo = mainRenderTargets.Get(rtIndex);
@@ -1109,7 +1133,7 @@ RenderShaderGraphIndex RenderInstance::CreateShaderGraphInstance(RenderDeviceInd
 	return shaderGraphIndex;
 }
 
-GeneratedPipelineInstanceIndex RenderInstance::CreateGraphicRenderStateObject(RenderShaderGraphIndex& shaderGraphIndex, GenericRenderPipelineInfoIndex& pipelineDescriptionIndex, AttachmentGraphInstanceIndex* frameGraphAttachments, int* perFrameRenderPassSelection, int frameGraphCount)
+GeneratedPipelineInstanceIndex RenderInstance::CreateGraphicRenderStateObject(RenderShaderGraphIndex shaderGraphIndex, GenericRenderPipelineInfoIndex pipelineDescriptionIndex, AttachmentGraphInstanceIndex* frameGraphAttachments, int* perFrameRenderPassSelection, int frameGraphCount)
 {
 
 	GeneratedPipelineInstanceIndex pipelineInstIndex{};
@@ -1243,7 +1267,7 @@ GeneratedPipelineInstanceIndex RenderInstance::CreateGraphicRenderStateObject(Re
 	return pipelineInstIndex;
 }
 
-GeneratedPipelineInstanceIndex RenderInstance::CreateComputePipelineStateObject(RenderShaderGraphIndex& shaderGraphIndex)
+GeneratedPipelineInstanceIndex RenderInstance::CreateComputePipelineStateObject(RenderShaderGraphIndex shaderGraphIndex)
 {
 	GeneratedPipelineInstanceIndex pipelineInstIndex;
 
@@ -1409,6 +1433,8 @@ int RenderInstance::CreateShaderResourceMap(RHIDevice* device, ShaderGraph* grap
 
 		RenderShaderResourceTemplateInfo* info = shaderResourceTemplates.Get(currDescriptorLayout);
 
+		CleanInitializeShaderTemplateInfo(info);
+
 		EntryHandle descHandle = CreateDriverShaderResourceLayout(device, &creator);
 
 		if (EntryHandle() == descHandle)
@@ -1459,7 +1485,7 @@ void RenderInstance::UploadHostTransfers(CommandRecorder* recorder)
 
 		RenderAllocation* alloc = allocations.Get(region.allocationIndex);
 
-		GetAllocationDetails(alloc, &rsize, &intOffset, nullptr, currentFrame);
+		GetAllocationDetails(alloc, &rsize, &intOffset, nullptr, recorder->device->container.currentFrame);
 
 		intOffset += region.allocoffset;
 		
@@ -1507,9 +1533,13 @@ void RenderInstance::UploadDescriptorsUpdates(CommandRecorder* recorder)
 
 	ShaderResourceSetInstanceCreator* creator = (ShaderResourceSetInstanceCreator*)AllocateFromStorageAllocator(sizeof(ShaderResourceSetInstanceCreator));
 
+	if (!creator) return;
+
 	creator->updateCount = 0;
 
 	ShaderResourceSet* set = nullptr;
+
+	uint32_t framesInFlight = recorder->device->container.maxFramesInFlight;
 
 	while (link >= 0)
 	{
@@ -1562,11 +1592,11 @@ void RenderInstance::UploadDescriptorsUpdates(CommandRecorder* recorder)
 				creator->info[currentUpdateIndex].destArraySlot = update->resourceDstBegin + iter;
 				creator->info[currentUpdateIndex].descriptorCopies = 1;
 				creator->info[currentUpdateIndex].bindingIndex = region.bindingIndex;
-				creator->info[currentUpdateIndex].perResourceDescriptorSlotStart = currentFrame;
+				creator->info[currentUpdateIndex].perResourceDescriptorSlotStart = recorder->device->container.currentFrame;
 				creator->info[currentUpdateIndex].resourceType = region.type;
 				creator->info[currentUpdateIndex].driverResourceHandle[0] = handle;
 
-				if (region.copyCount == (MAX_FRAMES_IN_FLIGHT))
+				if (region.copyCount == (framesInFlight))
 				{
 					samplerHeader->samplerHandles[iter + update->resourceDstBegin] = samplerHandlesFromUpdate[iter];
 					samplerHeader->samplerCount = RENDER_MAX(samplerHeader->samplerCount, (iter + update->resourceDstBegin) + 1);
@@ -1605,12 +1635,12 @@ void RenderInstance::UploadDescriptorsUpdates(CommandRecorder* recorder)
 				creator->info[currentUpdateIndex].destArraySlot = update->resourceDstBegin + iter;
 				creator->info[currentUpdateIndex].descriptorCopies = 1;
 				creator->info[currentUpdateIndex].bindingIndex = region.bindingIndex;
-				creator->info[currentUpdateIndex].perResourceDescriptorSlotStart = currentFrame;
+				creator->info[currentUpdateIndex].perResourceDescriptorSlotStart = recorder->device->container.currentFrame;
 				creator->info[currentUpdateIndex].resourceType = region.type;
 				creator->info[currentUpdateIndex].destinationLayout = imageViewDesc->desiredLayoutForView;
 				creator->info[currentUpdateIndex].driverResourceHandle[0] = imageViewDesc->viewIndex;
 
-				if (region.copyCount == (MAX_FRAMES_IN_FLIGHT))
+				if (region.copyCount == (framesInFlight))
 				{
 					imageResource->textureDetails[iter + update->resourceDstBegin].textureHandle = texViews[iter].imageHandle;
 					imageResource->textureDetails[iter + update->resourceDstBegin].viewIndex = texViews[iter].viewIndex;
@@ -1660,13 +1690,13 @@ void RenderInstance::UploadDescriptorsUpdates(CommandRecorder* recorder)
 				creator->info[currentUpdateIndex].destArraySlot = update->resourceDstBegin + iter;
 				creator->info[currentUpdateIndex].descriptorCopies = 1;
 				creator->info[currentUpdateIndex].bindingIndex = region.bindingIndex;
-				creator->info[currentUpdateIndex].perResourceDescriptorSlotStart = currentFrame;
+				creator->info[currentUpdateIndex].perResourceDescriptorSlotStart = recorder->device->container.currentFrame;
 				creator->info[currentUpdateIndex].resourceType = region.type;
 				creator->info[currentUpdateIndex].destinationLayout = imageViewDesc->desiredLayoutForView;
 				creator->info[currentUpdateIndex].driverResourceHandle[0] = imageViewDesc->viewIndex;
 				creator->info[currentUpdateIndex].driverResourceHandle[1] = *samplerHandle;
 
-				if (region.copyCount == (MAX_FRAMES_IN_FLIGHT))
+				if (region.copyCount == (framesInFlight))
 				{
 					imageResource->textureDetails[iter + update->resourceDstBegin].textureHandle = texViews[iter].imageHandle;
 					imageResource->textureDetails[iter + update->resourceDstBegin].viewIndex = texViews[iter].viewIndex;
@@ -1700,15 +1730,15 @@ void RenderInstance::UploadDescriptorsUpdates(CommandRecorder* recorder)
 				creator->info[currentUpdateIndex].destArraySlot = firstBuffer + j;
 				creator->info[currentUpdateIndex].descriptorCopies = 1;
 				creator->info[currentUpdateIndex].bindingIndex = region.bindingIndex;
-				creator->info[currentUpdateIndex].perResourceDescriptorSlotStart = currentFrame;
+				creator->info[currentUpdateIndex].perResourceDescriptorSlotStart = recorder->device->container.currentFrame;
 				creator->info[currentUpdateIndex].resourceType = region.type;
 				creator->info[currentUpdateIndex].driverResourceHandle[0] = bufferHandles[alloc->memIndex].bufferHandle;
 				creator->info[currentUpdateIndex].allocOffset = alloc->offset;
 
 				if (alloc->allocType == AllocationType::PERFRAME)
 				{
-					creator->info[currentUpdateIndex].allocSize = alloc->deviceAllocSize / MAX_FRAMES_IN_FLIGHT;
-					creator->info[currentUpdateIndex].allocCopies = MAX_FRAMES_IN_FLIGHT;
+					creator->info[currentUpdateIndex].allocSize = alloc->deviceAllocSize / framesInFlight;
+					creator->info[currentUpdateIndex].allocCopies = framesInFlight;
 				}
 				else
 				{
@@ -1716,7 +1746,7 @@ void RenderInstance::UploadDescriptorsUpdates(CommandRecorder* recorder)
 					creator->info[currentUpdateIndex].allocCopies = 1;
 				}
 
-				if (region.copyCount == (MAX_FRAMES_IN_FLIGHT))
+				if (region.copyCount == (framesInFlight))
 				{
 					bufferResource->allocationIndex[j + update->resourceDstBegin] = update->allocationIndices[j];
 					bufferResource->bufferCount = RENDER_MAX(bufferResource->bufferCount, (j + update->resourceDstBegin) + 1);
@@ -1748,15 +1778,15 @@ void RenderInstance::UploadDescriptorsUpdates(CommandRecorder* recorder)
 				creator->info[currentUpdateIndex].destArraySlot = firstBuffer + j;
 				creator->info[currentUpdateIndex].descriptorCopies = 1;
 				creator->info[currentUpdateIndex].bindingIndex = region.bindingIndex;
-				creator->info[currentUpdateIndex].perResourceDescriptorSlotStart = currentFrame;
+				creator->info[currentUpdateIndex].perResourceDescriptorSlotStart = recorder->device->container.currentFrame;
 				creator->info[currentUpdateIndex].resourceType = region.type;
 				creator->info[currentUpdateIndex].driverResourceHandle[0] = bufferHandles[alloc->memIndex].bufferHandle;
 				creator->info[currentUpdateIndex].allocOffset = alloc->offset;
 
 				if (alloc->allocType == AllocationType::PERFRAME)
 				{
-					creator->info[currentUpdateIndex].allocSize = alloc->deviceAllocSize / MAX_FRAMES_IN_FLIGHT;
-					creator->info[currentUpdateIndex].allocCopies = MAX_FRAMES_IN_FLIGHT;
+					creator->info[currentUpdateIndex].allocSize = alloc->deviceAllocSize / framesInFlight;
+					creator->info[currentUpdateIndex].allocCopies = framesInFlight;
 				}
 				else
 				{
@@ -1764,7 +1794,7 @@ void RenderInstance::UploadDescriptorsUpdates(CommandRecorder* recorder)
 					creator->info[currentUpdateIndex].allocCopies = 1;
 				}
 			
-				if (region.copyCount == (MAX_FRAMES_IN_FLIGHT))
+				if (region.copyCount == (framesInFlight))
 				{
 					bufferResource->allocationIndex[j + update->resourceDstBegin] = update->allocationIndices[j];
 					bufferResource->bufferCount = RENDER_MAX(bufferResource->bufferCount, (j + update->resourceDstBegin) + 1);
@@ -1793,20 +1823,20 @@ void RenderInstance::UploadDescriptorsUpdates(CommandRecorder* recorder)
 
 				ShaderResourceHeader* resource = (ShaderResourceHeader*)&set->resourceBindings[region.bindingIndex];
 
-				int frameCount = (alloc->allocType == AllocationType::PERFRAME) ? MAX_FRAMES_IN_FLIGHT : 1;
+				int frameCount = (alloc->allocType == AllocationType::PERFRAME) ? framesInFlight : 1;
 
 				int currentUpdateIndex = creator->updateCount++;
 
 				creator->info[currentUpdateIndex].destArraySlot = firstBuffer + j;
 				creator->info[currentUpdateIndex].descriptorCopies = 1;
 				creator->info[currentUpdateIndex].bindingIndex = region.bindingIndex;
-				creator->info[currentUpdateIndex].perResourceDescriptorSlotStart = currentFrame;
+				creator->info[currentUpdateIndex].perResourceDescriptorSlotStart = recorder->device->container.currentFrame;
 				creator->info[currentUpdateIndex].resourceType = region.type;
 				creator->info[currentUpdateIndex].action = resource->action;
 				creator->info[currentUpdateIndex].driverResourceHandle[0] = alloc->viewIndex;
 				creator->info[currentUpdateIndex].allocCopies = frameCount;
 				
-				if (region.copyCount == (MAX_FRAMES_IN_FLIGHT))
+				if (region.copyCount == (framesInFlight))
 				{
 					bufferResource->allocationIndex[j + update->resourceDstBegin] = update->allocationIndices[j];
 					bufferResource->bufferCount = RENDER_MAX(bufferResource->bufferCount, (j + update->resourceDstBegin) + 1);
@@ -1828,7 +1858,7 @@ void RenderInstance::UploadImageMemoryTransfers(CommandRecorder* recorder)
 
 	int link = imageMemoryUpdateManager.linkHead;
 
-	DeviceSlabAllocator* stagingAlloc = &recorder->device->container.stagingBufferAllocators[currentFrame];
+	DeviceSlabAllocator* stagingAlloc = &recorder->device->container.stagingBufferAllocators[recorder->device->container.currentFrame];
 
 	TextureMemoryRegion* regions = (TextureMemoryRegion*)cacheAllocator->Allocate(sizeof(TextureMemoryRegion) * memCount, alignof(TextureMemoryRegion));
 
@@ -1869,11 +1899,16 @@ void RenderInstance::UploadImageMemoryTransfers(CommandRecorder* recorder)
 
 		EntryHandle handle = desc->textureIndex;
 
-		size_t currentImageOffsetInUploadArena = stagingAlloc->Allocate(region->totalSize, 16);
+		size_t currentImageOffsetInUploadArena = stagingAlloc->Allocate(region->totalSize, GetTexelSizeRoundedUpToPowerOfTwo(desc->format));
+
+		if (currentImageOffsetInUploadArena == (size_t)-1)
+		{
+			continue;
+		}
 
 		UploadImageDataToDeviceMemory(
 			recorder,
-			handle, recorder->device->container.stagingBuffers[currentFrame],
+			handle, recorder->device->container.stagingBuffers[recorder->device->container.currentFrame],
 			region->data, region->totalSize,
 			currentImageOffsetInUploadArena,
 			region->width, region->height,
@@ -1907,7 +1942,7 @@ void RenderInstance::UploadDeviceLocalTransfers(CommandRecorder* recorder)
 
 	EntryHandle previousBuffer = EntryHandle();
 
-	DeviceSlabAllocator* stagingAlloc = &recorder->device->container.stagingBufferAllocators[currentFrame];
+	DeviceSlabAllocator* stagingAlloc = &recorder->device->container.stagingBufferAllocators[recorder->device->container.currentFrame];
 
 	while (link >= 0)
 	{
@@ -1917,13 +1952,13 @@ void RenderInstance::UploadDeviceLocalTransfers(CommandRecorder* recorder)
 
 		RenderAllocation* alloc = allocations.Get(region.allocationIndex);
 
-		GetAllocationDetails(alloc, &rsize, &intOffset, nullptr, currentFrame);
+		GetAllocationDetails(alloc, &rsize, &intOffset, nullptr, recorder->device->container.currentFrame);
 
 		intOffset += region.allocoffset;
 
 		EntryHandle index = bufferHandles[alloc->memIndex].bufferHandle;
 
-		InsertDrawCommandBufferBarrier(region.allocationIndex, StageBits::TRANSFER_BARRIER, BarrierActionBits::TRANSFER_WRITE_DATA_RESOURCE, recorder->accumulator);
+		InsertDrawCommandBufferBarrier(region.allocationIndex, StageBits::TRANSFER_BARRIER, BarrierActionBits::TRANSFER_WRITE_DATA_RESOURCE, recorder->accumulator, recorder->device->container.currentFrame);
 	
 		if (index != previousBuffer)
 		{
@@ -1931,7 +1966,7 @@ void RenderInstance::UploadDeviceLocalTransfers(CommandRecorder* recorder)
 			{
 				MakeAndBindDriverAccumulatedBarriers(recorder);
 				cumulativeSize = (uploadArenaOffset[batchCounter - 1] - uploadArenaOffset[0]) + batchSizes[batchCounter - 1];
-				WriteDeviceBufferBatch(recorder, previousBuffer, recorder->device->container.stagingBuffers[currentFrame], batchData, batchSizes, uploadArenaOffset, batchOffsets, batchCounter, cumulativeSize);
+				WriteDeviceBufferBatch(recorder, previousBuffer, recorder->device->container.stagingBuffers[recorder->device->container.currentFrame], batchData, batchSizes, uploadArenaOffset, batchOffsets, batchCounter, cumulativeSize);
 			}
 
 			previousBuffer = index;
@@ -1939,7 +1974,7 @@ void RenderInstance::UploadDeviceLocalTransfers(CommandRecorder* recorder)
 			cumulativeSize = 0;
 		}
 
-		uploadArenaOffset[batchCounter] = stagingAlloc->Allocate(region.size, 64);
+		uploadArenaOffset[batchCounter] = stagingAlloc->Allocate(region.size, recorder->device->container.relatedPhysDeviceInfo->optimalImageCopyOffsetAlignment);
 		batchSizes[batchCounter] = region.size;
 		batchData[batchCounter] = region.data;
 		batchOffsets[batchCounter] = intOffset;
@@ -1951,7 +1986,7 @@ void RenderInstance::UploadDeviceLocalTransfers(CommandRecorder* recorder)
 
 	cumulativeSize = (uploadArenaOffset[batchCounter - 1] - uploadArenaOffset[0]) + batchSizes[batchCounter - 1];
 
-	WriteDeviceBufferBatch(recorder, previousBuffer, recorder->device->container.stagingBuffers[currentFrame], batchData, batchSizes, uploadArenaOffset, batchOffsets, batchCounter, cumulativeSize);
+	WriteDeviceBufferBatch(recorder, previousBuffer, recorder->device->container.stagingBuffers[recorder->device->container.currentFrame], batchData, batchSizes, uploadArenaOffset, batchOffsets, batchCounter, cumulativeSize);
 }
 
 void RenderInstance::InvokeTransferCommands(CommandRecorder* recorder)
@@ -1974,7 +2009,7 @@ void RenderInstance::InvokeTransferCommands(CommandRecorder* recorder)
 
 		RenderAllocation* alloc = allocations.Get(region.allocationIndex);
 
-		GetAllocationDetails(alloc, &rsize, &intOffset, &resourceIndex, currentFrame);
+		GetAllocationDetails(alloc, &rsize, &intOffset, &resourceIndex, recorder->device->container.currentFrame);
 
 		intOffset += region.offset;
 		
@@ -2019,7 +2054,7 @@ AllocationInstanceIndex RenderInstance::GetAllocFromBuffer(BufferMemoryIndex buf
 	case AllocationType::STATIC:
 		break;
 	case AllocationType::PERFRAME:
-		copies = MAX_FRAMES_IN_FLIGHT;
+		copies = rhiDevice->container.maxFramesInFlight;
 		break;
 	case AllocationType::PERDRAW:
 		break;
@@ -2067,10 +2102,10 @@ AllocationInstanceIndex RenderInstance::GetAllocFromBuffer(BufferMemoryIndex buf
 	if (AllocationInstanceIndex() != parentIndex)
 	{
 		RenderAllocation* alloc = allocations.Get(parentIndex);
-		parentOffset = alloc->offset;
+		if (alloc) parentOffset = alloc->offset;
 	}
 
-	size_t location = allocator->Allocate(allocSize * copies, alignment);
+	int location = allocator->Allocate(allocSize * copies, alignment);
 
 	if (location < 0)
 	{
@@ -2190,7 +2225,7 @@ TextureIndex RenderInstance::CreateImageHandle(
 	return indexRet;
 }
 
-int RenderInstance::CreateImageView(TextureIndex& imageHandle, int firstMip, int mipCount, int firstLayer, int layerCount, ImageViewAspectMask imageAspect, ImageLayout desiredImageLayoutUsage)
+int RenderInstance::CreateImageView(TextureIndex imageHandle, int firstMip, int mipCount, int firstLayer, int layerCount, ImageViewAspectMask imageAspect, ImageLayout desiredImageLayoutUsage)
 {
 	TextureViewIndex viewIndex;
 
@@ -2331,7 +2366,7 @@ ImageMemoryIndex RenderInstance::CreateImagePool(RenderDeviceIndex deviceSelecti
 	return poolIndex;
 }
 
-ShaderResourceSetBuilder RenderInstance::AllocateShaderResourceSet(ShaderResourceManagerIndex descriptorManagerIndex, RenderShaderGraphIndex& shaderGraphIndex, int targetSet, int setCount)
+ShaderResourceSetBuilder RenderInstance::AllocateShaderResourceSet(ShaderResourceManagerIndex descriptorManagerIndex, RenderShaderGraphIndex shaderGraphIndex, int targetSet, int setCount)
 { 
 	ShaderResourceManager* manager = descriptorManagers.Get(descriptorManagerIndex);
 
@@ -2345,6 +2380,8 @@ ShaderResourceSetBuilder RenderInstance::AllocateShaderResourceSet(ShaderResourc
 	}
 
 	ShaderResourceDescriptorSetInfo* info = manager->descriptorSetHandles.Get(descriptorSetIndex);
+
+	CleanInitializeShaderResourceSet(info);
 
 	ShaderResourceSet* set = &info->shaderResourceSetInfo;
 
@@ -2464,10 +2501,8 @@ ShaderResourceSetBuilder RenderInstance::AllocateShaderResourceSet(ShaderResourc
     }
 
 	if (success)
-	{
-		//FIXME
-
-		// DestroyShaderResourceSet(set);
+	{	
+		DestroyShaderResourceSet({ descriptorManagerIndex, descriptorSetIndex });
 
 		return { ShaderResourceManagerIndex(), DescriptorSetInstanceIndex(), nullptr};
 	}
@@ -2475,13 +2510,13 @@ ShaderResourceSetBuilder RenderInstance::AllocateShaderResourceSet(ShaderResourc
 	return { descriptorManagerIndex, descriptorSetIndex, set };
 }
 
-AttachmentGraphInstanceIndex RenderInstance::CreateAttachmentGraph(RenderDeviceIndex deviceSelection, StringView attachmentLayout)
+AttachmentGraphLayoutIndex RenderInstance::CreateAttachmentGraph(StringView attachmentLayout)
 {
-	int attachmentGraphTemplateIndex = attachmentGraphs.Allocate();
+	AttachmentGraphLayoutIndex attachmentGraphTemplateIndex = attachmentGraphs.Allocate();
 
-	if (attachmentGraphTemplateIndex < 0)
+	if (AttachmentGraphLayoutIndex() == attachmentGraphTemplateIndex)
 	{
-		return {};
+		return attachmentGraphTemplateIndex;
 	}
 
 	AttachmentGraph* graph = attachmentGraphs.Get(attachmentGraphTemplateIndex);
@@ -2491,6 +2526,20 @@ AttachmentGraphInstanceIndex RenderInstance::CreateAttachmentGraph(RenderDeviceI
 	int createRet = CreateAttachmentGraphFromFile(attachmentLayout, graph, cacheAllocator, internalRendererLogger);
 
 	if (createRet)
+	{
+		internalRendererLogger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("CreateAttachmentGraphFailed : \n"));
+		DestroyAttachmentGraph(attachmentGraphTemplateIndex);
+		return {};
+	}
+	
+	return attachmentGraphTemplateIndex;
+}
+
+AttachmentGraphInstanceIndex RenderInstance::CreateAttachmentGraphInstance(RenderDeviceIndex deviceSelection, AttachmentGraphLayoutIndex attachmentLayout)
+{
+	AttachmentGraph* graph = attachmentGraphs.Get(attachmentLayout);
+
+	if (!graph)
 	{
 		return {};
 	}
@@ -2503,16 +2552,11 @@ AttachmentGraphInstanceIndex RenderInstance::CreateAttachmentGraph(RenderDeviceI
 
 		if (currentRenderPassCount < 0)
 		{
-			DestroyAttachmentGraph(attachmentGraphTemplateIndex);
 			DestroyAttachmentGraphInstance(currentGraphInstance);
 			return {};
 		}
-
-		return currentGraphInstance;
 	}
 
-	DestroyAttachmentGraph(attachmentGraphTemplateIndex);
-	
 	return currentGraphInstance;
 }
 
@@ -2520,7 +2564,7 @@ int RenderInstance::CreatePerFrameStagingBuffers(RenderDeviceIndex deviceSelecti
 {
 	RHIDevice* rhiDevice = GetDeviceHandle(deviceSelection);
 
-	for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+	for (int i = 0; i < rhiDevice->container.maxFramesInFlight; i++)
 	{
 		EntryHandle handle = rhiDevice->container.stagingBuffers[i] = CreateDriverBufferMemoryPool(rhiDevice, bufferSize, BUFFER_USAGE_TRANSFER_SRC_BIT, MemoryTypeBits::HOST_MEMORY_COHERENT_TYPE);
 		
@@ -2560,7 +2604,7 @@ SwapChainIndex RenderInstance::CreateSwapChainHandle(RenderDeviceIndex deviceSel
 		return {};
 	}
 
-	EntryHandle swapChainIndex = CreateDriverSwapChain(rhiDevice, MAX_FRAMES_IN_FLIGHT, MAX_FRAMES_IN_FLIGHT, mainBackBufferColorFormat, winData->vkRenderSurface);
+	EntryHandle swapChainIndex = CreateDriverSwapChain(rhiDevice, rhiDevice->container.maxFramesInFlight, rhiDevice->container.maxFramesInFlight, mainBackBufferColorFormat, winData->vkRenderSurface);
 
 	if (EntryHandle() == swapChainIndex)
 	{
@@ -2589,7 +2633,7 @@ SwapChainIndex RenderInstance::CreateSwapChainHandle(RenderDeviceIndex deviceSel
 
 	uint32_t imageCount = swcData->imageCount = GetSwapChainImageCount(rhiDevice, swapChainIndex);
 
-	EntryHandle* renderWait = CreateDriverSemaphores(rhiDevice, MAX_FRAMES_IN_FLIGHT);
+	EntryHandle* renderWait = CreateDriverSemaphores(rhiDevice, rhiDevice->container.maxFramesInFlight);
 
 	if (!renderWait)
 	{
@@ -2597,7 +2641,7 @@ SwapChainIndex RenderInstance::CreateSwapChainHandle(RenderDeviceIndex deviceSel
 		return {};
 	}
 
-	for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+	for (uint32_t i = 0; i < rhiDevice->container.maxFramesInFlight; i++)
 	{
 		swcData->rendererWaitSemaphores[i] = renderWait[i];
 	}
@@ -2686,7 +2730,7 @@ ImageFormat RenderInstance::FindSupportedBackBufferColorFormat(RenderPhysicalDev
 
 	for (uint32_t i = 0; i < requestSize; i++)
 	{
-		int ret = FindDriverSupportBackbufferFormat(&vkInstance, physicalIndex, windowsSurfaces[surfaceIndex](), requestedFormats[i]);
+		int ret = FindDriverSupportBackbufferFormat(&mainRenderInstance, physicalIndex, windowsSurfaces[surfaceIndex](), requestedFormats[i]);
 
 		if (ret)
 		{
@@ -2705,7 +2749,7 @@ ImageFormat RenderInstance::FindSupportedDepthFormat(RenderDeviceIndex deviceSel
 
 	for (uint32_t i = 0; i < requestSize; i++)
 	{
-		if (FindDriverSupportedDepthFormat(&vkInstance, physicalDeviceIndices[rhiDevice->container.gpuIndex.index].physicalDeviceIndex, requestedFormats[i]))
+		if (FindDriverSupportedDepthFormat(&mainRenderInstance, physicalDeviceIndices[rhiDevice->container.gpuIndex.index].physicalDeviceIndex, requestedFormats[i]))
 		{
 			return requestedFormats[i];
 		}
@@ -2751,7 +2795,7 @@ SamplerIndex RenderInstance::CreateSampler(RenderDeviceIndex deviceSelection, ui
 	return SamplerIndex(samplerIndex);
 }
 
-uint32_t RenderInstance::GetSwapChainHeight(SwapChainIndex& swapChainIndex)
+uint32_t RenderInstance::GetSwapChainHeight(SwapChainIndex swapChainIndex)
 {
 	RenderSwapchainData* data = swapChains.Get(swapChainIndex);
 
@@ -2760,7 +2804,7 @@ uint32_t RenderInstance::GetSwapChainHeight(SwapChainIndex& swapChainIndex)
 	return data->height;
 }
 
-uint32_t RenderInstance::GetSwapChainWidth(SwapChainIndex& swapChainIndex)
+uint32_t RenderInstance::GetSwapChainWidth(SwapChainIndex swapChainIndex)
 {
 	RenderSwapchainData* data = swapChains.Get(swapChainIndex);
 
@@ -2769,7 +2813,7 @@ uint32_t RenderInstance::GetSwapChainWidth(SwapChainIndex& swapChainIndex)
 	return data->width;
 }
 
-int RenderInstance::CreateShaderResourceSet(ShaderResourceManager* descriptorManager, DescriptorSetInstanceIndex& descriptorSet)
+int RenderInstance::CreateShaderResourceSet(ShaderResourceManager* descriptorManager, DescriptorSetInstanceIndex descriptorSet)
 {
 	ShaderResourceDescriptorSetInfo* info = descriptorManager->descriptorSetHandles.Get(descriptorSet);
 
@@ -2805,6 +2849,8 @@ int RenderInstance::CreateShaderResourceSet(ShaderResourceManager* descriptorMan
 	}
 
 	ShaderResourceSetInstanceCreator* creator = (ShaderResourceSetInstanceCreator*)AllocateFromStorageAllocator(sizeof(ShaderResourceSetInstanceCreator));
+
+	if (!creator) return -1;
 
 	creator->updateCount = 0;
 
@@ -2993,7 +3039,7 @@ int RenderInstance::CreateShaderResourceSet(ShaderResourceManager* descriptorMan
 					if (alloc->allocType == AllocationType::PERFRAME)
 					{
 						creator->info[currentUpdateIndex].allocSize = alloc->deviceAllocSize / frames;
-						creator->info[currentUpdateIndex].allocCopies = MAX_FRAMES_IN_FLIGHT;
+						creator->info[currentUpdateIndex].allocCopies = rhiDevice->container.maxFramesInFlight;
 					}
 					else
 					{
@@ -3033,7 +3079,7 @@ int RenderInstance::CreateShaderResourceSet(ShaderResourceManager* descriptorMan
 					if (alloc->allocType == AllocationType::PERFRAME)
 					{
 						creator->info[currentUpdateIndex].allocSize = alloc->deviceAllocSize / frames;
-						creator->info[currentUpdateIndex].allocCopies = MAX_FRAMES_IN_FLIGHT;
+						creator->info[currentUpdateIndex].allocCopies = rhiDevice->container.maxFramesInFlight;
 					}
 					else
 					{
@@ -3060,7 +3106,7 @@ int RenderInstance::CreateShaderResourceSet(ShaderResourceManager* descriptorMan
 						continue;
 					}
 
-					int frameCount = (alloc->allocType == AllocationType::PERFRAME) ? MAX_FRAMES_IN_FLIGHT : 1;
+					int frameCount = (alloc->allocType == AllocationType::PERFRAME) ? rhiDevice->container.maxFramesInFlight : 1;
 
 					int currentUpdateIndex = creator->updateCount++;
 
@@ -3170,7 +3216,7 @@ PipelineHandleIndex RenderInstance::CreateGraphicsPipelineObject(GraphicsInterme
 	return pipelineInstHandle;
 }
 
-ShaderComputeLayout* RenderInstance::GetComputeLayout(RenderShaderGraphIndex& shaderGraphIndex)
+ShaderComputeLayout* RenderInstance::GetComputeLayout(RenderShaderGraphIndex shaderGraphIndex)
 {
 	ShaderGraph* graph = shaderGraphs.shaderGraphPtrs.Get(shaderGraphIndex);
 
@@ -3244,21 +3290,27 @@ PipelineHandleIndex RenderInstance::CreateComputePipelineObject(ComputeIntermedi
 	return pipelineInstHandle;
 }
 
-void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStreamIndex& commandStreamIndex, uint32_t imageIndex)
+void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStreamIndex commandStreamIndex, uint32_t imageIndex)
 {
 	RHIDevice* rhiDevice = GetDeviceHandle(deviceSelection);
 
-	rhiDevice->container.stagingBufferAllocators[currentFrame].dataAllocator = 0;
+	rhiDevice->container.stagingBufferAllocators[rhiDevice->container.currentFrame].dataAllocator = 0;
 
 	CommandRecorder recorder{};
 
-	uint32_t accumulatorIndex = PopBarrierAccumulator();
+	uint32_t accumulatorIndex = PopBarrierAccumulator(rhiDevice);
 
-	BarrierAccumulator* accumulator = &barrierAccumulators[accumulatorIndex];
+	if (~0ul == accumulatorIndex)
+	{
+		return;
+	}
+
+	BarrierAccumulator* accumulator = &rhiDevice->container.barrierAccumulators[accumulatorIndex];
+	
 	recorder.accumulator = accumulator;
 	recorder.device = rhiDevice;
 
-	GetDriverCommandBufferObject(&recorder, rhiDevice->container.currentCommandBufferIndex[currentFrame]);
+	GetDriverCommandBufferObject(&recorder, rhiDevice->container.currentCommandBufferIndex[rhiDevice->container.currentFrame]);
 
 	ResetCommandPool(&recorder);
 
@@ -3272,7 +3324,7 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 
 	if (rhiDevice->container.queriesAreActive)
 	{
-		ResetDeviceQueries(&recorder, rhiDevice->container.queryPoolIndex, rhiDevice->container.maxQueryResults * currentFrame, rhiDevice->container.maxQueryResults);
+		ResetDeviceQueries(&recorder, rhiDevice->container.queryPoolIndex, rhiDevice->container.maxQueryResults * rhiDevice->container.currentFrame, rhiDevice->container.maxQueryResults);
 	}
 
 	UploadDeviceLocalTransfers(&recorder);
@@ -3291,7 +3343,7 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 
 		if (command->streamType == GPUCommandStreamType::COMPUTE_QUEUE_COMMANDS)
 		{
-			WriteDeviceQuery(&recorder, StageBits::COMPUTE_BARRIER);
+			WriteDeviceQuery(&recorder, StageBits::COMPUTE_BARRIER, rhiDevice->container.currentFrame);
 			
 			ComputeQueue* queue = computeQueues.Get(command->commandIndex.indexForComputeQueue);
 
@@ -3301,9 +3353,9 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 
 				PipelineHandle* handle = pipelineHandles.Get(pipelineIndex);
 
-				GeneratePipelineDescriptorBarriers(&recorder, handle->resourceSets, handle->resourceSetCount, pipelineIndex);
+				GeneratePipelineDescriptorBarriers(&recorder, handle->resourceSets, handle->resourceSetCount, pipelineIndex, rhiDevice->container.currentFrame);
 
-				GenerateComputeDispatchBindingsBarriers(&recorder, handle, pipelineIndex);
+				GenerateComputeDispatchBindingsBarriers(&recorder, handle, pipelineIndex, rhiDevice->container.currentFrame);
 			}
 
 			MakeAndBindDriverAccumulatedBarriers(&recorder);
@@ -3324,7 +3376,7 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 
 					ShaderResourceDescriptorSetInfo* info = descriptorManager->descriptorSetHandles.Get(handle->resourceSets[ii].descriptorSetIndex);
 
-					BindComputeDescriptorSetsCmd(&recorder, info->descriptorSetHandles, currentFrame, 1, ii, 0, nullptr);
+					BindComputeDescriptorSetsCmd(&recorder, info->descriptorSetHandles, rhiDevice->container.currentFrame, 1, ii, 0, nullptr);
 				}
 
 				for (uint32_t ii = 0, jj = 0, constantBufferPerSet = 0; ii < handle->pushRangeCount && jj < handle->resourceSetCount;)
@@ -3353,7 +3405,7 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 
 					size_t indirectBufferBaseOffset = 0;
 
-					GetAllocationDetails(indirectBufferAlloc, nullptr, &indirectBufferBaseOffset, nullptr, currentFrame);
+					GetAllocationDetails(indirectBufferAlloc, nullptr, &indirectBufferBaseOffset, nullptr, rhiDevice->container.currentFrame);
 
 					DispatchIndirectCmd(&recorder, bufferHandles[indirectBufferAlloc->memIndex].bufferHandle, indirectBufferBaseOffset);
 				}
@@ -3365,7 +3417,7 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 
 			ResetIntraBarrierAccumulator(accumulator);
 			
-			WriteDeviceQuery(&recorder, StageBits::COMPUTE_BARRIER);
+			WriteDeviceQuery(&recorder, StageBits::COMPUTE_BARRIER, rhiDevice->container.currentFrame);
 		}
 		else if (command->streamType == GPUCommandStreamType::ATTACHMENT_COMMANDS)
 		{
@@ -3373,11 +3425,11 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 
 			for (int i = 0; i < currentGraphInstance->graphLayout->passesCount; i++)
 			{
-				WriteDeviceQuery(&recorder, StageBits::BEGINNING_OF_PIPE);
+				WriteDeviceQuery(&recorder, StageBits::BEGINNING_OF_PIPE, rhiDevice->container.currentFrame);
 
 				AttachmentRenderPassInstance* rpInst = &currentGraphInstance->passes[i];
 
-				int targetSelection = rpInst->rpType == RenderPassType::SWAPCHAIN_IMAGE_COUNT ? imageIndex : currentFrame;
+				int targetSelection = rpInst->rpType == RenderPassType::SWAPCHAIN_IMAGE_COUNT ? imageIndex : rhiDevice->container.currentFrame;
 
 				int sampleLevelForRenderPass = rpInst->currentSampleCount;
 
@@ -3385,16 +3437,9 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 
 				RenderTargetInfo* rtInfo = mainRenderTargets.Get(rpInst->baseRenderTarget[sampleLevelForRenderPass]);
 
-				AttachmentClear* clears = (AttachmentClear*)cacheAllocator->Allocate(sizeof(AttachmentClear) * rpInst->attachInstCount);
-
 				AttachmentInstance* instances = rpInst->attachInst;
 
 				uint32_t clearCount = rpInst->attachInstCount;
-
-				for (int g = 0; g < rpInst->attachInstCount; g++)
-				{
-					clears[g] = instances[g].clear;
-				}
 
 				if (PipelineQueueIndex() != possibleQueueIndex)
 				{
@@ -3406,15 +3451,15 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 
 						PipelineHandle* handle = pipelineHandles.Get(pipelineIndex);
 
-						GeneratePipelineDescriptorBarriers(&recorder, handle->resourceSets, handle->resourceSetCount, pipelineIndex);
+						GeneratePipelineDescriptorBarriers(&recorder, handle->resourceSets, handle->resourceSetCount, pipelineIndex, rhiDevice->container.currentFrame);
 
-						GenerateDrawBindingsBarriers(&recorder, handle);
+						GenerateDrawBindingsBarriers(&recorder, handle, rhiDevice->container.currentFrame);
 					}
 
 					MakeAndBindDriverAccumulatedBarriers(&recorder);
 				}
 
-				BeginRenderPassCmd(&recorder, rtInfo->driverRenderTargetInfo, targetSelection, clears, clearCount, cacheAllocator);
+				BeginRenderPassCmd(&recorder, rtInfo->driverRenderTargetInfo, targetSelection, instances, clearCount, cacheAllocator);
 
 				SetViewportCmd(&recorder, rtInfo->driverRenderTargetInfo, 0.0f, 1.0f);
 
@@ -3455,14 +3500,14 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 
 							ShaderResourceDescriptorSetInfo* info = descriptorManager->descriptorSetHandles.Get(handle->resourceSets[ii].descriptorSetIndex);
 
-							BindGraphicsDescriptorSetsCmd(&recorder, info->descriptorSetHandles, currentFrame, 1, ii, 0, nullptr);
+							BindGraphicsDescriptorSetsCmd(&recorder, info->descriptorSetHandles, rhiDevice->container.currentFrame, 1, ii, 0, nullptr);
 						}
 
 						uint32_t vertexCount = handle->vertexCount;
 
 						uint32_t indexCount = handle->indexCount;
 
-						size_t vertexOffset = -1, indexOffset = -1, indirectBufferBaseOffset = -1, indirectCountBufferBaseOffset = -1;
+						size_t vertexOffset = (size_t)-1, indexOffset = (size_t)-1, indirectBufferBaseOffset = (size_t)-1, indirectCountBufferBaseOffset = (size_t)-1;
 
 						BufferMemoryIndex vertexMemIndex{}, indexMemIndex{}, indirectBufferIndex{}, indirectCountBufferIndex{};
 
@@ -3472,7 +3517,7 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 
 							vertexMemIndex = vertexAlloc->memIndex;
 
-							GetAllocationDetails(vertexAlloc, nullptr, &vertexOffset, nullptr, currentFrame);
+							GetAllocationDetails(vertexAlloc, nullptr, &vertexOffset, nullptr, rhiDevice->container.currentFrame);
 
 							BindVertexBufferCmd(&recorder, bufferHandles[vertexMemIndex].bufferHandle, 0, 1, &vertexOffset);
 						}
@@ -3483,7 +3528,7 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 
 							indexMemIndex = indexAlloc->memIndex;
 
-							GetAllocationDetails(indexAlloc, nullptr, &indexOffset, nullptr, currentFrame);
+							GetAllocationDetails(indexAlloc, nullptr, &indexOffset, nullptr, rhiDevice->container.currentFrame);
 
 							BindIndexBufferCmd(&recorder, bufferHandles[indexMemIndex].bufferHandle, indexOffset, handle->indexSize);
 						}
@@ -3492,7 +3537,7 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 						{
 							RenderAllocation* indirectBufferAlloc = allocations.Get(handle->indirectBufferHandle);
 
-							GetAllocationDetails(indirectBufferAlloc, nullptr, &indirectBufferBaseOffset, nullptr, currentFrame);
+							GetAllocationDetails(indirectBufferAlloc, nullptr, &indirectBufferBaseOffset, nullptr, rhiDevice->container.currentFrame);
 
 							indirectBufferIndex = indirectBufferAlloc->memIndex;
 						}
@@ -3501,7 +3546,7 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 						{
 							RenderAllocation* indirectCountBufferAlloc = allocations.Get(handle->indirectCountBufferHandle);
 
-							GetAllocationDetails(indirectCountBufferAlloc, nullptr, &indirectCountBufferBaseOffset, nullptr, currentFrame);
+							GetAllocationDetails(indirectCountBufferAlloc, nullptr, &indirectCountBufferBaseOffset, nullptr, rhiDevice->container.currentFrame);
 
 							indirectCountBufferIndex = indirectCountBufferAlloc->memIndex;
 						}
@@ -3575,19 +3620,19 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 
 				EndRenderPassCmd(&recorder);
 
-				WriteDeviceQuery(&recorder, StageBits::END_OF_PIPE);
+				WriteDeviceQuery(&recorder, StageBits::END_OF_PIPE, rhiDevice->container.currentFrame);
 			}
 		}
 
 		commandCountIter++;
 	}
 
-	ReturnBarrierAccumulator(accumulatorIndex);
+	ReturnBarrierAccumulator(rhiDevice, accumulatorIndex);
 
 	EndCommandRecording(&recorder);
 }
 
-void RenderInstance::IncreaseMSAA(AttachmentGraphInstanceIndex& frameGraph, int renderPassIndex)
+void RenderInstance::IncreaseMSAA(AttachmentGraphInstanceIndex frameGraph, int renderPassIndex)
 {
 	AttachmentGraphInstance* graphInstance = attachmentGraphsInstances.Get(frameGraph);
 
@@ -3605,7 +3650,7 @@ void RenderInstance::IncreaseMSAA(AttachmentGraphInstanceIndex& frameGraph, int 
 	}
 }
 
-void RenderInstance::DecreaseMSAA(AttachmentGraphInstanceIndex& frameGraph, int renderPassIndex)
+void RenderInstance::DecreaseMSAA(AttachmentGraphInstanceIndex frameGraph, int renderPassIndex)
 {
 	AttachmentGraphInstance* graphInstance = attachmentGraphsInstances.Get(frameGraph);
 
@@ -3623,7 +3668,7 @@ void RenderInstance::DecreaseMSAA(AttachmentGraphInstanceIndex& frameGraph, int 
 	}
 }
 
-void RenderInstance::ResetCommandList(GPUCommandStreamIndex& commandStreamIndex)
+void RenderInstance::ResetCommandList(GPUCommandStreamIndex commandStreamIndex)
 {
 	GPUCommandStreamAllocator* stream = gpuCommandStreams.Get(commandStreamIndex);
 
@@ -3636,7 +3681,7 @@ void RenderInstance::ResetCommandList(GPUCommandStreamIndex& commandStreamIndex)
 	internalRendererLogger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("ResetCommandList: invalid command stream index"));
 }
 
-void RenderInstance::CreateGraphicsQueueForAttachments(AttachmentGraphInstanceIndex& frameGraphIndex, int renderPassIndex)
+void RenderInstance::CreateGraphicsQueueForAttachments(AttachmentGraphInstanceIndex frameGraphIndex, int renderPassIndex)
 {
 	AttachmentGraphInstance* graphInstance = attachmentGraphsInstances.Get(frameGraphIndex);
 
@@ -3664,7 +3709,7 @@ PipelineQueueIndex RenderInstance::CreateComputeQueue()
 	return computeQueue;
 }
 
-void RenderInstance::AddComputeCommandQueue(GPUCommandStreamIndex& commandStreamIndex, PipelineQueueIndex& handleIndex)
+void RenderInstance::AddComputeCommandQueue(GPUCommandStreamIndex commandStreamIndex, PipelineQueueIndex handleIndex)
 {
 	GPUCommandStreamAllocator* stream = gpuCommandStreams.Get(commandStreamIndex);
 
@@ -3687,7 +3732,7 @@ void RenderInstance::AddComputeCommandQueue(GPUCommandStreamIndex& commandStream
 	internalRendererLogger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("AddCommandQueue: invalid command stream index"));
 }
 
-void RenderInstance::AddAttachmentCommandQueue(GPUCommandStreamIndex& commandStreamIndex, AttachmentGraphInstanceIndex& handleIndex)
+void RenderInstance::AddAttachmentCommandQueue(GPUCommandStreamIndex commandStreamIndex, AttachmentGraphInstanceIndex handleIndex)
 {
 	GPUCommandStreamAllocator* stream = gpuCommandStreams.Get(commandStreamIndex);
 
@@ -3735,7 +3780,7 @@ GPUCommandStreamIndex RenderInstance::CreateGPUCommandStream(int maxGPUCommandCo
 	return gpuCommandsIndex;
 }
 
-void RenderInstance::EndFrame(RenderDeviceIndex deviceSelection, GPUCommandStreamIndex& commandStreamIndex)
+void RenderInstance::EndFrame(RenderDeviceIndex deviceSelection, GPUCommandStreamIndex commandStreamIndex)
 {
 	char StringBuffer[512];
 
@@ -3772,12 +3817,12 @@ void RenderInstance::EndFrame(RenderDeviceIndex deviceSelection, GPUCommandStrea
 				passDesc = "Render Pass : ";
 			}
 
-			if (previousFrame < MAX_FRAMES_IN_FLIGHT && (rhiDevice->container.queryCounts[previousFrame] >= queryOffset + queryCount))
+			if (rhiDevice->container.previousFrame < rhiDevice->container.maxFramesInFlight && (rhiDevice->container.queryCounts[rhiDevice->container.previousFrame] >= queryOffset + queryCount))
 			{
 				ReadBackQueryResults(
 					rhiDevice,
 					rhiDevice->container.queryPoolIndex,
-					(rhiDevice->container.maxQueryResults * previousFrame) + queryOffset,
+					(rhiDevice->container.maxQueryResults * rhiDevice->container.previousFrame) + queryOffset,
 					queryCount,
 					rhiDevice->container.queryResults,
 					sizeof(uint32_t) * rhiDevice->container.maxQueryResults,
@@ -3802,9 +3847,9 @@ void RenderInstance::EndFrame(RenderDeviceIndex deviceSelection, GPUCommandStrea
 			commandCountIter++;
 		}
 
-		if (previousFrame < MAX_FRAMES_IN_FLIGHT)
+		if (rhiDevice->container.previousFrame < rhiDevice->container.maxFramesInFlight)
 		{
-			rhiDevice->container.queryCounts[previousFrame] = 0;
+			rhiDevice->container.queryCounts[rhiDevice->container.previousFrame] = 0;
 		}
 
 		commandCountIter = 0;
@@ -3838,11 +3883,11 @@ void RenderInstance::EndFrame(RenderDeviceIndex deviceSelection, GPUCommandStrea
 
 	cacheAllocator->Reset();
 
-	previousFrame = currentFrame;
-	currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+	rhiDevice->container.previousFrame = rhiDevice->container.currentFrame;
+	rhiDevice->container.currentFrame = (rhiDevice->container.currentFrame + 1) % rhiDevice->container.maxFramesInFlight;
 }
 
-void RenderInstance::WriteDeviceQuery(CommandRecorder* recorder, PipelineStage stage)
+void RenderInstance::WriteDeviceQuery(CommandRecorder* recorder, PipelineStage stage, uint32_t currentFrame)
 {
 	if (recorder->device->container.queriesAreActive)
 	{
@@ -3861,7 +3906,7 @@ void RenderInstance::ToggleDeviceQueries(RenderDeviceIndex mainDeviceSelection)
 	device->container.queriesAreActive ^= 1;
 }
 
-int RenderInstance::AddPipelineToRPGraphicsQueue(PipelineHandleIndex& psoIndex, AttachmentGraphInstanceIndex& frameGraphIndex, int renderPass)
+int RenderInstance::AddPipelineToRPGraphicsQueue(PipelineHandleIndex psoIndex, AttachmentGraphInstanceIndex frameGraphIndex, int renderPass)
 {
 	AttachmentGraphInstance* currentGraphInstance = attachmentGraphsInstances.Get(frameGraphIndex);
 
@@ -3894,7 +3939,7 @@ int RenderInstance::AddPipelineToRPGraphicsQueue(PipelineHandleIndex& psoIndex, 
 	return -1;
 }
 
-int RenderInstance::AddPipelineToComputeQueue(PipelineQueueIndex& queueIndex, PipelineHandleIndex& psoIndex)
+int RenderInstance::AddPipelineToComputeQueue(PipelineQueueIndex queueIndex, PipelineHandleIndex psoIndex)
 {
 	ComputeQueue* queue = computeQueues.Get(queueIndex);
 
@@ -3912,7 +3957,7 @@ int RenderInstance::AddPipelineToComputeQueue(PipelineQueueIndex& queueIndex, Pi
 	return -1;
 }
 
-int RenderInstance::ReadData(AllocationInstanceIndex& handle, void* dest, int size, int offset)
+int RenderInstance::ReadData(AllocationInstanceIndex handle, void* dest, int size, int offset)
 {
 	RenderAllocation* allocation = allocations.Get(handle);
 
@@ -3949,7 +3994,7 @@ int RenderInstance::ReadData(AllocationInstanceIndex& handle, void* dest, int si
 	return readRet;
 }
 
-int RenderInstance::UpdateDriverMemory(void* data, AllocationInstanceIndex& allocationIndex, int size, int allocOffset, TransferType transferType)
+int RenderInstance::UpdateDriverMemory(void* data, AllocationInstanceIndex allocationIndex, int size, int allocOffset, TransferType transferType)
 {
 	RenderAllocation* alloc = allocations.Get(allocationIndex);
 
@@ -3957,6 +4002,8 @@ int RenderInstance::UpdateDriverMemory(void* data, AllocationInstanceIndex& allo
 	{
 		return -1;
 	}
+
+	RHIDevice* rhiDevice = GetDeviceHandle(alloc->deviceIndex);
 
 	int oneStrideSize = alloc->requestedSize * alloc->structureCopies;
 
@@ -3985,7 +4032,7 @@ int RenderInstance::UpdateDriverMemory(void* data, AllocationInstanceIndex& allo
 
 	if (alloc->allocType == AllocationType::PERFRAME)
 	{
-		copies = MAX_FRAMES_IN_FLIGHT;
+		copies = rhiDevice->container.maxFramesInFlight;
 	}
 
 	rducm->allocationIndex = allocationIndex;
@@ -3998,7 +4045,7 @@ int RenderInstance::UpdateDriverMemory(void* data, AllocationInstanceIndex& allo
 	return 0;
 }
 
-int RenderInstance::UpdateImageMemory(void* data, TextureIndex& textureIndex, size_t totalSize, int width, int height, int mipLevels, int mipStart, int layerCount, int layerStart, ImageViewAspectMask mask)
+int RenderInstance::UpdateImageMemory(void* data, TextureIndex textureIndex, size_t totalSize, int width, int height, int mipLevels, int mipStart, int layerCount, int layerStart, ImageViewAspectMask mask)
 {
 	if (!textureResourceHandles.Get(textureIndex))
 	{
@@ -4027,7 +4074,7 @@ int RenderInstance::UpdateImageMemory(void* data, TextureIndex& textureIndex, si
 	return 0;
 }
 
-int RenderInstance::InsertTransferCommand(AllocationInstanceIndex& allocationIndex, int size, int allocOffset, uint32_t fillValue)
+int RenderInstance::InsertTransferCommand(AllocationInstanceIndex allocationIndex, int size, int allocOffset, uint32_t fillValue)
 {
 	RenderAllocation* alloc = allocations.Get(allocationIndex);
 
@@ -4035,6 +4082,8 @@ int RenderInstance::InsertTransferCommand(AllocationInstanceIndex& allocationInd
 	{
 		return -1;
 	}
+
+	RHIDevice* rhiDevice = GetDeviceHandle(alloc->deviceIndex);
 
 	int oneStrideSize = alloc->requestedSize * alloc->structureCopies;
 
@@ -4055,7 +4104,7 @@ int RenderInstance::InsertTransferCommand(AllocationInstanceIndex& allocationInd
 
 	if (alloc->allocType == AllocationType::PERFRAME)
 	{
-		copies = MAX_FRAMES_IN_FLIGHT;
+		copies = rhiDevice->container.maxFramesInFlight;
 	}
 
 	rducf->allocationIndex = allocationIndex;
@@ -4278,7 +4327,7 @@ void RenderInstance::SwapUpdateCommands()
 }
 
 
-int RenderInstance::UploadFrameAttachmentResource(AttachmentGraphInstanceIndex& frameGraph, int resourceIndex, int perTextureViewIndex, ShaderResourceSetHandle handle, int bindingIndex, int textureStart)
+int RenderInstance::UploadFrameAttachmentResource(AttachmentGraphInstanceIndex frameGraph, int resourceIndex, int perTextureViewIndex, ShaderResourceSetHandle handle, int bindingIndex, int textureStart)
 {
 	AttachmentGraphInstance* currentGraphInstance = attachmentGraphsInstances.Get(frameGraph);
 
@@ -4315,7 +4364,7 @@ int RenderInstance::UploadFrameAttachmentResource(AttachmentGraphInstanceIndex& 
 	return -1;
 }
 
-void RenderInstance::PipelineUpdateIndirectCommandBuffer(PipelineHandleIndex& pipelineIndex, AllocationInstanceIndex& allocationIndex)
+void RenderInstance::PipelineUpdateIndirectCommandBuffer(PipelineHandleIndex pipelineIndex, AllocationInstanceIndex allocationIndex)
 {
 	PipelineHandle* handle = pipelineHandles.Get(pipelineIndex);
 
@@ -4328,7 +4377,7 @@ void RenderInstance::PipelineUpdateIndirectCommandBuffer(PipelineHandleIndex& pi
 	}
 }
 
-void RenderInstance::PipelineUpdateVertexBuffer(PipelineHandleIndex& pipelineIndex, AllocationInstanceIndex& allocationIndex, uint32_t vertexCount)
+void RenderInstance::PipelineUpdateVertexBuffer(PipelineHandleIndex pipelineIndex, AllocationInstanceIndex allocationIndex, uint32_t vertexCount)
 {
 	PipelineHandle* handle = pipelineHandles.Get(pipelineIndex);
 
@@ -4342,7 +4391,7 @@ void RenderInstance::PipelineUpdateVertexBuffer(PipelineHandleIndex& pipelineInd
 	}
 }
 
-void RenderInstance::PipelineUpdateIndexBuffer(PipelineHandleIndex& pipelineIndex, AllocationInstanceIndex& allocationIndex, uint32_t indexCount, uint32_t indexStride)
+void RenderInstance::PipelineUpdateIndexBuffer(PipelineHandleIndex pipelineIndex, AllocationInstanceIndex allocationIndex, uint32_t indexCount, uint32_t indexStride)
 {
 	PipelineHandle* handle = pipelineHandles.Get(pipelineIndex);
 
@@ -4357,7 +4406,7 @@ void RenderInstance::PipelineUpdateIndexBuffer(PipelineHandleIndex& pipelineInde
 	}
 }
 
-void RenderInstance::PipelineUpdateIndirectCountBuffer(PipelineHandleIndex& pipelineIndex, AllocationInstanceIndex& allocationIndex)
+void RenderInstance::PipelineUpdateIndirectCountBuffer(PipelineHandleIndex pipelineIndex, AllocationInstanceIndex allocationIndex)
 {
 	PipelineHandle* handle = pipelineHandles.Get(pipelineIndex);
 
@@ -4370,7 +4419,7 @@ void RenderInstance::PipelineUpdateIndirectCountBuffer(PipelineHandleIndex& pipe
 	}
 }
 
-void RenderInstance::PipelineUpdateDispatchCommands(PipelineHandleIndex& pipelineIndex, uint32_t x, uint32_t y, uint32_t z)
+void RenderInstance::PipelineUpdateDispatchCommands(PipelineHandleIndex pipelineIndex, uint32_t x, uint32_t y, uint32_t z)
 {
 	PipelineHandle* handle = pipelineHandles.Get(pipelineIndex);
 
@@ -4431,7 +4480,7 @@ BufferMemoryIndex RenderInstance::CreateUniversalBuffer(RenderDeviceIndex device
 
 int RenderInstance::CreateHighLevelInstance(uint32_t vkDriverSpecificMemory, uint32_t vkDriverCacheSize, uint32_t instancePermanentSpecificMemory, uint32_t instanceCacheMemory)
 {
-	int ret = CreateDriverInstance(&vkInstance, WindowManagementType::WINDOWS32, vkDriverSpecificMemory, vkDriverCacheSize, instancePermanentSpecificMemory, instanceCacheMemory, internalRendererLogger, storageAllocator);
+	int ret = CreateDriverInstance(&mainRenderInstance, WindowManagementType::WINDOWS32, vkDriverSpecificMemory, vkDriverCacheSize, instancePermanentSpecificMemory, instanceCacheMemory, internalRendererLogger, storageAllocator);
 
 	if (ret)
 	{
@@ -4450,7 +4499,7 @@ WindowIndex RenderInstance::CreateWindowedSurface(OSWindowInternalData* windowDa
 		return {};
 	}
 
-	EntryHandle renderSurfaceIndex = CreateDriverWindowSurface(&vkInstance, windowData);
+	EntryHandle renderSurfaceIndex = CreateDriverWindowSurface(&mainRenderInstance, windowData);
 
 	if (EntryHandle() == renderSurfaceIndex)
 	{
@@ -4483,7 +4532,7 @@ ShaderResourceManagerIndex RenderInstance::CreateDescriptorHeap(RenderDeviceInde
 
 	manager->Create(storageAllocator, maxShaderResourceSets, STRING_VIEW_FROM_LITERAL("Descriptor Manager"), internalRendererLogger);
 
-	EntryHandle handle = CreateDriverDescriptorHeap(rhiDevice, types, descriptorCountPerFrame, numDescriptorTypesCount, maxDescriptorSets, MAX_FRAMES_IN_FLIGHT);
+	EntryHandle handle = CreateDriverDescriptorHeap(rhiDevice, types, descriptorCountPerFrame, numDescriptorTypesCount, maxDescriptorSets, rhiDevice->container.maxFramesInFlight);
 
 	if (EntryHandle() == handle)
 	{
@@ -4498,7 +4547,7 @@ ShaderResourceManagerIndex RenderInstance::CreateDescriptorHeap(RenderDeviceInde
 	return descriptorManagerIndex;
 }
 
-void RenderInstance::GeneratePipelineDescriptorBarriers(CommandRecorder* recorder, ShaderResourceSetHandle* descriptorid, int descriptorcount, PipelineHandleIndex& pipelineIndex)
+void RenderInstance::GeneratePipelineDescriptorBarriers(CommandRecorder* recorder, ShaderResourceSetHandle* descriptorid, int descriptorcount, PipelineHandleIndex pipelineIndex, uint32_t currentFrame)
 {
 	for (int i = 0; i < descriptorcount; i++)
 	{
@@ -4577,9 +4626,9 @@ void RenderInstance::GeneratePipelineDescriptorBarriers(CommandRecorder* recorde
 
 				for (int g = 0; g < arrayCount; g++)
 				{
-					AllocationInstanceIndex& allocationIndex = bufferBarrier->allocationIndex[g];
+					AllocationInstanceIndex allocationIndex = bufferBarrier->allocationIndex[g];
 
-					InsertBufferBarrier(allocationIndex, ConvertShaderStageToBarrierStage(header->stage), header, pipelineIndex, recorder->accumulator);
+					InsertBufferBarrier(allocationIndex, ConvertShaderStageToBarrierStage(header->stage), header, pipelineIndex, recorder->accumulator, currentFrame);
 				}
 				break;
 			}
@@ -4588,25 +4637,25 @@ void RenderInstance::GeneratePipelineDescriptorBarriers(CommandRecorder* recorde
 	}
 }
 
-void RenderInstance::GenerateDrawBindingsBarriers(CommandRecorder* recorder, PipelineHandle* handle)
+void RenderInstance::GenerateDrawBindingsBarriers(CommandRecorder* recorder, PipelineHandle* handle, uint32_t currentFrame)
 {
 	if (AllocationInstanceIndex() != handle->vertexBufferHandle)
 	{
-		InsertDrawCommandBufferBarrier(handle->vertexBufferHandle, StageBits::VERTEX_INPUT_BARRIER, BarrierActionBits::READ_VERTEX_INPUT, recorder->accumulator);
+		InsertDrawCommandBufferBarrier(handle->vertexBufferHandle, StageBits::VERTEX_INPUT_BARRIER, BarrierActionBits::READ_VERTEX_INPUT, recorder->accumulator, currentFrame);
 	}
 
 	if (AllocationInstanceIndex() != handle->indirectBufferHandle)
 	{
-		InsertDrawCommandBufferBarrier(handle->indirectBufferHandle, StageBits::INDIRECT_DRAW_BARRIER, BarrierActionBits::READ_INDIRECT_COMMAND, recorder->accumulator);
+		InsertDrawCommandBufferBarrier(handle->indirectBufferHandle, StageBits::INDIRECT_DRAW_BARRIER, BarrierActionBits::READ_INDIRECT_COMMAND, recorder->accumulator, currentFrame);
 	}
 
 	if (AllocationInstanceIndex() != handle->indirectCountBufferHandle)
 	{
-		InsertDrawCommandBufferBarrier(handle->indirectCountBufferHandle, StageBits::INDIRECT_DRAW_BARRIER, BarrierActionBits::READ_INDIRECT_COMMAND, recorder->accumulator);
+		InsertDrawCommandBufferBarrier(handle->indirectCountBufferHandle, StageBits::INDIRECT_DRAW_BARRIER, BarrierActionBits::READ_INDIRECT_COMMAND, recorder->accumulator, currentFrame);
 	}
 }
 
-void RenderInstance::GenerateComputeDispatchBindingsBarriers(CommandRecorder* recorder, PipelineHandle* handle, PipelineHandleIndex& pipelineIndex)
+void RenderInstance::GenerateComputeDispatchBindingsBarriers(CommandRecorder* recorder, PipelineHandle* handle, PipelineHandleIndex pipelineIndex, uint32_t currentFrame)
 {
 	if (AllocationInstanceIndex() != handle->indirectDispatchCommandHandle)
 	{
@@ -4648,7 +4697,7 @@ void RenderInstance::GenerateComputeDispatchBindingsBarriers(CommandRecorder* re
 	}
 }
 
-void RenderInstance::TransitionImageLayout(TextureIndex& imageIndex, int perImageViewIndex, PipelineStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator, PipelineHandleIndex& pipelineIndex)
+void RenderInstance::TransitionImageLayout(TextureIndex imageIndex, int perImageViewIndex, PipelineStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator, PipelineHandleIndex pipelineIndex)
 {
 	RenderTextureDescription* desc = textureResourceHandles.Get(imageIndex);
 
@@ -4672,7 +4721,7 @@ void RenderInstance::TransitionImageLayout(TextureIndex& imageIndex, int perImag
 
 void RenderInstance::TransitionImageLayout(EntryHandle imageIndex, int mipStart, int mipCount, int totalMipCount, int layerStart, int layerCount,
 	ImageViewAspectMask mask, ImageLayout requestedLayout, ResourceStatus* status,
-	PipelineStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator, PipelineHandleIndex& pipelineIndex)
+	PipelineStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator, PipelineHandleIndex pipelineIndex)
 {
 	AgnosticImageMemoryBarrier barrier{};
 
@@ -4864,7 +4913,7 @@ void RenderInstance::TransitionImageLayout(EntryHandle imageIndex, int mipStart,
 	}
 }
 
-IntraPassBarrier* RenderInstance::GetIntraPassBarrier(BarrierAccumulator* accum, BarrierType type, PipelineHandleIndex& pipelineIndex, void* driverBarrierData)
+IntraPassBarrier* RenderInstance::GetIntraPassBarrier(BarrierAccumulator* accum, BarrierType type, PipelineHandleIndex pipelineIndex, void* driverBarrierData)
 {
 	int topIndex = RENDER_MAX(accum->intraPassCount - 1, 0);
 
@@ -4896,7 +4945,7 @@ IntraPassBarrier* RenderInstance::GetIntraPassBarrier(BarrierAccumulator* accum,
 	return intraPassBarrier;
 }
 
-void RenderInstance::InsertBufferBarrier(AllocationInstanceIndex& allocationIndex, PipelineStage destBarrierStage, ShaderResourceHeader* header, PipelineHandleIndex& pipelineIndex, BarrierAccumulator* accumulator)
+void RenderInstance::InsertBufferBarrier(AllocationInstanceIndex allocationIndex, PipelineStage destBarrierStage, ShaderResourceHeader* header, PipelineHandleIndex pipelineIndex, BarrierAccumulator* accumulator, uint32_t currentFrame)
 {
 	size_t size = 0, offset = 0, align = 0;
 
@@ -4971,7 +5020,7 @@ void RenderInstance::InsertBufferBarrier(AllocationInstanceIndex& allocationInde
 	status->currAction[bufferLastAccessFrame] = newAction;
 }
 
-void RenderInstance::InsertDrawCommandBufferBarrier(AllocationInstanceIndex& allocationIndex, PipelineStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator)
+void RenderInstance::InsertDrawCommandBufferBarrier(AllocationInstanceIndex allocationIndex, PipelineStage destBarrierStage, BarrierAction destBarrierAction, BarrierAccumulator* accumulator, uint32_t currentFrame)
 {
 	RenderAllocation* bufferAlloc = allocations.Get(allocationIndex);
 
@@ -5014,7 +5063,7 @@ void RenderInstance::DestroyPhysicalDeviceIndices(RenderPhysicalDeviceIndex hand
 
 	RenderPhysicalDeviceContainer* container = &physicalDeviceIndices[handle.index];
 
-	DestroyDriverPhysicalDevice(&vkInstance, container->physicalDeviceIndex);
+	DestroyDriverPhysicalDevice(&mainRenderInstance, container->physicalDeviceIndex);
 
 	CleanInitializePhysicalDeviceIndices(container);
 
@@ -5030,14 +5079,14 @@ void RenderInstance::DestroyLogicalDeviceIndices(RenderDeviceIndex handle)
 
 	RHIDevice* container = GetDeviceHandle(handle);
 
-	DestroyDriverLogicalDevice(&vkInstance, container->container.logicalDeviceIndex);
+	DestroyDriverLogicalDevice(&mainRenderInstance, container->container.logicalDeviceIndex);
 
 	CleanInitializeRHIDevice(container);
 
 	logicalDeviceCounter--;
 }
 
-void RenderInstance::DestroyWindowsSurfaces(WindowIndex& handle)
+void RenderInstance::DestroyWindowsSurfaces(WindowIndex handle)
 {
 	RenderWindowSpecificData* data = windowsSurfaces.Get(handle);
 
@@ -5046,14 +5095,14 @@ void RenderInstance::DestroyWindowsSurfaces(WindowIndex& handle)
 		return;
 	}
 
-	DestroyDriverWindowsSurface(&vkInstance, data->vkRenderSurface);
+	DestroyDriverWindowsSurface(&mainRenderInstance, data->vkRenderSurface);
 
 	CleanInitializeWindowsSurface(data);
 
 	windowsSurfaces.Free(handle);
 }
 
-void RenderInstance::DestroySwapChain(SwapChainIndex& handle)
+void RenderInstance::DestroySwapChain(SwapChainIndex handle)
 {
 	RenderSwapchainData* swcData = swapChains.Get(handle);
 
@@ -5095,7 +5144,7 @@ void RenderInstance::DestroySwapChain(SwapChainIndex& handle)
 			DestroyDriverSemaphore(container, swcData->rendererFinishedSemaphores[i]);
 		}
 
-		for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+		for (int i = 0; i < container->container.maxFramesInFlight; i++)
 		{
 			DestroyDriverSemaphore(container, swcData->rendererWaitSemaphores[i]);
 		}
@@ -5108,7 +5157,7 @@ void RenderInstance::DestroySwapChain(SwapChainIndex& handle)
 	swapChains.Free(handle);
 }
 
-void RenderInstance::DestroyBufferHandle(BufferMemoryIndex& handle)
+void RenderInstance::DestroyBufferHandle(BufferMemoryIndex handle)
 {
 	RenderBufferDescription* bufferHandle = bufferHandles.Get(handle);
 
@@ -5129,7 +5178,7 @@ void RenderInstance::DestroyBufferHandle(BufferMemoryIndex& handle)
 	bufferHandles.Free(handle);
 }
 
-void RenderInstance::DestroyImagePool(ImageMemoryIndex& handle)
+void RenderInstance::DestroyImagePool(ImageMemoryIndex handle)
 {
 	ImagePoolDescription* imagePool = imagePools.Get(handle);
 	
@@ -5150,7 +5199,7 @@ void RenderInstance::DestroyImagePool(ImageMemoryIndex& handle)
 	imagePools.Free(handle);
 }
 
-void RenderInstance::DestroyPipelineHandle(PipelineHandleIndex& handle)
+void RenderInstance::DestroyPipelineHandle(PipelineHandleIndex handle)
 {
 	PipelineHandle* pipelineHandle = pipelineHandles.Get(handle);
 	
@@ -5164,7 +5213,7 @@ void RenderInstance::DestroyPipelineHandle(PipelineHandleIndex& handle)
 	pipelineHandles.Free(handle);
 }
 
-void RenderInstance::DestroyAttachmentGraph(int handle)
+void RenderInstance::DestroyAttachmentGraph(AttachmentGraphLayoutIndex handle)
 {
 	AttachmentGraph* attachmentGraph = attachmentGraphs.Get(handle);
 	
@@ -5178,7 +5227,7 @@ void RenderInstance::DestroyAttachmentGraph(int handle)
 	attachmentGraphs.Free(handle);
 }
 
-void RenderInstance::DestroyAttachmentGraphInstance(AttachmentGraphInstanceIndex& handle)
+void RenderInstance::DestroyAttachmentGraphInstance(AttachmentGraphInstanceIndex handle)
 {
 
 	AttachmentGraphInstance* attachmentGraphInstance = attachmentGraphsInstances.Get(handle);
@@ -5236,7 +5285,7 @@ void RenderInstance::DestroyAttachmentGraphInstance(AttachmentGraphInstanceIndex
 	attachmentGraphsInstances.Free(handle);
 }
 
-void RenderInstance::DestroyRenderTargetQueue(PipelineQueueIndex& handle)
+void RenderInstance::DestroyRenderTargetQueue(PipelineQueueIndex handle)
 {
 	RenderQueue* renderTargetQueue = renderTargetQueues.Get(handle);
 	
@@ -5250,7 +5299,7 @@ void RenderInstance::DestroyRenderTargetQueue(PipelineQueueIndex& handle)
 	renderTargetQueues.Free(handle);
 }
 
-void RenderInstance::DestroyComputeQueue(PipelineQueueIndex& handle)
+void RenderInstance::DestroyComputeQueue(PipelineQueueIndex handle)
 {
 	ComputeQueue* computeQueue = computeQueues.Get(handle);
 	
@@ -5264,7 +5313,7 @@ void RenderInstance::DestroyComputeQueue(PipelineQueueIndex& handle)
 	computeQueues.Free(handle);
 }
 
-void RenderInstance::DestroyTextureResourceHandle(TextureIndex& handle)
+void RenderInstance::DestroyTextureResourceHandle(TextureIndex handle)
 {
 	RenderTextureDescription* textureResourceHandle = textureResourceHandles.Get(handle);
 	
@@ -5292,7 +5341,7 @@ void RenderInstance::DestroyTextureResourceHandle(TextureIndex& handle)
 	textureResourceHandles.Free(handle);
 }
 
-void RenderInstance::DestroyTextureViewsResourceHandle(RenderDeviceIndex mainLogicalDevice, TextureViewIndex& handle)
+void RenderInstance::DestroyTextureViewsResourceHandle(RenderDeviceIndex mainLogicalDevice, TextureViewIndex handle)
 {
 	RHIDevice* container = GetDeviceHandle(mainLogicalDevice);
 	
@@ -5327,7 +5376,7 @@ void RenderInstance::DestroySamplerResourceHandle(RenderDeviceIndex mainLogicalD
 	samplerResourceHandles.Free(handle);
 }
 
-void RenderInstance::DestroyResourceStatus(ResourceIndex& handle)
+void RenderInstance::DestroyResourceStatus(ResourceIndex handle)
 {	
 	ResourceStatus* resourceStatus = resourceStatuses.Get(handle);
 	
@@ -5345,7 +5394,7 @@ void RenderInstance::DestroyResourceStatus(ResourceIndex& handle)
 	resourceStatuses.Free(handle);
 }
 
-void RenderInstance::DestroyPipelineInfo(GenericRenderPipelineInfoIndex& handle)
+void RenderInstance::DestroyPipelineInfo(GenericRenderPipelineInfoIndex handle)
 {	
 	GenericPipelineStateInfo* pipelineInfo = pipelineInfos.Get(handle);
 	
@@ -5359,45 +5408,49 @@ void RenderInstance::DestroyPipelineInfo(GenericRenderPipelineInfoIndex& handle)
 	pipelineInfos.Free(handle);
 }
 
-void RenderInstance::DestroyRenderPass(OldStyleRenderPassIndex& handle)
+void RenderInstance::DestroyRenderPass(OldStyleRenderPassIndex handle)
 {
 	RenderOldStyleVulkanRenderPassInfo* info = renderPasses.Get(handle);
 	
-	if (!info || EntryHandle() == info->renderPassHandle)
+	if (!info)
 	{
 		return;
 	}
 
 	RHIDevice* container = GetDeviceHandle(info->deviceIndex);
 
-	DestroyOldStyleRenderPass(container, info->renderPassHandle);
+	if (EntryHandle() != info->renderPassHandle)
+	{
+		DestroyOldStyleRenderPass(container, info->renderPassHandle);
+	}
 	
-	info->renderPassHandle = EntryHandle();
-	info->deviceIndex = {};
+	CleanInitializeRenderPass(info);
 
 	renderPasses.Free(handle);
 }
 
-void RenderInstance::DestroyRenderTarget(DriverRenderTargetIndex& handle)
+void RenderInstance::DestroyRenderTarget(DriverRenderTargetIndex handle)
 {
 	RenderTargetInfo* info = mainRenderTargets.Get(handle);
 	
-	if (!info || EntryHandle() == info->driverRenderTargetInfo)
+	if (!info)
 	{
 		return;
 	}
 
 	RHIDevice* container = GetDeviceHandle(info->deviceIndex);
 
-	DestroyDriverMainRenderTarget(container, info->driverRenderTargetInfo);
+	if (EntryHandle() != info->driverRenderTargetInfo)
+	{
+		DestroyDriverMainRenderTarget(container, info->driverRenderTargetInfo);
+	}
 
-	info->driverRenderTargetInfo = EntryHandle();
-	info->deviceIndex = {};
+	CleanInitializeRenderTargetInfo(info);
 
 	mainRenderTargets.Free(handle);
 }
 
-void RenderInstance::DestroyShaderResourceTemplate(ShaderResourceTemplateInstanceIndex& handle)
+void RenderInstance::DestroyShaderResourceTemplate(ShaderResourceTemplateInstanceIndex handle)
 {
 	RenderShaderResourceTemplateInfo* shaderResourceTemplate = shaderResourceTemplates.Get(handle);
 	
@@ -5409,12 +5462,13 @@ void RenderInstance::DestroyShaderResourceTemplate(ShaderResourceTemplateInstanc
 	RHIDevice* container = GetDeviceHandle(shaderResourceTemplate->deviceIndex);
 
 	DestroyDriverShaderResourceLayout(container, shaderResourceTemplate->resourceTemplateInstanceHandle);
-	shaderResourceTemplate->resourceTemplateInstanceHandle = EntryHandle();
-	shaderResourceTemplate->deviceIndex = {};
+	
+	CleanInitializeShaderTemplateInfo(shaderResourceTemplate);
+	
 	shaderResourceTemplates.Free(handle);
 }
 
-void RenderInstance::DestroyAllocation(AllocationInstanceIndex& handle)
+void RenderInstance::DestroyAllocation(AllocationInstanceIndex handle)
 {
 	RenderAllocation* allocation = allocations.Get(handle);
 	
@@ -5434,7 +5488,7 @@ void RenderInstance::DestroyAllocation(AllocationInstanceIndex& handle)
 	allocations.Free(handle);
 }
 
-void RenderInstance::DestroyDescriptorManager(ShaderResourceManagerIndex& handle)
+void RenderInstance::DestroyDescriptorManager(ShaderResourceManagerIndex handle)
 {
 	ShaderResourceManager* descriptorManager = descriptorManagers.Get(handle);
 
@@ -5458,7 +5512,7 @@ void RenderInstance::DestroyDescriptorManager(ShaderResourceManagerIndex& handle
 	descriptorManagers.Free(handle);
 }
 
-void RenderInstance::DestroyGpuCommandStream(GPUCommandStreamIndex& handle)
+void RenderInstance::DestroyGpuCommandStream(GPUCommandStreamIndex handle)
 {	
 	GPUCommandStreamAllocator* gpuCommandStream = gpuCommandStreams.Get(handle);
 
@@ -5474,7 +5528,7 @@ void RenderInstance::DestroyGpuCommandStream(GPUCommandStreamIndex& handle)
 	gpuCommandStreams.Free(handle);
 }
 
-void RenderInstance::DestroyShaderGraph(RenderShaderGraphIndex& handle)
+void RenderInstance::DestroyShaderGraph(RenderShaderGraphIndex handle)
 {	
 	ShaderGraph* graph = shaderGraphs.shaderGraphPtrs.Get(handle);
 	
@@ -5521,7 +5575,7 @@ void RenderInstance::DestroyShaderGraph(RenderShaderGraphIndex& handle)
 	shaderGraphs.shaderGraphPtrs.Free(handle);
 }
 
-void RenderInstance::DestroyGraphPipelineDescription(GeneratedPipelineInstanceIndex& handle)
+void RenderInstance::DestroyGraphPipelineDescription(GeneratedPipelineInstanceIndex handle)
 {
 	GraphPipelineDescription* desc = graphPipelineDescriptions.Get(handle);
 
@@ -5545,7 +5599,7 @@ void RenderInstance::DestroyGraphPipelineDescription(GeneratedPipelineInstanceIn
 	graphPipelineDescriptions.Free(handle);
 }
 
-void RenderInstance::DestroyShaderResourceSet(ShaderResourceSetHandle& handle)
+void RenderInstance::DestroyShaderResourceSet(ShaderResourceSetHandle handle)
 {
 	ShaderResourceManager* manager = descriptorManagers.Get(handle.descriptorManagerIndex);
 
@@ -5599,6 +5653,8 @@ void RenderInstance::DestroyShaderResourceSet(ShaderResourceSetHandle& handle)
 				}
 			}
 
+			CleanInitializeShaderResourceSet(info);
+
 			manager->descriptorSetHandles.Free(handle.descriptorSetIndex);
 		}
 	}
@@ -5632,6 +5688,12 @@ void RenderInstance::CleanInitializeRHIDevice(RHIDevice* logicalDevice)
 	logicalDevice->container.relatedPhysDeviceInfo = nullptr;
 	logicalDevice->container.maxQueryResults = 0;
 	logicalDevice->container.queriesAreActive = 0;
+	logicalDevice->container.currentFrame = 0;
+	logicalDevice->container.previousFrame = ~0U;
+	logicalDevice->container.barrierAccumulators = nullptr;
+	logicalDevice->container.barriersQueue = nullptr;
+	logicalDevice->container.currentBarrierAccumulationTop = 0;
+	logicalDevice->container.maxBarrierAccumulationCount = 0;
 }
 
 void RenderInstance::CleanInitializeWindowsSurface(RenderWindowSpecificData* windowSurface)
@@ -5645,6 +5707,7 @@ void RenderInstance::CleanInitializeSwapChain(RenderSwapchainData* swapChain)
 	swapChain->width = 0;
 	swapChain->height = 0;
 	swapChain->imageCount = 0;
+	swapChain->deviceIndex = -1;
 
 	for (int i = 0; i < MAX_INSTANCE_FRAME_IN_FLIGHT; i++)
 	{
@@ -5725,6 +5788,7 @@ void RenderInstance::CleanInitializeAttachmentGraph(AttachmentGraph* attachmentG
 void RenderInstance::CleanInitializeAttachmentGraphsInstance(AttachmentGraphInstance* attachmentGraphInstance)
 {
 	attachmentGraphInstance->graphLayout = nullptr;
+	attachmentGraphInstance->deviceIndex = -1;
 
 	for (int i = 0; i < MAX_GRAPH_RESOURCES; i++)
 	{
@@ -5740,7 +5804,6 @@ void RenderInstance::CleanInitializeAttachmentGraphsInstance(AttachmentGraphInst
 		attachmentGraphInstance->resources[i].sampHi = 0;
 		attachmentGraphInstance->resources[i].sampLo = 0;
 		attachmentGraphInstance->resources[i].usage = 0;
-		
 	}
 
 	for (int i = 0; i < MAX_GRAPH_RENDER_PASSES; i++)
@@ -5788,6 +5851,8 @@ void RenderInstance::CleanInitializeTextureResourceHandle(RenderTextureDescripti
 	textureResourceHandle->deviceIndex = -1;
 
 	textureResourceHandle->format = ImageFormat::IMAGE_UNKNOWN;
+
+	textureResourceHandle->deviceIndex = -1;
 	
 	for (int i = 0; i<MAX_VIEWS_ATTACHED_TO_TEXTURE; i++)
 		textureResourceHandle->viewIndex[i] = -1;
@@ -5820,12 +5885,14 @@ void RenderInstance::CleanInitializeAllocation(RenderAllocation* allocation)
 	allocation->parentAllocation = -1;
 	allocation->resourceStatus = -1;
 	allocation->formatType = ComponentFormatType::NO_BUFFER_FORMAT;
+	allocation->deviceIndex = -1;
 }
 
 void RenderInstance::CleanInitializeDescriptorManager(ShaderResourceManager* descriptorManager)
 {
 	*descriptorManager = {};
 	descriptorManager->deviceResourceHeap = EntryHandle();
+	descriptorManager->deviceIndex = -1;
 }
 
 void RenderInstance::CleanInitializeGpuCommandStream(GPUCommandStreamAllocator* gpuCommandStream)
@@ -5836,6 +5903,8 @@ void RenderInstance::CleanInitializeGpuCommandStream(GPUCommandStreamAllocator* 
 void RenderInstance::CleanInitializeShaderGraph(ShaderGraph* shaderGraph)
 {
 	*shaderGraph = {};
+
+	shaderGraph->deviceIndex = -1;
 
 	for (int i = 0; i < MAX_SHADER_MAPS; ++i)
 	{
@@ -5855,7 +5924,7 @@ void RenderInstance::CleanInitializeShaderGraph(ShaderGraph* shaderGraph)
 	}
 }
 
-void  RenderInstance::CleanInitializeGraphPipeline(GraphPipelineDescription* desc)
+void RenderInstance::CleanInitializeGraphPipeline(GraphPipelineDescription* desc)
 {
 	desc->instanceData.frameGraphCount = 0;
 	desc->instanceData.pipelineCount = 0;
@@ -5863,4 +5932,23 @@ void  RenderInstance::CleanInitializeGraphPipeline(GraphPipelineDescription* des
 	memset(desc->instanceData.frameGraphIndices, -1, sizeof(int) * MAX_FRAME_GRAPHS_RENDER_PASS_COMBOS);
 	memset(desc->instanceData.frameGraphRenderPasses, -1, sizeof(int) * MAX_FRAME_GRAPHS_RENDER_PASS_COMBOS);
 	memset(desc->instanceData.frameGraphPipelineIndices, -1, sizeof(int) * MAX_FRAME_GRAPHS_RENDER_PASS_COMBOS);
+}
+
+void RenderInstance::CleanInitializeShaderResourceSet(ShaderResourceDescriptorSetInfo* info)
+{
+	*info = {};
+}
+
+void RenderInstance::CleanInitializeShaderTemplateInfo(RenderShaderResourceTemplateInfo* info)
+{
+	*info = {};
+}
+
+void RenderInstance::CleanInitializeRenderTargetInfo(RenderTargetInfo* info)
+{
+	*info = {};
+}
+void RenderInstance::CleanInitializeRenderPass(RenderOldStyleVulkanRenderPassInfo* info)
+{
+	*info = {};
 }

@@ -795,25 +795,7 @@ struct RenderPhysicalDeviceContainer
 	int internalDriverDeviceListIdentifier;
 };
 
-#define MAX_QUERY_RESULTS 32
 
-struct RenderLogicalDeviceContainer
-{
-	EntryHandle logicalDeviceIndex;
-	EntryHandle graphicsComputeTransfer;
-	EntryHandle presentQueue;
-	EntryHandle queryPoolIndex; 
-	RenderTimelineSync deviceTimelineSyncObject;
-	EntryHandle currentCommandBufferIndex[MAX_INSTANCE_FRAME_IN_FLIGHT];
-	EntryHandle stagingBuffers[MAX_INSTANCE_FRAME_IN_FLIGHT];
-	RenderPhysicalDeviceInformation* relatedPhysDeviceInfo;
-	DeviceSlabAllocator stagingBufferAllocators[MAX_INSTANCE_FRAME_IN_FLIGHT];
-	uint32_t queryResults[MAX_QUERY_RESULTS];
-	uint32_t queryCounts[MAX_INSTANCE_FRAME_IN_FLIGHT];
-	int maxQueryResults = 0;
-	int queriesAreActive = 0;
-	RenderPhysicalDeviceIndex gpuIndex;
-};
 
 struct RenderBufferDescription
 {
@@ -887,6 +869,8 @@ struct IntraPassBarrier
 #define IMAGE_BARRIER_ACCUMULATOR 1
 #define TOTAL_BARRIER_ACCUMULATORS 2
 #define QUEUE_FAMILY_IGNORED ~0UL
+#define MAX_MIPS_FOR_BARRIER 16
+#define MAX_ARRAYS_FOR_BARRIER 8
 
 struct AgnosticImageMemoryBarrier
 {
@@ -1091,4 +1075,31 @@ struct ShaderResourceSetInstanceCreator
 {
 	int updateCount;
 	ResourceSetInstanceBindingInfo info[MAX_SHADER_RESOURCES * 16];
+};
+
+#define MAX_QUERY_RESULTS 32
+
+struct RenderLogicalDeviceContainer
+{
+	EntryHandle logicalDeviceIndex;
+	EntryHandle graphicsComputeTransfer;
+	EntryHandle presentQueue;
+	EntryHandle queryPoolIndex;
+	RenderTimelineSync deviceTimelineSyncObject;
+	EntryHandle currentCommandBufferIndex[MAX_INSTANCE_FRAME_IN_FLIGHT];
+	EntryHandle stagingBuffers[MAX_INSTANCE_FRAME_IN_FLIGHT];
+	RenderPhysicalDeviceInformation* relatedPhysDeviceInfo;
+	DeviceSlabAllocator stagingBufferAllocators[MAX_INSTANCE_FRAME_IN_FLIGHT];
+	uint32_t queryResults[MAX_QUERY_RESULTS];
+	uint32_t queryCounts[MAX_INSTANCE_FRAME_IN_FLIGHT];
+	int maxQueryResults;
+	int queriesAreActive;
+	RenderPhysicalDeviceIndex gpuIndex;
+	uint32_t currentFrame;
+	uint32_t previousFrame;
+	uint32_t maxFramesInFlight;
+	uint32_t* barriersQueue;
+	BarrierAccumulator* barrierAccumulators;
+	uint32_t maxBarrierAccumulationCount;
+	uint32_t currentBarrierAccumulationTop;
 };

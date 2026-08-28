@@ -403,6 +403,7 @@ struct Font
 static Logger mainAppLogger{};
 
 static RenderPhysicalDeviceIndex mainGPU{};
+static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 3;
 static RenderDeviceIndex mainLogicalDevice{};
 static SwapChainIndex mainPresentationSwapChain{};
 static WindowIndex mainPresentationWindow{};
@@ -1062,7 +1063,7 @@ void ApplicationLoop::Execute()
 				return 0;
 			};
 
-		uint32_t framesInFlight = GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT;
+		uint32_t framesInFlight = MAX_FRAMES_IN_FLIGHT;
 
 		int updateMainDrawCommand = 0, updateMainDebugCommand = 0, updateLights = framesInFlight, updateShadowMap = 0, updateUI = 0;
 
@@ -1730,8 +1731,8 @@ void CreateJointVisualObject(int numberOfJoints, uint32_t startingLocation)
 
 	jointMeshStaringLocations[jointIndex] = startingLocation;
 
-	ShaderResourceSetBuilder camJointData = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[JOINTVISUAL], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
-	ShaderResourceSetBuilder JointDesc = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[JOINTVISUAL], 1, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+	ShaderResourceSetBuilder camJointData = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[JOINTVISUAL], 0, MAX_FRAMES_IN_FLIGHT);
+	ShaderResourceSetBuilder JointDesc = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[JOINTVISUAL], 1, MAX_FRAMES_IN_FLIGHT);
 
 	camJointData.BindBufferToShaderResource(&lContext, &globalBufferLocation, 0, 1, 0);
 	JointDesc.UploadConstant(&lContext, &jointMeshStaringLocations[jointIndex], 0);
@@ -2079,7 +2080,7 @@ void SMBGeometricalObject(SMBGeoChunk* geoDef, SMBFile* file, int textureBase, i
 {
 	auto& rendInst = GlobalRenderer::gRenderInstance;
 
-	uint32_t frames = rendInst.MAX_FRAMES_IN_FLIGHT;
+	uint32_t frames = MAX_FRAMES_IN_FLIGHT;
 
 	int meshCount = geoDef->numRenderables;
 
@@ -2666,7 +2667,7 @@ int CreateDebugCommandBuffers(int count)
 
 	debugIndirectDrawData.commandBufferCountAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(uint32_t), 2, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainDeviceAllocator);
 
-	ShaderResourceSetBuilder indirectCullBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[DEBUGCULL], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+	ShaderResourceSetBuilder indirectCullBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[DEBUGCULL], 0, MAX_FRAMES_IN_FLIGHT);
 
 	debugIndirectDrawData.indirectCullDescriptor = indirectCullBuilder();
 	 
@@ -2715,7 +2716,7 @@ int CreateDebugCommandBuffers(int count)
 		return -1;
 	}
 
-	ShaderResourceSetBuilder indirectDrawBuilder =  GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[DEBUGDRAW], 1, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+	ShaderResourceSetBuilder indirectDrawBuilder =  GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[DEBUGDRAW], 1, MAX_FRAMES_IN_FLIGHT);
 
 	debugIndirectDrawData.indirectDrawDescriptor = indirectDrawBuilder();
 
@@ -2773,7 +2774,7 @@ int CreateGenericMeshCommandBuffers(int count)
 
 	mainIndirectDrawData.commandBufferCountAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(uint32_t), 2, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainDeviceAllocator);
 
-	ShaderResourceSetBuilder indirectCullBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[RENDEROBJCULL], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+	ShaderResourceSetBuilder indirectCullBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[RENDEROBJCULL], 0, MAX_FRAMES_IN_FLIGHT);
 	
 	mainIndirectDrawData.indirectCullDescriptor = indirectCullBuilder();
 
@@ -2792,7 +2793,7 @@ int CreateGenericMeshCommandBuffers(int count)
 	indirectCullBuilder.UploadConstant(&genericMeshRSContext, &mainGrid, 0);
 	indirectCullBuilder.UploadConstant(&genericMeshRSContext, &mainIndirectDrawData.commandBufferCount, 1);
 
-	ShaderResourceSetBuilder indirectDrawBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[GENERIC], 2, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+	ShaderResourceSetBuilder indirectDrawBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[GENERIC], 2, MAX_FRAMES_IN_FLIGHT);
 	
 	mainIndirectDrawData.indirectDrawDescriptor = indirectDrawBuilder();
 	
@@ -2815,14 +2816,14 @@ int CreateGenericMeshCommandBuffers(int count)
 		mainIndirectDrawData.indirectDrawDescriptor,
 	};
 
-	shadowMapIndex = mainDictionary.AllocateNTextureHandles(GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT, nullptr);
+	shadowMapIndex = mainDictionary.AllocateNTextureHandles(MAX_FRAMES_IN_FLIGHT, nullptr);
 
 	int viewIndex = GlobalRenderer::gRenderInstance.CreateAttachmentImageView(MSAAShadowMapping, 1, 0, 1, 0, 1, DEPTH_IMAGE_ASPECT, ImageLayout::SHADERREADABLE);
 
 	GlobalRenderer::gRenderInstance.UploadFrameAttachmentResource(MSAAShadowMapping, 1, viewIndex, globalTexturesDescriptor, 3, shadowMapIndex);
 
 	indirectDrawBuilder.UploadConstant(&genericMeshRSContext, &shadowMapIndex, 0);
-	indirectDrawBuilder.UploadConstant(&genericMeshRSContext, &GlobalRenderer::gRenderInstance.currentFrame, 1);
+	indirectDrawBuilder.UploadConstant(&genericMeshRSContext, &GlobalRenderer::gRenderInstance.GetDeviceHandle(mainLogicalDevice)->container.currentFrame, 1);
 
 	if (genericMeshRSContext.contextFailed)
 	{
@@ -2852,7 +2853,7 @@ int CreateGenericMeshCommandBuffers(int count)
 		return -1;
 	}
 
-	ShaderResourceSetBuilder cullLightDescriptorBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[RENDEROBJCULL], 1, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+	ShaderResourceSetBuilder cullLightDescriptorBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[RENDEROBJCULL], 1, MAX_FRAMES_IN_FLIGHT);
 
 
 	cullLightDescriptorBuilder.BindBufferView(&genericMeshRSContext, &lightAssignment.worldSpaceDivisionAlloc, 0, 1, 2);
@@ -2950,7 +2951,7 @@ int CreateMeshWorldAssignment(int count)
 
 	uint32_t prefixCount = (uint32_t)ceil(worldSpaceAssignment.totalElementsCount / (float)prefixLayout->x);
 
-	ShaderResourceSetBuilder prefixSumBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[PREFIXSUM], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+	ShaderResourceSetBuilder prefixSumBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[PREFIXSUM], 0, MAX_FRAMES_IN_FLIGHT);
 
 	worldSpaceAssignment.prefixSumDescriptors = prefixSumBuilder();
 	 
@@ -3003,7 +3004,7 @@ int CreateMeshWorldAssignment(int count)
 	if (worldSpaceAssignment.totalSumsNeeded)
 	{
 
-		ShaderResourceSetBuilder sumAfterBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[PREFIXSUM], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+		ShaderResourceSetBuilder sumAfterBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[PREFIXSUM], 0, MAX_FRAMES_IN_FLIGHT);
 		
 		worldSpaceAssignment.sumAfterDescriptors = sumAfterBuilder();
 
@@ -3038,7 +3039,7 @@ int CreateMeshWorldAssignment(int count)
 			return -1;
 		}
 
-		ShaderResourceSetBuilder sumAppliedToBin = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[PREFIXADD], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+		ShaderResourceSetBuilder sumAppliedToBin = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[PREFIXADD], 0, MAX_FRAMES_IN_FLIGHT);
 
 		worldSpaceAssignment.sumAppliedToBinDescriptors = sumAppliedToBin();
 
@@ -3077,7 +3078,7 @@ int CreateMeshWorldAssignment(int count)
 
 	uint32_t assignmentGroupCount = (uint32_t)ceil(worldSpaceAssignment.totalElementsCount / (float)assignmentLayout->x);
 
-	ShaderResourceSetBuilder worldSpaceDivisionBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[WORLDORGANIZE], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+	ShaderResourceSetBuilder worldSpaceDivisionBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[WORLDORGANIZE], 0, MAX_FRAMES_IN_FLIGHT);
 
 	worldSpaceAssignment.worldSpaceDivisionAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(uint32_t), worldSpaceAssignment.totalElementsCount * 2, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::R32_UINT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
 
@@ -3117,7 +3118,7 @@ int CreateMeshWorldAssignment(int count)
 		return -1;
 	}
 
-	ShaderResourceSetBuilder postWorldSpaceDivisionBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[WORLDASSIGN], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+	ShaderResourceSetBuilder postWorldSpaceDivisionBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[WORLDASSIGN], 0, MAX_FRAMES_IN_FLIGHT);
 	
 	worldSpaceAssignment.postWorldSpaceDivisionDescriptor = postWorldSpaceDivisionBuilder();
 
@@ -3170,7 +3171,7 @@ int CreateLightAssignments(int count)
 
 	uint32_t prefixCount = (uint32_t)ceil(lightAssignment.totalElementsCount / (float)prefixLayout->x);
 
-	ShaderResourceSetBuilder prefixSumBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[PREFIXSUM], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+	ShaderResourceSetBuilder prefixSumBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[PREFIXSUM], 0, MAX_FRAMES_IN_FLIGHT);
 
 	lightAssignment.prefixSumDescriptors = prefixSumBuilder();
 
@@ -3223,7 +3224,7 @@ int CreateLightAssignments(int count)
 	if (lightAssignment.totalSumsNeeded)
 	{
 
-		ShaderResourceSetBuilder sumAfterBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[PREFIXSUM], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+		ShaderResourceSetBuilder sumAfterBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[PREFIXSUM], 0, MAX_FRAMES_IN_FLIGHT);
 
 		lightAssignment.sumAfterDescriptors = sumAfterBuilder();
 		sumAfterBuilder.BindBufferToShaderResource(&genericLightWorldRSContext, &lightAssignment.deviceSumsAlloc, 0, 1, 0);
@@ -3258,7 +3259,7 @@ int CreateLightAssignments(int count)
 		}
 
 
-		ShaderResourceSetBuilder sumAppliedToBinBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[PREFIXADD], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+		ShaderResourceSetBuilder sumAppliedToBinBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[PREFIXADD], 0, MAX_FRAMES_IN_FLIGHT);
 		lightAssignment.sumAppliedToBinDescriptors = sumAppliedToBinBuilder();
 
 		sumAppliedToBinBuilder.BindBufferToShaderResource(&genericLightWorldRSContext, &lightAssignment.deviceOffsetsAlloc, 0, 1, 0);
@@ -3299,7 +3300,7 @@ int CreateLightAssignments(int count)
 
 	lightAssignment.worldSpaceDivisionAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(uint32_t), lightAssignment.totalElementsCount * 2, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::R32_UINT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, -1, &mainDeviceAllocator);
 
-	ShaderResourceSetBuilder preWorldSpaceBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[LIGHTORGANIZE], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+	ShaderResourceSetBuilder preWorldSpaceBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[LIGHTORGANIZE], 0, MAX_FRAMES_IN_FLIGHT);
 
 	lightAssignment.preWorldSpaceDivisionDescriptor = preWorldSpaceBuilder();
 
@@ -3335,7 +3336,7 @@ int CreateLightAssignments(int count)
 		return -1;
 	}
 
-	ShaderResourceSetBuilder postWorldBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[LIGHTASSIGN], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+	ShaderResourceSetBuilder postWorldBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[LIGHTASSIGN], 0, MAX_FRAMES_IN_FLIGHT);
 	
 	lightAssignment.postWorldSpaceDivisionDescriptor = postWorldBuilder();
 
@@ -3426,8 +3427,8 @@ int CreateShadowMapManager(int maxShadowMapAssignment, int maxObjCount, int shad
 	GlobalRenderer::gRenderInstance.UpdateBufferResourceArray(globalTexturesDescriptor, 2, ShaderResourceType::UNIFORM_BUFFER, &shadowAtlasViews);
 
 	
-	ShaderResourceSetBuilder shadowClippingDescriptorB1 = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[SHADOWMAPCULL], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
-	ShaderResourceSetBuilder shadowClippingDescriptorB2 = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[SHADOWMAPCULL], 1, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+	ShaderResourceSetBuilder shadowClippingDescriptorB1 = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[SHADOWMAPCULL], 0, MAX_FRAMES_IN_FLIGHT);
+	ShaderResourceSetBuilder shadowClippingDescriptorB2 = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[SHADOWMAPCULL], 1, MAX_FRAMES_IN_FLIGHT);
 	
 
 	mainShadowMapManager.shadowClippingDescriptor1 = shadowClippingDescriptorB1();
@@ -3480,7 +3481,7 @@ int CreateShadowMapManager(int maxShadowMapAssignment, int maxObjCount, int shad
 		return -1;
 	}
 
-	ShaderResourceSetBuilder shadowMapDescBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[SHADOWMAPDRAW], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+	ShaderResourceSetBuilder shadowMapDescBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[SHADOWMAPDRAW], 0, MAX_FRAMES_IN_FLIGHT);
 
 	smdpd.shadowMapDescriptorSet = shadowMapDescBuilder();
 
@@ -3533,14 +3534,14 @@ int CreateShadowMapManager(int maxShadowMapAssignment, int maxObjCount, int shad
 	samplerUpdate.resourceDstBegin = 0;
 	samplerUpdate.resourceHandles = &mainLinearSampler;
 
-	ShaderResourceSetBuilder fullScreenBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[FULLSCREEN], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+	ShaderResourceSetBuilder fullScreenBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[FULLSCREEN], 0, MAX_FRAMES_IN_FLIGHT);
 
 	smdpd.fullScreenDescriptorSet = fullScreenBuilder();
 
 	GlobalRenderer::gRenderInstance.UploadFrameAttachmentResource(MSAAShadowMapping, 1, 1, smdpd.fullScreenDescriptorSet, 0, 0);
 	GlobalRenderer::gRenderInstance.UpdateShaderResourceArray(smdpd.fullScreenDescriptorSet, 1, ShaderResourceType::SAMPLERSTATE, &samplerUpdate);
 
-	fullScreenBuilder.UploadConstant(&genericMainShadowMapRSContext, &GlobalRenderer::gRenderInstance.currentFrame, 0);
+	fullScreenBuilder.UploadConstant(&genericMainShadowMapRSContext, &GlobalRenderer::gRenderInstance.GetDeviceHandle(mainLogicalDevice)->container.currentFrame, 0);
 
 	std::array<ShaderResourceSetHandle, 1> fullScreenDesc = { smdpd.fullScreenDescriptorSet };
 
@@ -3589,8 +3590,8 @@ void RecreateFrameGraphAttachments(uint32_t width, uint32_t height)
 	
 	if (AttachmentGraphInstanceIndex() != MSAAShadowMapping)
 	{
-		GlobalRenderer::gRenderInstance.CreatePerFrameAttachment(MSAAShadowMapping, 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT, 4096, 4096, nullptr, &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
-		GlobalRenderer::gRenderInstance.CreatePerFrameAttachment(MSAAShadowMapping, 1, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT, width, height, nullptr, &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
+		GlobalRenderer::gRenderInstance.CreatePerFrameAttachment(MSAAShadowMapping, 0, MAX_FRAMES_IN_FLIGHT, 4096, 4096, nullptr, &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
+		GlobalRenderer::gRenderInstance.CreatePerFrameAttachment(MSAAShadowMapping, 1, MAX_FRAMES_IN_FLIGHT, width, height, nullptr, &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
 		GlobalRenderer::gRenderInstance.CreateSwapChainAttachment(MSAAShadowMapping, 2, mainPresentationSwapChain, nullptr, &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
 
 		int viewIndex = GlobalRenderer::gRenderInstance.CreateAttachmentImageView(MSAAShadowMapping, 1, 0, 1, 0, 1, DEPTH_IMAGE_ASPECT, ImageLayout::SHADERREADABLE);
@@ -3613,7 +3614,7 @@ int CreateMSAAPostFullScreen()
 	samplerUpdate.resourceDstBegin = 0;
 	samplerUpdate.resourceHandles = &mainLinearSampler;
 
-	ShaderResourceSetBuilder mainFullScreenB = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[FULLSCREEN], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+	ShaderResourceSetBuilder mainFullScreenB = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[FULLSCREEN], 0, MAX_FRAMES_IN_FLIGHT);
 
 	mainFullScreen = mainFullScreenB();
 
@@ -3622,7 +3623,7 @@ int CreateMSAAPostFullScreen()
 	GlobalRenderer::gRenderInstance.UploadFrameAttachmentResource(MSAAPost, 1, viewIndex, mainFullScreen, 0, 0);
 	GlobalRenderer::gRenderInstance.UpdateShaderResourceArray(mainFullScreen, 1, ShaderResourceType::SAMPLERSTATE, &samplerUpdate);
 
-	mainFullScreenB.UploadConstant(&genericMSAARSContext, &GlobalRenderer::gRenderInstance.currentFrame, 0);
+	mainFullScreenB.UploadConstant(&genericMSAARSContext, &GlobalRenderer::gRenderInstance.GetDeviceHandle(mainLogicalDevice)->container.currentFrame, 0);
 
 	if (genericMSAARSContext.contextFailed)
 	{
@@ -3729,8 +3730,8 @@ int CreateSkyBox()
 
 	matrix.axes.translate = Vector4f(-30.0, 0.0, 0.0, 1.0f);
 
-	ShaderResourceSetBuilder camSkyboxData = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[SKYBOX], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
-	ShaderResourceSetBuilder skyboxDesc = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[SKYBOX], 1, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+	ShaderResourceSetBuilder camSkyboxData = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[SKYBOX], 0, MAX_FRAMES_IN_FLIGHT);
+	ShaderResourceSetBuilder skyboxDesc = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[SKYBOX], 1, MAX_FRAMES_IN_FLIGHT);
 
 	int viewIndex = 0;
 
@@ -3802,8 +3803,7 @@ void ApplicationLoop::InitializeRuntime()
 	riCreateInfo.maxPipelineTemplates = 15;
 	riCreateInfo.maxPipelineInstances = 35;
 	riCreateInfo.maxPipelineHandles = 35;
-	riCreateInfo.maxAllocations = 50;
-	riCreateInfo.maxSubAllocations = 30;
+	riCreateInfo.maxAllocations = 100;
 	riCreateInfo.maxGPUCommandsStreams = 1;
 	riCreateInfo.maxTextureHandles = 100;
 	riCreateInfo.maxSamplerHandles = 5;
@@ -3820,7 +3820,6 @@ void ApplicationLoop::InitializeRuntime()
 	riCreateInfo.maxSwapChains = 1;
 	riCreateInfo.maxGPUS = 1;
 	riCreateInfo.maxLogicalDevices = 1;
-	riCreateInfo.maxConcurrentRecordings = 1;
 
 	OSGetSTDOutput(&riCreateInfo.internalRendererHandle);
 
@@ -3880,6 +3879,10 @@ void ApplicationLoop::InitializeRuntime()
 	lDeviceCreateInfo.deviceInstPermanentSize = 32 * KiB;
 	lDeviceCreateInfo.driverCacheSize = 16 * KiB;
 	lDeviceCreateInfo.driverPermanentSize = 4 * MiB;
+	lDeviceCreateInfo.maxFramesInFlight = MAX_FRAMES_IN_FLIGHT;
+	lDeviceCreateInfo.maxConcurrentRecordings = 1;
+	lDeviceCreateInfo.maxAllocations = 100;
+	lDeviceCreateInfo.maxTextureHandles = 100;
 
 	mainLogicalDevice = GlobalRenderer::gRenderInstance.CreateLogicalDevice(&lDeviceCreateInfo);
 
@@ -3928,8 +3931,11 @@ void ApplicationLoop::InitializeRuntime()
 		ImageUsageFlagBits::STENCIL_ATTACHMENT,
 		MemoryTypeBits::DEVICE_MEMORY_TYPE);
 
-	BasicShadow = GlobalRenderer::gRenderInstance.CreateAttachmentGraph(mainLogicalDevice, mainLayoutAttachments[0]);
-	MSAAShadowMapping = GlobalRenderer::gRenderInstance.CreateAttachmentGraph(mainLogicalDevice, mainLayoutAttachments[1]);
+	AttachmentGraphLayoutIndex basicShadowLay = GlobalRenderer::gRenderInstance.CreateAttachmentGraph(mainLayoutAttachments[0]);
+	AttachmentGraphLayoutIndex mssaShadowLay = GlobalRenderer::gRenderInstance.CreateAttachmentGraph(mainLayoutAttachments[1]);
+
+	BasicShadow = GlobalRenderer::gRenderInstance.CreateAttachmentGraphInstance(mainLogicalDevice, basicShadowLay);
+	MSAAShadowMapping = GlobalRenderer::gRenderInstance.CreateAttachmentGraphInstance(mainLogicalDevice, mssaShadowLay);
 
 	currentFrameGraphIndex = MSAAShadowMapping;
 
@@ -3952,8 +3958,8 @@ void ApplicationLoop::InitializeRuntime()
 	GlobalRenderer::gRenderInstance.CreateSwapChainAttachment(BasicShadow, 0, mainPresentationSwapChain, ShadowMapViewerClears.data(), &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
 	GlobalRenderer::gRenderInstance.CreateSwapChainAttachment(MSAAShadowMapping, 2, mainPresentationSwapChain, MSAAShadowMappingClears.data(), &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
 	
-	GlobalRenderer::gRenderInstance.CreatePerFrameAttachment(MSAAShadowMapping, 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT, mainShadowWidth, mainShadowHeight, MSAAShadowMappingClears.data(), &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
-	GlobalRenderer::gRenderInstance.CreatePerFrameAttachment(MSAAShadowMapping, 1, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT, 800, 600, MSAAShadowMappingClears.data(), &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
+	GlobalRenderer::gRenderInstance.CreatePerFrameAttachment(MSAAShadowMapping, 0, MAX_FRAMES_IN_FLIGHT, mainShadowWidth, mainShadowHeight, MSAAShadowMappingClears.data(), &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
+	GlobalRenderer::gRenderInstance.CreatePerFrameAttachment(MSAAShadowMapping, 1, MAX_FRAMES_IN_FLIGHT, 800, 600, MSAAShadowMappingClears.data(), &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
 
 	GlobalRenderer::gRenderInstance.CreateGraphicsQueueForAttachments(MSAAShadowMapping, 0);
 	GlobalRenderer::gRenderInstance.CreateGraphicsQueueForAttachments(MSAAShadowMapping, 1);
@@ -4032,8 +4038,8 @@ void ApplicationLoop::InitializeRuntime()
 	globalIndexBuffer = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, globalIndexBufferSize, 1, 16, AllocationType::STATIC, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, -1, &mainDeviceAllocator);
 	globalVertexBuffer = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, globalVertexBufferSize, 1, 16, AllocationType::STATIC, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainDeviceAllocator);
 	
-	ShaderResourceSetBuilder globalBufferDescriptorB = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[GENERIC], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
-	ShaderResourceSetBuilder globalTexturesDescriptorB = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[GENERIC], 1, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+	ShaderResourceSetBuilder globalBufferDescriptorB = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[GENERIC], 0, MAX_FRAMES_IN_FLIGHT);
+	ShaderResourceSetBuilder globalTexturesDescriptorB = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[GENERIC], 1, MAX_FRAMES_IN_FLIGHT);
 
 	globalBufferDescriptor = globalBufferDescriptorB();
 	globalTexturesDescriptor = globalTexturesDescriptorB();
@@ -5483,7 +5489,7 @@ void CreateUITools(int maxUIContainers)
 	GlobalRenderer::gRenderInstance.UpdateDriverMemory(commands, globalUITextIndirectDispatchCommands, sizeof(commands), 0, TransferType::CACHED);
 
 	{
-		ShaderResourceSetBuilder descriptorBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[UICULLING], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+		ShaderResourceSetBuilder descriptorBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[UICULLING], 0, MAX_FRAMES_IN_FLIGHT);
 		ShaderResourceSetContext descriptorContext{ &mainAppLogger, false };
 
 		descriptorBuilder.BindBufferToShaderResource(&descriptorContext, &globalUIElementsIndirectCountBuffer, 0, 1, 1);
@@ -5517,7 +5523,7 @@ void CreateUITools(int maxUIContainers)
 	}
 
 	{
-		ShaderResourceSetBuilder descriptorBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[UIDRAWING], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+		ShaderResourceSetBuilder descriptorBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[UIDRAWING], 0, MAX_FRAMES_IN_FLIGHT);
 		ShaderResourceSetContext descriptorContext{ &mainAppLogger, false };
 
 		descriptorBuilder.BindBufferToShaderResource(&descriptorContext, &globalUIContainerData, 0, 1, 0);
@@ -5552,7 +5558,7 @@ void CreateUITools(int maxUIContainers)
 	}
 
 	{
-		ShaderResourceSetBuilder descriptorBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[UIDEPTHCOUNT], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+		ShaderResourceSetBuilder descriptorBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[UIDEPTHCOUNT], 0, MAX_FRAMES_IN_FLIGHT);
 		ShaderResourceSetContext descriptorContext{ &mainAppLogger, false };
 
 		descriptorBuilder.BindBufferToShaderResource(&descriptorContext, &globalUIContainerData, 0, 1, 0);
@@ -5585,7 +5591,7 @@ void CreateUITools(int maxUIContainers)
 	}
 
 	{
-		ShaderResourceSetBuilder descriptorBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[PREFIXSUM], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+		ShaderResourceSetBuilder descriptorBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[PREFIXSUM], 0, MAX_FRAMES_IN_FLIGHT);
 		ShaderResourceSetContext descriptorContext{ &mainAppLogger, false };
 
 		descriptorBuilder.BindBufferToShaderResource(&descriptorContext, &globalDepthCounts, 0, 1, 0);
@@ -5615,7 +5621,7 @@ void CreateUITools(int maxUIContainers)
 	}
 
 	{
-		ShaderResourceSetBuilder descriptorBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[UICHILDDEPTHADD], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+		ShaderResourceSetBuilder descriptorBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[UICHILDDEPTHADD], 0, MAX_FRAMES_IN_FLIGHT);
 		ShaderResourceSetContext descriptorContext{ &mainAppLogger, false };
 
 		descriptorBuilder.BindBufferToShaderResource(&descriptorContext, &globalUIContainerData, 0, 1, 0);
@@ -5647,7 +5653,7 @@ void CreateUITools(int maxUIContainers)
 	}
 
 	{
-		ShaderResourceSetBuilder uiUIIndexAssignBufferDescriptorB = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[UIINDEXASSIGNMENT], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+		ShaderResourceSetBuilder uiUIIndexAssignBufferDescriptorB = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[UIINDEXASSIGNMENT], 0, MAX_FRAMES_IN_FLIGHT);
 		ShaderResourceSetContext uiUIIndexAssignDescriptorBuilder{ &mainAppLogger, false };
 
 		uiUIIndexAssignBufferDescriptorB.BindBufferToShaderResource(&uiUIIndexAssignDescriptorBuilder, &globalUIContainerData, 0, 1, 0);
@@ -5681,7 +5687,7 @@ void CreateUITools(int maxUIContainers)
 
 	for (int i = 0; i < 3; i++)
 	{
-		ShaderResourceSetBuilder descriptorBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[UILAYOUTSIZES], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+		ShaderResourceSetBuilder descriptorBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[UILAYOUTSIZES], 0, MAX_FRAMES_IN_FLIGHT);
 		ShaderResourceSetContext descriptorContext{ &mainAppLogger, false };
 
 		descriptorBuilder.BindBufferToShaderResource(&descriptorContext, &globalUIContainerData, 0, 1, 0);
@@ -5715,7 +5721,7 @@ void CreateUITools(int maxUIContainers)
 
 	for (int i = 0; i < 2; i++)
 	{
-		ShaderResourceSetBuilder descriptorBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[UIABSOLUTEPOSITION], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+		ShaderResourceSetBuilder descriptorBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[UIABSOLUTEPOSITION], 0, MAX_FRAMES_IN_FLIGHT);
 		ShaderResourceSetContext descriptorContext{ &mainAppLogger, false };
 
 		descriptorBuilder.BindBufferToShaderResource(&descriptorContext, &globalUIContainerData, 0, 1, 0);
@@ -5749,7 +5755,7 @@ void CreateUITools(int maxUIContainers)
 	}
 
 	{
-		ShaderResourceSetBuilder descriptorBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[UIOBJECTDRAWING], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+		ShaderResourceSetBuilder descriptorBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[UIOBJECTDRAWING], 0, MAX_FRAMES_IN_FLIGHT);
 		ShaderResourceSetContext descriptorContext{ &mainAppLogger, false };
 
 		descriptorBuilder.BindBufferToShaderResource(&descriptorContext, &globalUIContainerData, 0, 1, 0);
@@ -5784,7 +5790,7 @@ void CreateUITools(int maxUIContainers)
 	}
 
 	{
-		ShaderResourceSetBuilder descriptorBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[UICURSORPOSITION], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+		ShaderResourceSetBuilder descriptorBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[UICURSORPOSITION], 0, MAX_FRAMES_IN_FLIGHT);
 		ShaderResourceSetContext descriptorContext{ &mainAppLogger, false };
 
 		globalUIIDResourceHandle = descriptorBuilder();
@@ -5799,7 +5805,7 @@ void CreateUITools(int maxUIContainers)
 		descriptorBuilder.BindSamplerResourceToShaderResource(&descriptorContext, &mainLinearSampler, 1, 0, 3);
 		descriptorBuilder.BindBufferToShaderResource(&descriptorContext, &globalUICursorDetailData, 0, 1, 4);
 		descriptorBuilder.UploadConstant(&descriptorContext, &tempCursorPos, 0);
-		descriptorBuilder.UploadConstant(&descriptorContext, &GlobalRenderer::gRenderInstance.previousFrame, 1);
+		descriptorBuilder.UploadConstant(&descriptorContext, &GlobalRenderer::gRenderInstance.GetDeviceHandle(mainLogicalDevice)->container.previousFrame, 1);
 		descriptorBuilder.UploadConstant(&descriptorContext, &mainWindow.windowKeyData.clicked, 2);
 
 		if (descriptorContext.contextFailed)
@@ -5825,7 +5831,7 @@ void CreateUITools(int maxUIContainers)
 	}
 
 	{
-		ShaderResourceSetBuilder descriptorBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[UITEXTCOUNT], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+		ShaderResourceSetBuilder descriptorBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[UITEXTCOUNT], 0, MAX_FRAMES_IN_FLIGHT);
 		ShaderResourceSetContext descriptorContext{ &mainAppLogger, false };
 
 		descriptorBuilder.BindBufferToShaderResource(&descriptorContext, &globalUIContainerData, 0, 1, 0);
@@ -5857,7 +5863,7 @@ void CreateUITools(int maxUIContainers)
 	}
 
 	{
-		ShaderResourceSetBuilder descriptorBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[UITEXTGENERATION], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+		ShaderResourceSetBuilder descriptorBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[UITEXTGENERATION], 0, MAX_FRAMES_IN_FLIGHT);
 		ShaderResourceSetContext descriptorContext{ &mainAppLogger, false };
 
 		descriptorBuilder.BindBufferToShaderResource(&descriptorContext, &globalUIContainerData, 0, 1, 0);
@@ -5892,7 +5898,7 @@ void CreateUITools(int maxUIContainers)
 	}
 
 	{
-		ShaderResourceSetBuilder descriptorBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[UITEXTRENDERING], 0, GlobalRenderer::gRenderInstance.MAX_FRAMES_IN_FLIGHT);
+		ShaderResourceSetBuilder descriptorBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[UITEXTRENDERING], 0, MAX_FRAMES_IN_FLIGHT);
 		ShaderResourceSetContext descriptorContext{ &mainAppLogger, false };
 
 		descriptorBuilder.BindBufferToShaderResource(&descriptorContext, &globalUIContainerData, 0, 1, 0);

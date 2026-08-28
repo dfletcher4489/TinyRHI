@@ -23,6 +23,7 @@ struct OldStyleRenderPass;
 struct DriverRenderTarget;
 struct AllocationInstance;
 struct DescriptorSetInstance;
+struct AttachmentGraphLayout;
 
 template<typename N>
 struct RenderIndex
@@ -76,3 +77,4 @@ using DriverRenderTargetIndex = RenderIndex<DriverRenderTarget>;
 using OldStyleRenderPassIndex = RenderIndex<OldStyleRenderPass>;
 using AllocationInstanceIndex = RenderIndex<AllocationInstance>;
 using DescriptorSetInstanceIndex = RenderIndex<DescriptorSetInstance>;
+using AttachmentGraphLayoutIndex = RenderIndex<AttachmentGraphLayout>;

@@ -800,15 +800,15 @@ RenderPhysicalDeviceIndex RenderInstance::CreatePhysicalDeviceAdapter(GPUFeature
 		return {};
 	}
 
-	uint32_t deviceExtNameCount = vkInstance.mainInstance->GetLogicalDeviceExtensionsCount(requestedDeviceFeatures);
+	uint32_t deviceExtNameCount = mainRenderInstance.mainInstance->GetLogicalDeviceExtensionsCount(requestedDeviceFeatures);
 
 	const char** deviceFeatureNames = (const char**)cacheAllocator->Allocate(sizeof(char*) * deviceExtNameCount);
 
-	vkInstance.mainInstance->GetLogicalDeviceExtensions(requestedDeviceFeatures, deviceFeatureNames);
+	mainRenderInstance.mainInstance->GetLogicalDeviceExtensions(requestedDeviceFeatures, deviceFeatureNames);
 
 	int driverGpuIndex = -1;
 
-	EntryHandle physicalIndex = vkInstance.mainInstance->CreatePhysicalDevice(requestedPhysicalFeatures, deviceFeatureNames, deviceExtNameCount, &driverGpuIndex);
+	EntryHandle physicalIndex = mainRenderInstance.mainInstance->CreatePhysicalDevice(requestedPhysicalFeatures, deviceFeatureNames, deviceExtNameCount, &driverGpuIndex);
 
 	if (EntryHandle() == physicalIndex)
 	{
@@ -823,11 +823,11 @@ RenderPhysicalDeviceIndex RenderInstance::CreatePhysicalDeviceAdapter(GPUFeature
 	CleanInitializePhysicalDeviceIndices(container);
 
 	container->physicalDeviceIndex = physicalIndex;
-	container->information.minUniformAlignment = vkInstance.mainInstance->GetMinimumUniformBufferAlignment(physicalIndex);
-	container->information.minStorageAlignment = vkInstance.mainInstance->GetMinimumStorageBufferAlignment(physicalIndex);
-	container->information.maxMSAALevels = findMSB(vkInstance.mainInstance->GetMaxMSAALevels(physicalIndex));
-	container->information.deviceTimeStampPeriodNS = vkInstance.mainInstance->GetTimeStampPeriod(physicalIndex);
-	container->information.optimalImageCopyOffsetAlignment = vkInstance.mainInstance->GetOptimalImageCopyOffsetAlignment(physicalIndex);
+	container->information.minUniformAlignment = mainRenderInstance.mainInstance->GetMinimumUniformBufferAlignment(physicalIndex);
+	container->information.minStorageAlignment = mainRenderInstance.mainInstance->GetMinimumStorageBufferAlignment(physicalIndex);
+	container->information.maxMSAALevels = findMSB(mainRenderInstance.mainInstance->GetMaxMSAALevels(physicalIndex));
+	container->information.deviceTimeStampPeriodNS = mainRenderInstance.mainInstance->GetTimeStampPeriod(physicalIndex);
+	container->information.optimalImageCopyOffsetAlignment = mainRenderInstance.mainInstance->GetOptimalImageCopyOffsetAlignment(physicalIndex);
 	container->internalDriverDeviceListIdentifier = driverGpuIndex;
 
 	RenderPhysicalDeviceIndex indexRet(physicalEntryIndex);
@@ -843,7 +843,7 @@ int RenderInstance::OpenPhysicalDevicePicker()
 		return -1;
 	}
 
-	int gpuCount = vkInstance.mainInstance->GetNumberOfGPUDevices();
+	int gpuCount = mainRenderInstance.mainInstance->GetNumberOfGPUDevices();
 
 	if (gpuCount <= 0)
 	{
@@ -858,7 +858,7 @@ int RenderInstance::OpenPhysicalDevicePicker()
 
 void RenderInstance::ClosePhysicalDevicePicker()
 {
-	vkInstance.mainInstance->FreePotentialGPUs();
+	mainRenderInstance.mainInstance->FreePotentialGPUs();
 }
 
 RenderPhysicalDeviceIndex RenderInstance::CreatePhysicalDeviceAdapterWithQuerying(GPUFeatureRequest* requestedPhysicalFeatures, LogicalDeviceFeatures* requestedDeviceFeatures)
@@ -869,11 +869,11 @@ RenderPhysicalDeviceIndex RenderInstance::CreatePhysicalDeviceAdapterWithQueryin
 		return {};
 	}
 
-	uint32_t deviceExtNameCount = vkInstance.mainInstance->GetLogicalDeviceExtensionsCount(requestedDeviceFeatures);
+	uint32_t deviceExtNameCount = mainRenderInstance.mainInstance->GetLogicalDeviceExtensionsCount(requestedDeviceFeatures);
 
 	const char** deviceFeatureNames = (const char**)cacheAllocator->Allocate(sizeof(char*) * deviceExtNameCount);
 
-	vkInstance.mainInstance->GetLogicalDeviceExtensions(requestedDeviceFeatures, deviceFeatureNames);
+	mainRenderInstance.mainInstance->GetLogicalDeviceExtensions(requestedDeviceFeatures, deviceFeatureNames);
 
 	int gpuIndex = 0;
 
@@ -913,7 +913,7 @@ RenderPhysicalDeviceIndex RenderInstance::CreatePhysicalDeviceAdapterWithQueryin
 		GPUFeatureRequest currentRequest{};
 		uint64_t currentDeviceExtMask = 0;
 
-		if (vkInstance.mainInstance->QuerySpecificPhysicalDeviceFeatures(requestedPhysicalFeatures, &currentRequest, deviceFeatureNames, deviceExtNameCount, gpuIndex, &currentDeviceExtMask))
+		if (mainRenderInstance.mainInstance->QuerySpecificPhysicalDeviceFeatures(requestedPhysicalFeatures, &currentRequest, deviceFeatureNames, deviceExtNameCount, gpuIndex, &currentDeviceExtMask))
 			break;
 
 		int size = snprintf(topLineMessageBuffer, sizeof(topLineMessageBuffer), "GPU at index %d has mismatched values\n", gpuIndex);
@@ -1005,7 +1005,7 @@ RenderPhysicalDeviceIndex RenderInstance::CreatePhysicalDeviceAdapterWithQueryin
 		return {};
 	}
 
-	EntryHandle physicalIndex = vkInstance.mainInstance->CreateGPUFromIndex(gpuIndex);
+	EntryHandle physicalIndex = mainRenderInstance.mainInstance->CreateGPUFromIndex(gpuIndex);
 
 	if (EntryHandle() == physicalIndex)
 	{
@@ -1020,11 +1020,11 @@ RenderPhysicalDeviceIndex RenderInstance::CreatePhysicalDeviceAdapterWithQueryin
 	CleanInitializePhysicalDeviceIndices(container);
 
 	container->physicalDeviceIndex = physicalIndex;
-	container->information.minUniformAlignment = vkInstance.mainInstance->GetMinimumUniformBufferAlignment(physicalIndex);
-	container->information.minStorageAlignment = vkInstance.mainInstance->GetMinimumStorageBufferAlignment(physicalIndex);
-	container->information.maxMSAALevels = findMSB(vkInstance.mainInstance->GetMaxMSAALevels(physicalIndex));
-	container->information.deviceTimeStampPeriodNS = vkInstance.mainInstance->GetTimeStampPeriod(physicalIndex);
-	container->information.optimalImageCopyOffsetAlignment = vkInstance.mainInstance->GetOptimalImageCopyOffsetAlignment(physicalIndex);
+	container->information.minUniformAlignment = mainRenderInstance.mainInstance->GetMinimumUniformBufferAlignment(physicalIndex);
+	container->information.minStorageAlignment = mainRenderInstance.mainInstance->GetMinimumStorageBufferAlignment(physicalIndex);
+	container->information.maxMSAALevels = findMSB(mainRenderInstance.mainInstance->GetMaxMSAALevels(physicalIndex));
+	container->information.deviceTimeStampPeriodNS = mainRenderInstance.mainInstance->GetTimeStampPeriod(physicalIndex);
+	container->information.optimalImageCopyOffsetAlignment = mainRenderInstance.mainInstance->GetOptimalImageCopyOffsetAlignment(physicalIndex);
 	container->internalDriverDeviceListIdentifier = gpuIndex;
 
 	RenderPhysicalDeviceIndex indexRet{};
@@ -1051,7 +1051,7 @@ void RenderInstance::GetLastInstanceDriverError(StringView messageHeader)
 
 	int strLength = 0;
 
-	char* string = vkInstance.mainInstance->PopErrorOffQueue(&strLength);
+	char* string = mainRenderInstance.mainInstance->PopErrorOffQueue(&strLength);
 
 	internalRendererLogger->AddLogMessage(LOGERROR, string, strLength);
 }
@@ -1061,6 +1061,8 @@ uint32_t RenderInstance::BeginFrame(SwapChainIndex swapChainIndex)
 	RenderSwapchainData* swcData = swapChains.Get(swapChainIndex);
 
 	RHIDevice* rhiDevice = GetDeviceHandle(swcData->deviceIndex);
+
+	uint32_t currentFrame = rhiDevice->container.currentFrame;
 
 	VKDevice* dev = rhiDevice->device;
 
@@ -1090,6 +1092,8 @@ int RenderInstance::SubmitFrame(SwapChainIndex swapChainIndex, uint32_t imageInd
 	RenderSwapchainData* swcData = swapChains.Get(swapChainIndex);
 
 	RHIDevice* rhiDevice = GetDeviceHandle(swcData->deviceIndex);
+
+	uint32_t currentFrame = rhiDevice->container.currentFrame;
 
 	VKDevice* dev = rhiDevice->device;
 
@@ -1148,7 +1152,7 @@ RenderDeviceIndex RenderInstance::CreateLogicalDevice(LogicalDeviceCreateInfo* c
 {
 	RenderDeviceIndex ret{};
 
-	if (MAX_FRAMES_IN_FLIGHT > MAX_INSTANCE_FRAME_IN_FLIGHT || createInfo->maxQueries > MAX_QUERY_RESULTS)
+	if (createInfo->maxFramesInFlight > MAX_INSTANCE_FRAME_IN_FLIGHT || createInfo->maxQueries > MAX_QUERY_RESULTS)
 	{
 		return ret;
 	}
@@ -1179,19 +1183,20 @@ RenderDeviceIndex RenderInstance::CreateLogicalDevice(LogicalDeviceCreateInfo* c
 
 	rhiDevice->container.relatedPhysDeviceInfo = &physicalDevice->information;
 	rhiDevice->container.gpuIndex = createInfo->physicalDeviceIndex;
+	rhiDevice->container.maxFramesInFlight = createInfo->maxFramesInFlight;
 
-	uint32_t deviceExtNameCount = vkInstance.mainInstance->GetLogicalDeviceExtensionsCount(createInfo->requestedDeviceFeatures);
+	uint32_t deviceExtNameCount = mainRenderInstance.mainInstance->GetLogicalDeviceExtensionsCount(createInfo->requestedDeviceFeatures);
 
 	const char** deviceFeatureNames = (const char**)cacheAllocator->Allocate(sizeof(char*) * deviceExtNameCount);
 
-	vkInstance.mainInstance->GetLogicalDeviceExtensions(createInfo->requestedDeviceFeatures, deviceFeatureNames);
+	mainRenderInstance.mainInstance->GetLogicalDeviceExtensions(createInfo->requestedDeviceFeatures, deviceFeatureNames);
 
 	VkPhysicalDeviceVulkan12Features features12{};
 	VkPhysicalDeviceFeatures2 features2{};
 
 	API::ConvertGPUFeatureRequestToVkPhysicalDeviceProperties(createInfo->requestedPhysicalFeatures, &features2, &features12);
 
-	EntryHandle deviceIndex = vkInstance.mainInstance->CreateLogicalDevice(physicalIndex);
+	EntryHandle deviceIndex = mainRenderInstance.mainInstance->CreateLogicalDevice(physicalIndex);
 
 	if (EntryHandle() == deviceIndex)
 	{
@@ -1202,7 +1207,7 @@ RenderDeviceIndex RenderInstance::CreateLogicalDevice(LogicalDeviceCreateInfo* c
 
 	rhiDevice->container.logicalDeviceIndex = deviceIndex;
 
-	VKDevice* majorDevice = vkInstance.mainInstance->GetLogicalDevice(deviceIndex);
+	VKDevice* majorDevice = mainRenderInstance.mainInstance->GetLogicalDevice(deviceIndex);
 
 	rhiDevice->device = majorDevice;
 
@@ -1224,7 +1229,7 @@ RenderDeviceIndex RenderInstance::CreateLogicalDevice(LogicalDeviceCreateInfo* c
 		return ret;
 	}
 
-	queueSuccessful = majorDevice->GetPresentQueue(&queueIndices[1], &queueCounts[1], vkInstance.mainInstance->GetRenderSurface(windowsSurfaces[createInfo->surfaceIndexForPresent]()), famPropsContainer);
+	queueSuccessful = majorDevice->GetPresentQueue(&queueIndices[1], &queueCounts[1], mainRenderInstance.mainInstance->GetRenderSurface(windowsSurfaces[createInfo->surfaceIndexForPresent]()), famPropsContainer);
 
 	if (queueSuccessful)
 	{
@@ -1275,7 +1280,7 @@ RenderDeviceIndex RenderInstance::CreateLogicalDevice(LogicalDeviceCreateInfo* c
 	{
 		GetLastDeviceDriverError(rhiDevice, STRING_VIEW_FROM_LITERAL("CreateLogicalDevice: device creation when creating logical device"));
 
-		vkInstance.mainInstance->DestroyLogicalDevice(deviceIndex);
+		mainRenderInstance.mainInstance->DestroyLogicalDevice(deviceIndex);
 
 		logicalDeviceCounter--;
 
@@ -1293,7 +1298,7 @@ RenderDeviceIndex RenderInstance::CreateLogicalDevice(LogicalDeviceCreateInfo* c
 		rhiDevice->container.presentQueue = rhiDevice->container.graphicsComputeTransfer;
 	}
 
-	for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+	for (int i = 0; i < rhiDevice->container.maxFramesInFlight; i++)
 	{
 		EntryHandle* lprimaryCommandBuffers = majorDevice->CreateReusableCommandBuffers(rhiDevice->container.graphicsComputeTransfer, 1, true, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
 		rhiDevice->container.currentCommandBufferIndex[i] = *lprimaryCommandBuffers;
@@ -1301,7 +1306,7 @@ RenderDeviceIndex RenderInstance::CreateLogicalDevice(LogicalDeviceCreateInfo* c
 
 	rhiDevice->container.maxQueryResults = createInfo->maxQueries;
 
-	rhiDevice->container.queryPoolIndex = majorDevice->CreateQueryPool(VK_QUERY_TYPE_TIMESTAMP, MAX_FRAMES_IN_FLIGHT * createInfo->maxQueries);
+	rhiDevice->container.queryPoolIndex = majorDevice->CreateQueryPool(VK_QUERY_TYPE_TIMESTAMP, rhiDevice->container.maxFramesInFlight * createInfo->maxQueries);
 
 	rhiDevice->container.queriesAreActive = 0;
 
@@ -1310,6 +1315,20 @@ RenderDeviceIndex RenderInstance::CreateLogicalDevice(LogicalDeviceCreateInfo* c
 		rhiDevice->container.deviceTimelineSyncObject.currentValue = 0;
 
 		rhiDevice->container.deviceTimelineSyncObject.driverTimelineObject = *majorDevice->CreateTimelineSemaphores(1, rhiDevice->container.deviceTimelineSyncObject.currentValue);
+	}
+
+	rhiDevice->container.barriersQueue = (uint32_t*)AllocateFromStorageAllocator(sizeof(uint32_t) * createInfo->maxConcurrentRecordings);
+
+	rhiDevice->container.barrierAccumulators = (BarrierAccumulator*)AllocateFromStorageAllocator(sizeof(BarrierAccumulator) * createInfo->maxConcurrentRecordings);
+
+	rhiDevice->container.maxBarrierAccumulationCount = createInfo->maxConcurrentRecordings;
+
+	rhiDevice->container.currentBarrierAccumulationTop = 0;
+
+	for (uint32_t i = 0; i < createInfo->maxConcurrentRecordings; i++)
+	{
+		CreateDriverSpecificBarrierArenas(&rhiDevice->container.barrierAccumulators[i], createInfo->maxTextureHandles, createInfo->maxAllocations);
+		rhiDevice->container.barriersQueue[i] = i;
 	}
 
 	ret.index = currentLogicalDeviceIndex;
@@ -1445,6 +1464,8 @@ int RenderInstance::CreateRenderPass(AttachmentGraphInstance* graphInstance)
 			OldStyleRenderPassIndex rpIndex = renderPasses.Allocate();
 
 			RenderOldStyleVulkanRenderPassInfo* info = renderPasses.Get(rpIndex);
+
+			CleanInitializeRenderPass(info);
 
 			info->deviceIndex = graphInstance->deviceIndex;
 			info->renderPassHandle = returnValue;
@@ -1704,26 +1725,26 @@ void DispatchCmd(CommandRecorder* recorder, uint32_t x, uint32_t y, uint32_t z)
 	recorder->rbo->DispatchCommand(x, y, z);
 }
 
-void BeginRenderPassCmd(CommandRecorder* recorder, EntryHandle renderTargetInfo, uint32_t imageIndex, AttachmentClear* agnosticClears, uint32_t clearCount, Allocator* clearsAllocators)
+void BeginRenderPassCmd(CommandRecorder* recorder, EntryHandle renderTargetInfo, uint32_t imageIndex, AttachmentInstance* agnosticClears, uint32_t clearCount, Allocator* clearsAllocators)
 {
 	VkClearValue* clears = (VkClearValue*)clearsAllocators->Allocate(sizeof(VkClearValue) * clearCount);
 
 	for (uint32_t g = 0; g < clearCount; g++)
 	{
 		VkClearValue* currClear = &clears[g];
-		switch (agnosticClears[g].type)
+		switch (agnosticClears[g].clear.type)
 		{
 		case NOCLEAR:
 			break;
 		case CLEARCOLOR:
-			currClear->color.float32[0] = agnosticClears[g].val.cdata[0];
-			currClear->color.float32[1] = agnosticClears[g].val.cdata[1];
-			currClear->color.float32[2] = agnosticClears[g].val.cdata[2];
-			currClear->color.float32[3] = agnosticClears[g].val.cdata[3];
+			currClear->color.float32[0] = agnosticClears[g].clear.val.cdata[0];
+			currClear->color.float32[1] = agnosticClears[g].clear.val.cdata[1];
+			currClear->color.float32[2] = agnosticClears[g].clear.val.cdata[2];
+			currClear->color.float32[3] = agnosticClears[g].clear.val.cdata[3];
 			break;
 		case CLEARDEPTH:
-			currClear->depthStencil.depth = agnosticClears[g].val.ddata;
-			currClear->depthStencil.stencil = agnosticClears[g].val.sdata;
+			currClear->depthStencil.depth = agnosticClears[g].clear.val.ddata;
+			currClear->depthStencil.stencil = agnosticClears[g].clear.val.sdata;
 			break;
 		}
 	}
@@ -1934,7 +1955,7 @@ void MakeAndBindDriverAccumulatedBarriers(CommandRecorder* recorder)
 	}
 }
 
-void MakeAndBindDriverIntraPassBarriers(CommandRecorder* recorder, PipelineHandleIndex& pipelineIndex)
+void MakeAndBindDriverIntraPassBarriers(CommandRecorder* recorder, PipelineHandleIndex pipelineIndex)
 {
 	VKDevice* device = recorder->device->device;
 

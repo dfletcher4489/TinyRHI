@@ -123,11 +123,15 @@ Finish render instance based on minimum specs for both Vulkan and DX12
 - Finish logging and error tracking in shader resource binding (done).
 - Create feature request system and make it so user can query features request (while also maintaining minimum viable feature request for this layer) (done).
 - setup batching for barriers in global sense (done).
-- Add destructor functions for various different handle creation and make use of the pool allocators.
-- Accurately handle fallback and failure designations at all levels.
-- Separate all vulkan specific functions or things that need to know it's using vulkan to separate file with compile type linking.
-- Make robust all bounds checking, add failure designation to all possible failure (including integration with new vulkan failure designation and error handling)
-- remove any stl
+- Add creator, initializer, destructor functions for various different handle creation and make use of the pool allocators (done).
+- Accurately handle fallback and failure designations at all levels (done).
+- Separate all vulkan specific functions or things that need to know it's using vulkan to separate file with compile type linking (done).
+- Make robust all bounds checking, add failure designation to all possible failure (including integration with new vulkan failure designation and error handling) (done).
+- remove any stl(done)
+- make device agnostic command recorder, shader heap/resource template/resource set creator and updater, convert at driver level (done).
+- wrap all driver specific commands in the driver specific compile time backend (done).
+- create generic handle types used everywhere (done).
+- scope device specific stuff to its container and make the relationship between resource and device bi directional (done).
 
 Finish app level architecture
 - Finish OS systems in windows and remove bad design decisions (done).
@@ -140,8 +144,9 @@ Finish app level architecture
   - possibly switch over to NTL stuff instead of WinAPI (longer term).
   - expand block header allocations details    
 - Create OS linux layer with what is already done in agnostic interface
-- Make robust the shader translation layer and have compute shader execute in uniform way (minimize divergence among wave invocations)
-- Try to finish any unimplemented paths in the shaders (uncompressed data loading, light assignment and culling, etc.)
+- Make robust the shader translation layer and have compute shader execute in uniform way (minimize divergence among wave invocations).
+- Fix light shaders to minimize divergence and branchiness. 
+- Try to finish any unimplemented paths in the shaders (uncompressed data loading(x), light assignment and culling, etc.)
 - Finish build system and manage the Vulkan dependency properly(done)
 
 ## Longer term to-do list

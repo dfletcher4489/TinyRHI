@@ -13,7 +13,6 @@
 
 #include <bitset>
 #include <condition_variable>
-#include <memory>
 #include <mutex>
 
 #include <assert.h>
@@ -997,7 +996,7 @@ DescriptorSetBuilder* VKDevice::CreateDescriptorSetBuilder(EntryHandle poolIndex
 {
 	DescriptorSetBuilder* data = reinterpret_cast<DescriptorSetBuilder*>(AllocFromDeviceCache(sizeof(DescriptorSetBuilder)));
 
-	DescriptorSetBuilder *dsb = std::construct_at(data, this, numberofsets);
+	DescriptorSetBuilder *dsb = new (data) DescriptorSetBuilder(this, numberofsets);
 	
 	VkDescriptorSetLayout ref = GetDescriptorSetLayout(descriptorLayout);
 
@@ -1010,7 +1009,7 @@ DescriptorSetBuilder* VKDevice::UpdateDescriptorSet(EntryHandle descriptorHandle
 {
 	DescriptorSetBuilder* data = reinterpret_cast<DescriptorSetBuilder*>(AllocFromDeviceCache(sizeof(DescriptorSetBuilder)));
 
-	DescriptorSetBuilder* dsb = std::construct_at(data, this, descriptorHandle);
+	DescriptorSetBuilder* dsb = new (data) DescriptorSetBuilder(this, descriptorHandle);
 
 	return dsb;
 }
@@ -1019,7 +1018,7 @@ DescriptorSetLayoutBuilder* VKDevice::CreateDescriptorSetLayoutBuilder(uint32_t 
 {
 	DescriptorSetLayoutBuilder* builder = reinterpret_cast<DescriptorSetLayoutBuilder*>(AllocFromDeviceCache(sizeof(DescriptorSetLayoutBuilder)));
 
-	builder = std::construct_at(builder, this, bindingCount);
+	builder = new (builder) DescriptorSetLayoutBuilder(this, bindingCount);
 
 	return builder;
 }
@@ -1535,14 +1534,14 @@ VKGraphicsPipelineBuilder* VKDevice::CreateGraphicsPipelineBuilder(EntryHandle r
 
 	VKGraphicsPipelineBuilder* graphicsPipelineData = reinterpret_cast<VKGraphicsPipelineBuilder*>(AllocFromDeviceCache(sizeof(VKGraphicsPipelineBuilder)));
 
-	return std::construct_at(graphicsPipelineData, renderPass, this, colorCount, descLayoutCount, dynamicStateCount, pushConstantRangeCount);
+	return new (graphicsPipelineData) VKGraphicsPipelineBuilder(renderPass, this, colorCount, descLayoutCount, dynamicStateCount, pushConstantRangeCount);
 }
 
 VKComputePipelineBuilder* VKDevice::CreateComputePipelineBuilder(size_t numberOfDescriptors, uint32_t pushConstantRangeCount)
 {
 	VKComputePipelineBuilder* computePB = reinterpret_cast<VKComputePipelineBuilder*>(AllocFromDeviceCache(sizeof(VKComputePipelineBuilder)));
 
-	return std::construct_at(computePB, this, numberOfDescriptors, pushConstantRangeCount);
+	return new (computePB) VKComputePipelineBuilder(this, numberOfDescriptors, pushConstantRangeCount);
 }
 
 EntryHandle VKDevice::CreateQueueManager(uint32_t queueIndex, uint32_t maxCount, uint32_t queueFlags, bool presentsupport)
@@ -1563,9 +1562,8 @@ EntryHandle VKDevice::CreateQueueManager(uint32_t queueIndex, uint32_t maxCount,
 		FreeFromPerDeviceData(queueManagerData);
 		return EntryHandle();
 	}
-	
-	std::construct_at(queueManagerItself,
-		nullptr, 0,
+	queueManagerItself = new (queueManagerItself)
+		QueueManager(nullptr, 0,
 		maxCount, queueIndex,
 		queueFlags, presentsupport,
 		this, queueManagerData);
@@ -1691,7 +1689,7 @@ EntryHandle VKDevice::CreateRenderTarget(EntryHandle renderPassIndex, uint32_t f
 		return EntryHandle();
 	}
 
-	std::construct_at(renderTarget, renderPassIndex, framebufferCount, width, height, wOffset, hOffset, data);
+	renderTarget = new (renderTarget) RenderTarget(renderPassIndex, framebufferCount, width, height, wOffset, hOffset, data);
 	
 	EntryHandle renderTargetHandle = AddVkTypeToEntry(renderTarget, VulkRenderTarget);
 
@@ -1806,72 +1804,6 @@ EntryHandle* VKDevice::CreateReusableCommandBuffers(
 
 	return intHandles;
 }
-
-/*
-EntryHandle VKDevice::CreateImageHandle(
-	uint32_t width, uint32_t height, uint32_t layers,
-	uint32_t mipLevels, size_t memAddr, VkFormat imageFormat,
-	EntryHandle memIndex,
-	VkImageAspectFlags flags,
-	VkImageType imageType, VkImageUsageFlags usageFlags, VkImageLayout imageLayout, VkImageCreateFlags createFlags
-)
-{
-	VKTexture* tex = reinterpret_cast<VKTexture*>(AllocFromPerDeviceData(sizeof(VKTexture)));
-
-	if (!tex)
-	{
-		AddDeviceErrorCode(DEVICE_STORAGE_EXHAUSTED, VK_RESULT_MAX_ENUM);
-		return EntryHandle();
-	}
-
-	EntryHandle imageIndex = CreateImage(
-		width, height, mipLevels, imageFormat, layers,
-		usageFlags,
-		1, memAddr, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, imageLayout, VK_IMAGE_TILING_OPTIMAL, createFlags, imageType, memIndex);
-
-	if (imageIndex == EntryHandle())
-	{
-		FreeFromPerDeviceData(tex);
-		return imageIndex;
-	}
-	
-	VkImageViewType imageViewType = VK_IMAGE_VIEW_TYPE_2D;
-
-	switch (imageType)
-	{
-	case VK_IMAGE_TYPE_2D:
-		if (createFlags & VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT)
-			imageViewType = VK_IMAGE_VIEW_TYPE_CUBE;
-		break;
-	case VK_IMAGE_TYPE_3D:
-		imageViewType = VK_IMAGE_VIEW_TYPE_3D;
-		break;
-	}
-
-	EntryHandle viewIndex = CreateImageView(imageIndex, mipLevels, layers, imageFormat, flags, imageViewType);
-
-	if (viewIndex == EntryHandle())
-	{
-		DestroyImage(imageIndex);
-		FreeFromPerDeviceData(tex);
-		return viewIndex;
-	}
-
-	tex = std::construct_at(tex, imageIndex, &viewIndex, 1, nullptr, 0);
-
-	EntryHandle texImageHandle = AddVkTypeToEntry(tex, VulkTextureHandle);
-
-	if (texImageHandle == EntryHandle())
-	{
-		AddDeviceErrorCode(DEVICE_HANDLE_ENTRIES_EXHAUSTION, VK_RESULT_MAX_ENUM);
-		DestroyImageView(viewIndex);
-		DestroyImage(imageIndex);
-		FreeFromPerDeviceData(tex);
-	}
-
-	return texImageHandle;
-}
-*/
 
 EntryHandle VKDevice::CreateSampler(
 	VkFilter minFilter, VkFilter magFilter,
@@ -2075,7 +2007,7 @@ EntryHandle VKDevice::CreateSwapChain(uint32_t requestedImageCount, uint32_t max
 
 	VK::Utils::SwapChainSupportDetails swcsupport = parentInstance->GetSwapChainSupport(gpu, renderSurfaceIndex);
 
-	std::construct_at(swc, this, parentInstance->GetRenderSurface(renderSurfaceIndex), requestedImageCount, maxFramesInFlight, swcsupport, requestedFormat);
+	swc = new (swc) VKSwapChain(this, parentInstance->GetRenderSurface(renderSurfaceIndex), requestedImageCount, maxFramesInFlight, swcsupport, requestedFormat);
 
 	EntryHandle swcHandle = AddVkTypeToEntry(swc, VulkSwapChain);
 

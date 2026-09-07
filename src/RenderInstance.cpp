@@ -1,7 +1,5 @@
 #include "RenderInstance.h"
 
-#include <memory>
-
 #include <string.h>
 #include <assert.h>
 
@@ -145,7 +143,7 @@ void RenderInstance::CreateRenderInstance(RenderInstanceCreateInfo* info, Alloca
 
 	StringView commandCacheName = STRING_VIEW_FROM_LITERAL("Commands Cache Allocator");
 
-	std::construct_at(updateCommandsCache, AllocateFromStorageAllocator(info->commandsCacheSize, 64), info->commandsCacheSize, commandCacheName, internalRendererLogger);
+	updateCommandsCache = new (updateCommandsCache) RingAllocator(AllocateFromStorageAllocator(info->commandsCacheSize, 64), info->commandsCacheSize, commandCacheName, internalRendererLogger);
 
 	for (uint32_t i = 0; i < 2; i++)
 	{
@@ -153,7 +151,7 @@ void RenderInstance::CreateRenderInstance(RenderInstanceCreateInfo* info, Alloca
 
 		StringView updateName = STRING_VIEW_FROM_LITERAL("Commands Cache Allocator");
 
-		std::construct_at(updateCommandBuffers[i], AllocateFromStorageAllocator(info->commandBuffersSize, 32), info->commandBuffersSize, updateName, internalRendererLogger);
+		updateCommandBuffers[i] = new (updateCommandBuffers[i]) SlabAllocator(AllocateFromStorageAllocator(info->commandBuffersSize, 32), info->commandBuffersSize, updateName, internalRendererLogger);
 	}
 
 	int driverHostLinkedSize = driverHostMemoryUpdater.GetSize(info->numberOfDriverHostAllocations);
@@ -244,13 +242,13 @@ void RenderInstance::CreateDriverSpecificBarrierArenas(BarrierAccumulator* barri
 	StringView bufBarrierName = STRING_VIEW_FROM_LITERAL("Buffer Barrier Allocator");
 	StringView intraBarrierName = STRING_VIEW_FROM_LITERAL("Intra Pass Barrier Allocator");
 
-	std::construct_at(barrierAccumulator->accumulators[IMAGE_BARRIER_ACCUMULATOR].driverAllocator, AllocateFromStorageAllocator(dImageSize, GetDriverImageMemoryBarrierAlign()), dImageSize, imgBarrierName, internalRendererLogger);
-	std::construct_at(barrierAccumulator->accumulators[BUFFER_BARRIER_ACCUMULATOR].driverAllocator, AllocateFromStorageAllocator(dBufferSize, GetDriverBufferMemoryBarrierAlign()), dBufferSize, bufBarrierName, internalRendererLogger);
+	barrierAccumulator->accumulators[IMAGE_BARRIER_ACCUMULATOR].driverAllocator = new (barrierAccumulator->accumulators[IMAGE_BARRIER_ACCUMULATOR].driverAllocator) SlabAllocator(AllocateFromStorageAllocator(dImageSize, GetDriverImageMemoryBarrierAlign()), dImageSize, imgBarrierName, internalRendererLogger);
+	barrierAccumulator->accumulators[BUFFER_BARRIER_ACCUMULATOR].driverAllocator = new (barrierAccumulator->accumulators[BUFFER_BARRIER_ACCUMULATOR].driverAllocator) SlabAllocator(AllocateFromStorageAllocator(dBufferSize, GetDriverBufferMemoryBarrierAlign()), dBufferSize, bufBarrierName, internalRendererLogger);
+
+	barrierAccumulator->accumulators[IMAGE_BARRIER_ACCUMULATOR].allocator = new (barrierAccumulator->accumulators[IMAGE_BARRIER_ACCUMULATOR].allocator) SlabAllocator(AllocateFromStorageAllocator(imageSize, alignof(AgnosticImageMemoryBarrier)), imageSize, imgBarrierName, internalRendererLogger);
+	barrierAccumulator->accumulators[BUFFER_BARRIER_ACCUMULATOR].allocator = new (barrierAccumulator->accumulators[BUFFER_BARRIER_ACCUMULATOR].allocator) SlabAllocator(AllocateFromStorageAllocator(bufferSize, alignof(AgnosticBufferMemoryBarrier)), bufferSize, bufBarrierName, internalRendererLogger);
 	
-	std::construct_at(barrierAccumulator->accumulators[IMAGE_BARRIER_ACCUMULATOR].allocator, AllocateFromStorageAllocator(imageSize, alignof(AgnosticImageMemoryBarrier)), imageSize, imgBarrierName, internalRendererLogger);
-	std::construct_at(barrierAccumulator->accumulators[BUFFER_BARRIER_ACCUMULATOR].allocator, AllocateFromStorageAllocator(bufferSize, alignof(AgnosticBufferMemoryBarrier)), bufferSize, bufBarrierName, internalRendererLogger);
-	
-	std::construct_at(&barrierAccumulator->intraPassBarrierAllocator, AllocateFromStorageAllocator(12 * KiB, alignof(AgnosticBufferMemoryBarrier)), 12 * KiB, intraBarrierName, internalRendererLogger);
+	new (&barrierAccumulator->intraPassBarrierAllocator) SlabAllocator(AllocateFromStorageAllocator(12 * KiB, alignof(AgnosticBufferMemoryBarrier)), 12 * KiB, intraBarrierName, internalRendererLogger);
 
 	for (int i = 0; i < MAX_INTRA_PASS_BARRIERS; i++)
 	{

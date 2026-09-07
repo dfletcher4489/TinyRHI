@@ -8,12 +8,12 @@
 #include <vulkan/vulkan_win32.h>
 #endif
 
-#include <memory>
+#include "new.h"
 
 #include <assert.h>
 #include <limits.h>
 #include <string.h>
-
+#include <stdio.h>
 
 #define BASE_ERROR_STRING_ALLOCATION 150
 
@@ -1056,7 +1056,7 @@ EntryHandle VKInstance::CreateLogicalDevice(EntryHandle gpuIndex)
 		return logicalDeviceHandle;
 	}
 
-	std::construct_at(device, gpu->gpuDeviceHandle, this);
+	device = new (device) VKDevice(gpu->gpuDeviceHandle, this);
 
 	uint32_t gpuOwnerIndex = gpu->logicalDeviceCount++;
 

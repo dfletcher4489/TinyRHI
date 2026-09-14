@@ -1,5 +1,6 @@
 #include "OSFile.h"
-#include "Windows.h"
+#include "WinOSFile.h"
+#include <Windows.h>
 
 static HANDLE* intFileHandles;
 static int* handleTypes;
@@ -13,8 +14,6 @@ static HANDLE stdErrorHandle = INVALID_HANDLE_VALUE;
 ALIGNAS(128) static std::atomic<int> boundedLinearAllocator{ 0 };
 ALIGNAS(128) static std::atomic<size_t> enqueuePos{ 0 };
 ALIGNAS(128) static std::atomic<size_t> dequeuePos{ 0 };
-
-
 
 static DWORD ConvertOSFlags(OSFileFlags flags, DWORD* shareMode, DWORD* creationFlags)
 {
@@ -703,4 +702,34 @@ int OSFileExist(const char* inputFile, int charCount, OSFileFlags flags)
     CloseHandle(hFile);
 
     return OS_FILE_SUCCESS;
+}
+
+int OSPollWindowsCommandLine()
+{
+    DWORD events;
+    INPUT_RECORD record;
+
+    HANDLE stdInHandle = GetStdHandle(STD_INPUT_HANDLE);
+
+    BOOL success = ReadConsoleInput(stdInHandle, &record, 1, &events);
+
+    if (!success) 
+    {
+        return -1;
+    }
+
+    switch (record.EventType) {
+    case KEY_EVENT:
+        if (record.Event.KeyEvent.bKeyDown)
+        {
+            if (record.Event.KeyEvent.uChar.AsciiChar == VK_RETURN)
+            {
+                return 1;
+            }
+        }
+    default:
+        break;
+    }
+
+    return 0;
 }

@@ -9,7 +9,7 @@ struct ApplicationLoop
 
 	void Execute();
 
-	void InitializeRuntime();
+	int InitializeRuntime();
 
 	void CleanupRuntime();
 	

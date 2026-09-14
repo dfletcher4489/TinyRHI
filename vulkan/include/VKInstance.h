@@ -5,7 +5,7 @@
 #include "VKTypes.h"
 #include "VKUtilities.h"
 
-#ifdef _MSC_VER
+#ifdef WIN32
 #include <Windows.h>
 #endif
 

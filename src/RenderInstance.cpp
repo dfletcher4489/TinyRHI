@@ -5057,6 +5057,11 @@ void RenderInstance::InsertDrawCommandBufferBarrier(AllocationInstanceIndex allo
 	}
 }
 
+void RenderInstance::DumpLogger()
+{
+	internalRendererLogger->ProcessMessage();
+}
+
 void RenderInstance::DestroyPhysicalDeviceIndices(RenderPhysicalDeviceIndex handle)
 {
 	if (handle.index >= maxPhysicalDevices || handle.index >= physicalDeviceCounter)

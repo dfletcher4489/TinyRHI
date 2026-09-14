@@ -16,7 +16,7 @@
 #include "WindowManager.h"
 
 #if defined(_WIN32) || defined(_WIN64)
-#include <Windows.h>
+#include "WinOSFile.h"
 #endif
 
 #include <array>
@@ -811,7 +811,7 @@ static int ReturnSMBArena(int arenaIndex);
 static void LoadObject(const StringView& file);
 static void LoadThreadedWrapper(StringView& file);
 static int FindWords(const char* words, int charCount);
-static void CreateTexturePools();
+static int CreateTexturePools();
 static void ProcessSMBFile(SMBFile* file, int arenaIndex);
 static void SMBGeometricalObject(SMBGeoChunk* geoDef, SMBFile* file, int textureBase, int arenaIndex);
 static bool ProcessCommands();
@@ -888,7 +888,7 @@ static void UpdateCameraMatrix();
 static bool MoveCamera(double fps);
 static void CreateGPUGenericObjects();
 
-static void CreateUITools(int maxUIContainers);
+static int CreateUITools(int maxUIContainers);
 static int CreateFontTexture(StringView* fontName, StringView* fontDataName, uint32_t fontHeight, uint32_t globalHeightModifier, uint32_t globalWidthModifier);
 static void CreateUIText(UIContainer* container, const char* text, int textLength);
 static void CreateFontWidths(Font* font, char* fontData, uint32_t fontHeight, uint32_t globalHeightModifier, uint32_t globalWidthModifier);
@@ -1008,7 +1008,14 @@ void ApplicationLoop::Execute()
 	}
 	else
 	{
-		InitializeRuntime();
+		int initRet = InitializeRuntime();
+
+		if (initRet)
+		{
+			mainAppLogger.ProcessMessage();
+			GlobalRenderer::gRenderInstance.DumpLogger();
+			return;
+		}
 
 		meshCPUData.Create(&GlobaScratchAllocator, globalMeshCountMax, STRING_VIEW_FROM_LITERAL("Mesh CPU Data Pool Allocator"), &mainAppLogger);
 
@@ -1319,7 +1326,7 @@ void ApplicationLoop::Execute()
 	}
 }
 
-void CreateTexturePools()
+int CreateTexturePools()
 {
 	std::array<ImageFormat, 4> formats = {
 		ImageFormat::DXT1,
@@ -1346,6 +1353,7 @@ void CreateTexturePools()
 		if (ImageMemoryIndex() == texturePoolHandle)
 		{
 			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Failed to create a texture image pool"));
+			return -1;
 		}
 
 		mainDictionary.texturePoolsFormat[i] = formats[i];
@@ -1354,6 +1362,8 @@ void CreateTexturePools()
 
 		mainDictionary.texturePoolHandle[i] = texturePoolHandle;
 	}
+
+	return 0;
 }
 
 bool MoveCamera(double fps)
@@ -1694,17 +1704,6 @@ void CreateJointVisualData()
 
 	jointMeshVertexAlloc = rendInst.GetAllocFromBuffer(mainDeviceBuffer, sizeof(Verts), 1, 64, AllocationType::STATIC, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, globalVertexBuffer, &vertexBufferAlloc);
 	jointMeshIndexAlloc = rendInst.GetAllocFromBuffer(mainDeviceBuffer, sizeof(Indices), 1, 64, AllocationType::STATIC, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, globalIndexBuffer, &indexBufferAlloc);
-
-	/*
-	if (indexAlloc < 0 ||
-		vertexAlloc < 0)
-	{
-		mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Cannot create joint object"));
-		mainAppLogger.ProcessMessage();
-		return;
-	}
-
-	*/
 
 	rendInst.UpdateDriverMemory(Verts, jointMeshVertexAlloc, sizeof(Verts), 0, TransferType::CACHED);
 	rendInst.UpdateDriverMemory(Indices, jointMeshIndexAlloc, sizeof(Indices), 0, TransferType::CACHED);
@@ -2685,13 +2684,11 @@ int CreateDebugCommandBuffers(int count)
 
 	indirectCullBuilder.UploadConstant(&debugRSContext,  &debugIndirectDrawData.commandBufferCount, 0);
 
-
 	if (debugRSContext.contextFailed)
 	{
 		debugRSContext.contextLogger->ProcessMessage();
 		return -1;
 	}
-
 
 	std::array<ShaderResourceSetHandle, 1> debugCullDescriptors = { debugIndirectDrawData.indirectCullDescriptor };
 
@@ -2779,7 +2776,6 @@ int CreateGenericMeshCommandBuffers(int count)
 	mainIndirectDrawData.indirectCullDescriptor = indirectCullBuilder();
 
 	mainIndirectDrawData.indirectGlobalIDsAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(uint32_t), mainIndirectDrawData.commandBufferSize, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::R32_UINT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, -1, &mainDeviceAllocator);
-
 
 	indirectCullBuilder.BindBufferToShaderResource(&genericMeshRSContext, &mainIndirectDrawData.commandBufferAlloc, 0, 1, 0);
 	indirectCullBuilder.BindBufferToShaderResource(&genericMeshRSContext, &globalMeshLocation, 0, 1, 1);
@@ -2884,6 +2880,12 @@ int CreateGenericMeshCommandBuffers(int count)
 
 	mainIndirectDrawData.indirectCullPipeline = GlobalRenderer::gRenderInstance.CreateComputePipelineObject(&mainCullComputeSetup);
 
+	if (PipelineHandleIndex() == mainIndirectDrawData.indirectCullPipeline)
+	{
+		mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("indirect draw cull pipeline failed creation"));
+		return -1;
+	}
+	/*
 	ShaderResourceSetBuilder outlineDescriptor = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[OUTLINE], 2, 3);
 
 	outlineDescriptor.BindBufferToShaderResource(&genericMeshRSContext, &globalMeshLocation, 0, 1, 0);
@@ -3003,7 +3005,6 @@ int CreateMeshWorldAssignment(int count)
 	
 	if (worldSpaceAssignment.totalSumsNeeded)
 	{
-
 		ShaderResourceSetBuilder sumAfterBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[PREFIXSUM], 0, MAX_FRAMES_IN_FLIGHT);
 		
 		worldSpaceAssignment.sumAfterDescriptors = sumAfterBuilder();
@@ -3223,7 +3224,6 @@ int CreateLightAssignments(int count)
 
 	if (lightAssignment.totalSumsNeeded)
 	{
-
 		ShaderResourceSetBuilder sumAfterBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[PREFIXSUM], 0, MAX_FRAMES_IN_FLIGHT);
 
 		lightAssignment.sumAfterDescriptors = sumAfterBuilder();
@@ -3389,9 +3389,6 @@ int CreateShadowMapManager(int maxShadowMapAssignment, int maxObjCount, int shad
 	mainShadowMapManager.totalShadowMaps = (int)((float)(shadowMapAtlasHeight * shadowMapAtlasWidth) / (float)(shadowMapWidth * shadowMapHeight));
 	mainShadowMapManager.zoneAlloc = 0;
 
-	
-	
-
 	mainShadowMapManager.shadowMapCountsAllocSize =  maxObjCount;
 	mainShadowMapManager.shadowMapCountsAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(uint32_t), mainShadowMapManager.shadowMapCountsAllocSize, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::R32_UINT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, -1, &mainDeviceAllocator);
 	mainShadowMapManager.shadowMapOffsetsAllocSize =  maxObjCount;
@@ -3411,7 +3408,6 @@ int CreateShadowMapManager(int maxShadowMapAssignment, int maxObjCount, int shad
 	mainShadowMapManager.shadowMapAtlasViewsAllocSize = maxObjCount;
 	mainShadowMapManager.shadowMapAtlasViewsAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(ShadowMapView), mainShadowMapManager.shadowMapAtlasViewsAllocSize, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::UNIFORM_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
 
-
 	BufferArrayUpdate shadowViewProjUp{};
 	BufferArrayUpdate shadowAtlasViews{};
 	shadowViewProjUp.allocationCount = 1;
@@ -3422,15 +3418,12 @@ int CreateShadowMapManager(int maxShadowMapAssignment, int maxObjCount, int shad
 	shadowAtlasViews.resourceDstBegin = 0;
 	shadowAtlasViews.allocationIndices = &mainShadowMapManager.shadowMapAtlasViewsAlloc;
 
-
 	GlobalRenderer::gRenderInstance.UpdateBufferResourceArray(globalTexturesDescriptor, 1, ShaderResourceType::STORAGE_BUFFER, &shadowViewProjUp);
 	GlobalRenderer::gRenderInstance.UpdateBufferResourceArray(globalTexturesDescriptor, 2, ShaderResourceType::UNIFORM_BUFFER, &shadowAtlasViews);
 
-	
 	ShaderResourceSetBuilder shadowClippingDescriptorB1 = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[SHADOWMAPCULL], 0, MAX_FRAMES_IN_FLIGHT);
 	ShaderResourceSetBuilder shadowClippingDescriptorB2 = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[SHADOWMAPCULL], 1, MAX_FRAMES_IN_FLIGHT);
 	
-
 	mainShadowMapManager.shadowClippingDescriptor1 = shadowClippingDescriptorB1();
 	mainShadowMapManager.shadowClippingDescriptor2 = shadowClippingDescriptorB2();
 
@@ -3709,7 +3702,6 @@ int CreateSkyBox()
 	AllocationInstanceIndex vertexAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(BoxVerts), 1, 64, AllocationType::STATIC, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::NO_BUFFER_ALIGNMENT,  globalVertexBuffer, &vertexBufferAlloc);
 	AllocationInstanceIndex indexAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(BoxIndices), 1, 64, AllocationType::STATIC, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, globalIndexBuffer, &indexBufferAlloc);
 
-
 	GlobalRenderer::gRenderInstance.UpdateDriverMemory(BoxVerts, vertexAlloc, sizeof(BoxVerts), 0, TransferType::CACHED);
 	GlobalRenderer::gRenderInstance.UpdateDriverMemory(BoxIndices, indexAlloc, sizeof(BoxIndices), 0, TransferType::CACHED);
 
@@ -3774,7 +3766,7 @@ int CreateSkyBox()
 	return 0;
 }
 
-void ApplicationLoop::InitializeRuntime()
+int ApplicationLoop::InitializeRuntime()
 {
 	queueSema.Create();
 
@@ -3853,7 +3845,12 @@ void ApplicationLoop::InitializeRuntime()
 
 	GlobalRenderer::gRenderInstance.CreateRenderInstance(&riCreateInfo, &RenderInstanceMemoryAllocator, &RenderInstanceTemporaryAllocator);
 
-	GlobalRenderer::gRenderInstance.CreateHighLevelInstance(800 * KiB, 128 * KiB, 4 * KiB, 96 * KiB);
+	int rendererRetCode = GlobalRenderer::gRenderInstance.CreateHighLevelInstance(800 * KiB, 128 * KiB, 4 * KiB, 96 * KiB);
+
+	if (rendererRetCode)
+	{
+		return -1;
+	}
 
 	OSWindowInternalData internalWindowData;
 	
@@ -3861,9 +3858,26 @@ void ApplicationLoop::InitializeRuntime()
 
 	mainPresentationWindow = GlobalRenderer::gRenderInstance.CreateWindowedSurface(&internalWindowData);
 
+	if (mainPresentationWindow == WindowIndex())
+	{
+		return -1;
+	}
+
 	int foundPhysicalDevice = GlobalRenderer::gRenderInstance.OpenPhysicalDevicePicker();
 
+	if (foundPhysicalDevice)
+	{
+		
+		return -1;
+	}
+
 	mainGPU = GlobalRenderer::gRenderInstance.CreatePhysicalDeviceAdapterWithQuerying(&request, &deviceFeatures);
+
+	if (RenderPhysicalDeviceIndex() == mainGPU)
+	{
+		
+		return -1;
+	}
 
 	GlobalRenderer::gRenderInstance.ClosePhysicalDevicePicker();
 
@@ -3886,7 +3900,17 @@ void ApplicationLoop::InitializeRuntime()
 
 	mainLogicalDevice = GlobalRenderer::gRenderInstance.CreateLogicalDevice(&lDeviceCreateInfo);
 
-	GlobalRenderer::gRenderInstance.CreatePerFrameStagingBuffers(mainLogicalDevice, 128 * MiB);
+	if (RenderDeviceIndex() == mainLogicalDevice)
+	{
+		return -1;
+	}
+
+	rendererRetCode = GlobalRenderer::gRenderInstance.CreatePerFrameStagingBuffers(mainLogicalDevice, 128 * MiB);
+
+	if (rendererRetCode)
+	{
+		return -1;
+	}
 
 	std::array<DescriptorTypes, 4> descriptorTypes =
 	{
@@ -3906,16 +3930,42 @@ void ApplicationLoop::InitializeRuntime()
 
 	mainDescriptorManagerIndex = GlobalRenderer::gRenderInstance.CreateDescriptorHeap(mainLogicalDevice, descriptorTypes.data(), descriptorCounts.data(), 4, 100, 50);
 
+	if (ShaderResourceManagerIndex() == mainDescriptorManagerIndex)
+	{
+		return -1;
+	}
+
 	mainDeviceBuffer = GlobalRenderer::gRenderInstance.CreateUniversalBuffer(mainLogicalDevice, mainDeviceSize, MemoryTypeBits::DEVICE_MEMORY_TYPE);
+
+	if (BufferMemoryIndex() == mainDeviceBuffer)
+	{
+		return -1;
+	}
+
 	mainHostBuffer = GlobalRenderer::gRenderInstance.CreateUniversalBuffer(mainLogicalDevice, mainHostSize, MemoryTypeBits::HOST_MEMORY_COHERENT_TYPE);
+
+	if (BufferMemoryIndex() == mainHostBuffer)
+	{
+		return -1;
+	}
 
 	ImageFormat requestedColorFormats = ImageFormat::B8G8R8A8;
 
 	ImageFormat mainColorFormat = GlobalRenderer::gRenderInstance.FindSupportedBackBufferColorFormat(mainGPU, mainPresentationWindow, &requestedColorFormats, 1);
 
+	if (ImageFormat::IMAGE_UNKNOWN == mainColorFormat)
+	{
+		return -1;
+	}
+
 	ImageFormat requestedDSVFormats = ImageFormat::D24UNORMS8STENCIL;
 
 	ImageFormat mainDepthFormat = GlobalRenderer::gRenderInstance.FindSupportedDepthFormat(mainLogicalDevice, &requestedDSVFormats, 1);
+
+	if (ImageFormat::IMAGE_UNKNOWN == mainDepthFormat)
+	{
+		return -1;
+	}
 
 	mainRTVIndex = GlobalRenderer::gRenderInstance.CreateImagePool(
 		mainLogicalDevice, mainRTVSize, mainColorFormat, 4096, 4096,
@@ -3924,6 +3974,11 @@ void ApplicationLoop::InitializeRuntime()
 		MemoryTypeBits::DEVICE_MEMORY_TYPE
 		);
 
+	if (ImageMemoryIndex() == mainRTVIndex)
+	{
+		return -1;
+	}
+
 	mainDSVIndex = GlobalRenderer::gRenderInstance.CreateImagePool(
 		mainLogicalDevice, mainDSVSize, mainDepthFormat, 4096, 4096,
 		ImageUsageFlagBits::TRANSFER_SRC | ImageUsageFlagBits::TRANSFER_DEST|
@@ -3931,17 +3986,37 @@ void ApplicationLoop::InitializeRuntime()
 		ImageUsageFlagBits::STENCIL_ATTACHMENT,
 		MemoryTypeBits::DEVICE_MEMORY_TYPE);
 
+	if (ImageMemoryIndex() == mainDSVIndex)
+	{
+		return -1;
+	}
+
 	AttachmentGraphLayoutIndex basicShadowLay = GlobalRenderer::gRenderInstance.CreateAttachmentGraph(mainLayoutAttachments[0]);
 	AttachmentGraphLayoutIndex mssaShadowLay = GlobalRenderer::gRenderInstance.CreateAttachmentGraph(mainLayoutAttachments[1]);
 
+	if (AttachmentGraphLayoutIndex() == basicShadowLay || AttachmentGraphLayoutIndex() == mssaShadowLay)
+	{
+		return -1;
+	}
+
 	BasicShadow = GlobalRenderer::gRenderInstance.CreateAttachmentGraphInstance(mainLogicalDevice, basicShadowLay);
 	MSAAShadowMapping = GlobalRenderer::gRenderInstance.CreateAttachmentGraphInstance(mainLogicalDevice, mssaShadowLay);
+
+	if (AttachmentGraphInstanceIndex() == BasicShadow || AttachmentGraphInstanceIndex() == MSAAShadowMapping)
+	{
+		return -1;
+	}
 
 	currentFrameGraphIndex = MSAAShadowMapping;
 
 	frameGraphsCount = 2;
 
 	mainPresentationSwapChain = GlobalRenderer::gRenderInstance.CreateSwapChainHandle(mainLogicalDevice, mainPresentationWindow, mainColorFormat, 800, 600);
+
+	if (SwapChainIndex() == mainPresentationSwapChain)
+	{
+		return -1;
+	}
 
 	std::array<AttachmentClear, 1> ShadowMapViewerClears {
 		CLEARCOLOR, {0.0, 0.0, 0.0, 0.0},
@@ -3955,11 +4030,33 @@ void ApplicationLoop::InitializeRuntime()
 		CLEARCOLOR, {0.0, 0.0, 0.0, 0.0},
 	};
 
-	GlobalRenderer::gRenderInstance.CreateSwapChainAttachment(BasicShadow, 0, mainPresentationSwapChain, ShadowMapViewerClears.data(), &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
-	GlobalRenderer::gRenderInstance.CreateSwapChainAttachment(MSAAShadowMapping, 2, mainPresentationSwapChain, MSAAShadowMappingClears.data(), &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
+	rendererRetCode = GlobalRenderer::gRenderInstance.CreateSwapChainAttachment(BasicShadow, 0, mainPresentationSwapChain, ShadowMapViewerClears.data(), &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
+
+	if (rendererRetCode)
+	{
+		return -1;
+	}
+
+	rendererRetCode = GlobalRenderer::gRenderInstance.CreateSwapChainAttachment(MSAAShadowMapping, 2, mainPresentationSwapChain, MSAAShadowMappingClears.data(), &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
 	
-	GlobalRenderer::gRenderInstance.CreatePerFrameAttachment(MSAAShadowMapping, 0, MAX_FRAMES_IN_FLIGHT, mainShadowWidth, mainShadowHeight, MSAAShadowMappingClears.data(), &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
-	GlobalRenderer::gRenderInstance.CreatePerFrameAttachment(MSAAShadowMapping, 1, MAX_FRAMES_IN_FLIGHT, 800, 600, MSAAShadowMappingClears.data(), &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
+	if (rendererRetCode)
+	{
+		return -1;
+	}
+
+	rendererRetCode = GlobalRenderer::gRenderInstance.CreatePerFrameAttachment(MSAAShadowMapping, 0, MAX_FRAMES_IN_FLIGHT, mainShadowWidth, mainShadowHeight, MSAAShadowMappingClears.data(), &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
+	
+	if (rendererRetCode)
+	{
+		return -1;
+	}
+
+	rendererRetCode = GlobalRenderer::gRenderInstance.CreatePerFrameAttachment(MSAAShadowMapping, 1, MAX_FRAMES_IN_FLIGHT, 800, 600, MSAAShadowMappingClears.data(), &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
+
+	if (rendererRetCode)
+	{
+		return -1;
+	}
 
 	GlobalRenderer::gRenderInstance.CreateGraphicsQueueForAttachments(MSAAShadowMapping, 0);
 	GlobalRenderer::gRenderInstance.CreateGraphicsQueueForAttachments(MSAAShadowMapping, 1);
@@ -3969,11 +4066,21 @@ void ApplicationLoop::InitializeRuntime()
 	for (int i = 0; i < pds.size(); i++)
 	{
 		pdsHandles[i] = GlobalRenderer::gRenderInstance.CreateGenericRenderPipelineDescription(pds[i]);
+
+		if (GenericRenderPipelineInfoIndex() == pdsHandles[i])
+		{
+			return -1;
+		}
 	}
 
 	for (int i = 0; i < layouts.size(); i++)
 	{
 		shaderGraphHandles[i] = GlobalRenderer::gRenderInstance.CreateShaderGraphInstance(mainLogicalDevice, layouts[i]);
+
+		if (RenderShaderGraphIndex() == shaderGraphHandles[i])
+		{
+			return -1;
+		}
 	}
 
 	mainLinearSampler = GlobalRenderer::gRenderInstance.CreateSampler(mainLogicalDevice, 
@@ -4028,11 +4135,29 @@ void ApplicationLoop::InitializeRuntime()
 	pipelineHandles[UITEXTCOUNT] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[UITEXTCOUNT]);
 	pipelineHandles[UITEXTGENERATION] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[UITEXTGENERATION]);
 
+	for (int i = 0; i < pipelineHandles.size(); i++)
+	{
+		if (GeneratedPipelineInstanceIndex() == pipelineHandles[i])
+		{
+			return -1;
+		}
+	}
+
 	mainComputeQueueIndex = GlobalRenderer::gRenderInstance.CreateComputeQueue();
 
-	CreateTexturePools();
+	int texPoolRet = CreateTexturePools();
+
+	if (texPoolRet)
+	{
+		return -1;
+	}
 
 	mainCommandStreamIndex = GlobalRenderer::gRenderInstance.CreateGPUCommandStream(10);
+
+	if (GPUCommandStreamIndex() == mainCommandStreamIndex)
+	{
+		return -1;
+	}
 
 	globalBufferLocation = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, (sizeof(Matrix4f) * 3) + sizeof(Frustum), 1, alignof(Matrix4f), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::UNIFORM_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
 	globalIndexBuffer = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, globalIndexBufferSize, 1, 16, AllocationType::STATIC, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, -1, &mainDeviceAllocator);
@@ -4071,6 +4196,11 @@ void ApplicationLoop::InitializeRuntime()
 
 	globalTexturesDescriptorB.SetVariableArrayCount(&globalDescriptorBuilder, 3, 512);
 
+	if (globalDescriptorBuilder.contextFailed)
+	{
+		return -1;
+	}
+
 	int creationRetSB = CreateSkyBox();
 	int creationRetDB = CreateDebugCommandBuffers(globalDebugStructMaxCount);
 	int creationRetLW = CreateLightAssignments(globalLightMax);
@@ -4078,19 +4208,7 @@ void ApplicationLoop::InitializeRuntime()
 	int creationRetGMB = CreateGenericMeshCommandBuffers(globalMeshCountMax);
 	int creationRetSM = CreateShadowMapManager(4, globalMeshCountMax, 1024, 1024, mainShadowWidth, mainShadowHeight);
 	int creationRetFS = 0;//CreateMSAAPostFullScreen();
-
-	StringView fontName = STRING_VIEW_FROM_LITERAL("Font.bmp");
-	StringView fontDataName = STRING_VIEW_FROM_LITERAL("FontData.dat");
-	StringView font2Name = STRING_VIEW_FROM_LITERAL("Font2.bmp");
-	StringView font2DataName = STRING_VIEW_FROM_LITERAL("Font2Data.dat");
-
-	CreateUITools(25);
-
-	CreateFontTexture(&font2Name, &fontDataName, 20, 4, 0);
-	CreateFontTexture(&fontName, &fontDataName, 20, 5, 0);
-	
-	CreateUIText(&mainCenterContainer, globalUITestText, sizeof(globalUITestText) - 1);
-	CreateUIText(&mainRightContainer, globalUITestText2, sizeof(globalUITestText2) - 1);
+	int creationRetUI = CreateUITools(25);
 
 	if (creationRetSB < 0 ||
 		creationRetDB < 0 ||
@@ -4098,11 +4216,22 @@ void ApplicationLoop::InitializeRuntime()
 		creationRetMW < 0 ||
 		creationRetGMB < 0 ||
 		creationRetSM < 0 ||
-		creationRetFS < 0)
+		creationRetFS < 0 ||
+		creationRetUI < 0)
 	{
-		mainAppLogger.AddLogMessage(LOGINFO, STRING_VIEW_FROM_LITERAL("Shutting down environment, cannot create minimum sandbox"));
-		return;
+		return -1;
 	}
+
+	StringView fontName = STRING_VIEW_FROM_LITERAL("Font.bmp");
+	StringView fontDataName = STRING_VIEW_FROM_LITERAL("FontData.dat");
+	StringView font2Name = STRING_VIEW_FROM_LITERAL("Font2.bmp");
+	StringView font2DataName = STRING_VIEW_FROM_LITERAL("Font2Data.dat");
+
+	CreateFontTexture(&font2Name, &fontDataName, 20, 4, 0);
+	CreateFontTexture(&fontName, &fontDataName, 20, 5, 0);
+
+	CreateUIText(&mainCenterContainer, globalUITestText, sizeof(globalUITestText) - 1);
+	CreateUIText(&mainRightContainer, globalUITestText2, sizeof(globalUITestText2) - 1);
 
 	AddLight(mainSpotLight, LightType::SPOT);
 	AddLight(mainDirectionalLight, LightType::DIRECTIONAL);
@@ -4112,6 +4241,8 @@ void ApplicationLoop::InitializeRuntime()
 	c.CreateProjectionMatrix(GlobalRenderer::gRenderInstance.GetSwapChainWidth(mainPresentationSwapChain) / (float)GlobalRenderer::gRenderInstance.GetSwapChainHeight(mainPresentationSwapChain), 0.1f, 10000.0f, DegToRad(45.0f));
 
 	UpdateCameraMatrix();
+
+	return 0;
 }
 
 void ApplicationLoop::CleanupRuntime()
@@ -4492,14 +4623,10 @@ int CreateGPUGeometryRenderable(int geomGPURenderableIndex, const Matrix4f& matr
 
 void ScanSTDIN(void* data)
 {
-	HANDLE stdInHandle = GetStdHandle(STD_INPUT_HANDLE);
-
 	OSFileHandle stdIn;
 
 	OSGetSTDInput(&stdIn);
 	int64_t readReturn = 0;
-	DWORD events;
-	INPUT_RECORD record;
 
 	char inputBuffer[1024];
 
@@ -4513,26 +4640,17 @@ void ScanSTDIN(void* data)
 
 		if (ret < 0) continue;
 
-		BOOL success = ReadConsoleInput(stdInHandle, &record, 1, &events);
+#ifdef WIN32
+		int success = OSPollWindowsCommandLine();
 
-		if (!success) {
-			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Cannot get ReadConsoleInput\n"));
-			break;
+		if (success < 0)
+		{
+			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Cannot get read console input"));
+			return;
 		}
 
-		switch (record.EventType) {
-		case KEY_EVENT:
-			if (record.Event.KeyEvent.bKeyDown) 
-			{
-				if (record.Event.KeyEvent.uChar.AsciiChar == VK_RETURN)
-				{
-					break;
-				}
-			}
-		default:
-			continue;
-		}
-
+		if (!success) continue;
+#endif
 		readReturn = OSReadFile(&stdIn, 1024, inputBuffer);
 
 		if (readReturn < 0)
@@ -5114,8 +5232,8 @@ void PrintDebugMemoryAllocation()
 	mainAppLogger.AddLogMessage(LOGINFO, StringBuffer, actualSize);
 }
 
-
-int AllocateCPUGeometryDetails(int numberOfDetails) {
+int AllocateCPUGeometryDetails(int numberOfDetails) 
+{
 	mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("AllocateCPUGeometryDetails : unimplemented"));
 	return -1;
 }
@@ -5320,7 +5438,6 @@ void CreateBitTangentFromNormalTristrips(Vector4f* pos, Vector2f* uvs, uint16_t*
 
 		Vector3f bitangent = Normalize((e2 * duv1.x - e1 * duv2.x) * f);
 
-
 		Vector3f n = Normalize(normal);
 		float sign = (Dot(Cross(n, tangent), bitangent) < 0.0f) ? -1.0f : 1.0f;
 
@@ -5402,7 +5519,6 @@ int ReadDeferredMessageQueue(CircularMessageQueueMPSC* queue)
 
 void CreateGPUGenericObjects()
 {
-
 #define MAX_OBJECT_DISTANCE 100000.0f
 
 	int geomDetailsIndex = AllocateGPUGeometryDetails(1);
@@ -5456,7 +5572,7 @@ void CreateGPUGenericObjects()
 	CreateRenderable(cpuMeshRenderable, gpuMeshRendrables, Identity4f(), gpuGeomRenderable, materialRangeIndex, 1, blendRangesIndex, meshGPUIndex, 1);
 }
 
-void CreateUITools(int maxUIContainers)
+int CreateUITools(int maxUIContainers)
 {
 	globalUIContainerData = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(UIContainer), maxUIContainers, alignof(UIContainer), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
 	globalUIElementsIndirectBuffer = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, GetDriverIndirectDrawCommandSize(), maxUIContainers, GetDriverIndirectDrawCommandAlign(), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
@@ -5483,7 +5599,6 @@ void CreateUITools(int maxUIContainers)
 	GlobalRenderer::gRenderInstance.UpdateDriverMemory(&mainRightContainer, globalUIContainerData, sizeof(UIContainer), sizeof(UIContainer) * globalUICount++, TransferType::MEMORY);
 	GlobalRenderer::gRenderInstance.UpdateDriverMemory(&mainCenterContainer, globalUIContainerData, sizeof(UIContainer), sizeof(UIContainer) * globalUICount++, TransferType::MEMORY);
 	
-
 	uint32_t commands[3] = { 0, 1, 1 };
 
 	GlobalRenderer::gRenderInstance.UpdateDriverMemory(commands, globalUITextIndirectDispatchCommands, sizeof(commands), 0, TransferType::CACHED);
@@ -5501,8 +5616,7 @@ void CreateUITools(int maxUIContainers)
 		if (descriptorContext.contextFailed)
 		{
 			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("failed binding for UI descriptor"));
-			mainAppLogger.ProcessMessage();
-			return;
+			return -1;
 		}
 
 		std::array<ShaderResourceSetHandle, 1> descriptors = { descriptorBuilder() };
@@ -5520,6 +5634,11 @@ void CreateUITools(int maxUIContainers)
 		};
 
 		globalUICullPipelineIndex = GlobalRenderer::gRenderInstance.CreateComputePipelineObject(&pipelineCreateInfo);
+
+		if (PipelineHandleIndex() == globalUICullPipelineIndex)
+		{
+			return -1;
+		}
 	}
 
 	{
@@ -5534,8 +5653,7 @@ void CreateUITools(int maxUIContainers)
 		if (descriptorContext.contextFailed)
 		{
 			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("failed binding for UI descriptor"));
-			mainAppLogger.ProcessMessage();
-			return;
+			return -1;
 		}
 
 		std::array<ShaderResourceSetHandle, 1> descriptors = { descriptorBuilder() };
@@ -5555,6 +5673,11 @@ void CreateUITools(int maxUIContainers)
 		};
 
 		globalUIDrawingPipelineIndex = GlobalRenderer::gRenderInstance.CreateGraphicsPipelineObject(&pipelineCreateInfo);
+
+		if (PipelineHandleIndex() == globalUIDrawingPipelineIndex)
+		{
+			return -1;
+		}
 	}
 
 	{
@@ -5568,8 +5691,7 @@ void CreateUITools(int maxUIContainers)
 		if (descriptorContext.contextFailed)
 		{
 			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("failed binding for UI descriptor"));
-			mainAppLogger.ProcessMessage();
-			return;
+			return -1;
 		}
 
 		ShaderComputeLayout* computeLayout = GlobalRenderer::gRenderInstance.GetComputeLayout(shaderGraphHandles[UIDEPTHCOUNT]);
@@ -5588,6 +5710,10 @@ void CreateUITools(int maxUIContainers)
 
 		globalUICountPipeline = GlobalRenderer::gRenderInstance.CreateComputePipelineObject(&pipelineCreateInfo);
 
+		if (PipelineHandleIndex() == globalUICountPipeline)
+		{
+			return -1;
+		}
 	}
 
 	{
@@ -5601,8 +5727,7 @@ void CreateUITools(int maxUIContainers)
 		if (descriptorContext.contextFailed)
 		{
 			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("failed binding for UI descriptor"));
-			mainAppLogger.ProcessMessage();
-			return;
+			return -1;
 		}
 
 		std::array<ShaderResourceSetHandle, 1> descriptors = { descriptorBuilder() };
@@ -5618,6 +5743,11 @@ void CreateUITools(int maxUIContainers)
 		};
 
 		globalUIPrefixSumPipeline = GlobalRenderer::gRenderInstance.CreateComputePipelineObject(&pipelineCreateInfo);
+
+		if (PipelineHandleIndex() == globalUIPrefixSumPipeline)
+		{
+			return -1;
+		}
 	}
 
 	{
@@ -5632,8 +5762,7 @@ void CreateUITools(int maxUIContainers)
 		if (descriptorContext.contextFailed)
 		{
 			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("failed binding for UI descriptor"));
-			mainAppLogger.ProcessMessage();
-			return;
+			return -1;
 		}
 
 		std::array<ShaderResourceSetHandle, 1> uiChildDepthDescriptors = { descriptorBuilder() };
@@ -5650,26 +5779,30 @@ void CreateUITools(int maxUIContainers)
 
 
 		globalUIChildDepthAddPipeline = GlobalRenderer::gRenderInstance.CreateComputePipelineObject(&pipelineCreateInfo);
+
+		if (PipelineHandleIndex() == globalUIChildDepthAddPipeline)
+		{
+			return -1;
+		}
 	}
 
 	{
-		ShaderResourceSetBuilder uiUIIndexAssignBufferDescriptorB = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[UIINDEXASSIGNMENT], 0, MAX_FRAMES_IN_FLIGHT);
-		ShaderResourceSetContext uiUIIndexAssignDescriptorBuilder{ &mainAppLogger, false };
+		ShaderResourceSetBuilder descriptorBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[UIINDEXASSIGNMENT], 0, MAX_FRAMES_IN_FLIGHT);
+		ShaderResourceSetContext descriptorContext{ &mainAppLogger, false };
 
-		uiUIIndexAssignBufferDescriptorB.BindBufferToShaderResource(&uiUIIndexAssignDescriptorBuilder, &globalUIContainerData, 0, 1, 0);
-		uiUIIndexAssignBufferDescriptorB.BindBufferToShaderResource(&uiUIIndexAssignDescriptorBuilder, &globalChildrenOffsets, 0, 1, 1);
-		uiUIIndexAssignBufferDescriptorB.BindBufferView(&uiUIIndexAssignDescriptorBuilder, &globalUIIndirectionPositionalHandleBuffer, 0, 1, 2);
-		uiUIIndexAssignBufferDescriptorB.BindBufferToShaderResource(&uiUIIndexAssignDescriptorBuilder, &globalDepthOffsets, 0, 1, 3);
-		uiUIIndexAssignBufferDescriptorB.UploadConstant(&uiUIIndexAssignDescriptorBuilder, &globalUICount, 0);
+		descriptorBuilder.BindBufferToShaderResource(&descriptorContext, &globalUIContainerData, 0, 1, 0);
+		descriptorBuilder.BindBufferToShaderResource(&descriptorContext, &globalChildrenOffsets, 0, 1, 1);
+		descriptorBuilder.BindBufferView(&descriptorContext, &globalUIIndirectionPositionalHandleBuffer, 0, 1, 2);
+		descriptorBuilder.BindBufferToShaderResource(&descriptorContext, &globalDepthOffsets, 0, 1, 3);
+		descriptorBuilder.UploadConstant(&descriptorContext, &globalUICount, 0);
 
-		if (uiUIIndexAssignDescriptorBuilder.contextFailed)
+		if (descriptorContext.contextFailed)
 		{
 			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("failed binding for UI descriptor"));
-			mainAppLogger.ProcessMessage();
-			return;
+			return -1;
 		}
 
-		std::array<ShaderResourceSetHandle, 1> uiIndexDescriptors = { uiUIIndexAssignBufferDescriptorB() };
+		std::array<ShaderResourceSetHandle, 1> descriptors = { descriptorBuilder() };
 
 		ComputeIntermediaryPipelineInfo pipelineCreateInfo = {
 			.x = 1,
@@ -5678,11 +5811,16 @@ void CreateUITools(int maxUIContainers)
 			.pipelinename = pipelineHandles[UIINDEXASSIGNMENT],
 			.descCount = 1,
 			.indirectDispatchAllocation = -1,
-			.descriptorsetid = uiIndexDescriptors.data()
+			.descriptorsetid = descriptors.data()
 		};
 
 
 		globalUIIndexAssignmentPipeline = GlobalRenderer::gRenderInstance.CreateComputePipelineObject(&pipelineCreateInfo);
+
+		if (PipelineHandleIndex() == globalUIIndexAssignmentPipeline)
+		{
+			return -1;
+		}
 	}
 
 	for (int i = 0; i < 3; i++)
@@ -5700,8 +5838,7 @@ void CreateUITools(int maxUIContainers)
 		if (descriptorContext.contextFailed)
 		{
 			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("failed binding for UI descriptor"));
-			mainAppLogger.ProcessMessage();
-			return;
+			return -1;
 		}
 
 		std::array<ShaderResourceSetHandle, 1> descriptors = { descriptorBuilder() };
@@ -5717,6 +5854,11 @@ void CreateUITools(int maxUIContainers)
 		};
 
 		globalContainerSizeCalculationPipeline[i] = GlobalRenderer::gRenderInstance.CreateComputePipelineObject(&pipelineCreateInfo);
+
+		if (PipelineHandleIndex() == globalContainerSizeCalculationPipeline[i])
+		{
+			return -1;
+		}
 	}
 
 	for (int i = 0; i < 2; i++)
@@ -5735,8 +5877,7 @@ void CreateUITools(int maxUIContainers)
 		if (descriptorContext.contextFailed)
 		{
 			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("failed binding for UI descriptor"));
-			mainAppLogger.ProcessMessage();
-			return;
+			return -1;
 		}
 
 		std::array<ShaderResourceSetHandle, 1> descriptors = { descriptorBuilder() };
@@ -5752,6 +5893,11 @@ void CreateUITools(int maxUIContainers)
 		};
 
 		globalContainerPositionCalculationPipeline[i+1] = GlobalRenderer::gRenderInstance.CreateComputePipelineObject(&pipelineCreateInfo);
+
+		if (PipelineHandleIndex() == globalContainerPositionCalculationPipeline[i + 1])
+		{
+			return -1;
+		}
 	}
 
 	{
@@ -5766,8 +5912,7 @@ void CreateUITools(int maxUIContainers)
 		if (descriptorContext.contextFailed)
 		{
 			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("failed binding for UI descriptor"));
-			mainAppLogger.ProcessMessage();
-			return;
+			return -1;
 		}
 
 		std::array<ShaderResourceSetHandle, 1> uiDrawDescriptors = { descriptorBuilder() };
@@ -5787,6 +5932,11 @@ void CreateUITools(int maxUIContainers)
 		};
 
 		globalUIGlobalIDPipeline = GlobalRenderer::gRenderInstance.CreateGraphicsPipelineObject(&uiDrawPipelineCreate);
+
+		if (PipelineHandleIndex() == globalUIGlobalIDPipeline)
+		{
+			return -1;
+		}
 	}
 
 	{
@@ -5811,8 +5961,7 @@ void CreateUITools(int maxUIContainers)
 		if (descriptorContext.contextFailed)
 		{
 			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("failed binding for UI descriptor"));
-			mainAppLogger.ProcessMessage();
-			return;
+			return -1;
 		}
 
 		std::array<ShaderResourceSetHandle, 1> descriptors = { descriptorBuilder() };
@@ -5828,6 +5977,11 @@ void CreateUITools(int maxUIContainers)
 		};
 
 		globalUICursorPosition = GlobalRenderer::gRenderInstance.CreateComputePipelineObject(&pipelineCreateInfo);
+
+		if (PipelineHandleIndex() == globalUICursorPosition)
+		{
+			return -1;
+		}
 	}
 
 	{
@@ -5843,8 +5997,7 @@ void CreateUITools(int maxUIContainers)
 		if (descriptorContext.contextFailed)
 		{
 			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("failed binding for UI descriptor"));
-			mainAppLogger.ProcessMessage();
-			return;
+			return -1;
 		}
 
 		std::array<ShaderResourceSetHandle, 1> descriptors = { descriptorBuilder() };
@@ -5860,6 +6013,11 @@ void CreateUITools(int maxUIContainers)
 		};
 
 		globalUITextCountPipeline = GlobalRenderer::gRenderInstance.CreateComputePipelineObject(&pipelineCreateInfo);
+
+		if (PipelineHandleIndex() == globalUITextCountPipeline)
+		{
+			return -1;
+		}
 	}
 
 	{
@@ -5878,8 +6036,7 @@ void CreateUITools(int maxUIContainers)
 		if (descriptorContext.contextFailed)
 		{
 			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("failed binding for UI descriptor"));
-			mainAppLogger.ProcessMessage();
-			return;
+			return -1;
 		}
 
 		std::array<ShaderResourceSetHandle, 1> descriptors = { descriptorBuilder() };
@@ -5895,6 +6052,11 @@ void CreateUITools(int maxUIContainers)
 		};
 
 		globalUITextGenerationPipeline = GlobalRenderer::gRenderInstance.CreateComputePipelineObject(&pipelineCreateInfo);
+
+		if (PipelineHandleIndex() == globalUITextGenerationPipeline)
+		{
+			return -1;
+		}
 	}
 
 	{
@@ -5912,8 +6074,7 @@ void CreateUITools(int maxUIContainers)
 		if (descriptorContext.contextFailed)
 		{
 			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("failed binding for UI descriptor"));
-			mainAppLogger.ProcessMessage();
-			return;
+			return -1;
 		}
 
 		std::array<ShaderResourceSetHandle, 1> descriptors = { descriptorBuilder() };
@@ -5934,8 +6095,14 @@ void CreateUITools(int maxUIContainers)
 		};
 
 		globalUITextRenderingPipeline = GlobalRenderer::gRenderInstance.CreateGraphicsPipelineObject(&pipelineCreate);
+
+		if (PipelineHandleIndex() == globalUITextRenderingPipeline)
+		{
+			return -1;
+		}
 	}
 
+	return 0;
 }
 
 int CreateFontTexture(StringView* fontName, StringView* fontDataName, uint32_t fontHeight, uint32_t globalHeightModifier, uint32_t globalWidthModifier)
@@ -5944,12 +6111,18 @@ int CreateFontTexture(StringView* fontName, StringView* fontDataName, uint32_t f
 
 	int texture = Read2DImage(fontName, 1, TextureIOType::BMP);
 
+	if (texture < 0)
+	{
+		mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Cannot create font image"));
+		return texture;
+	}
+
 	int openFileRet = OSOpenFile(fontDataName->stringData, fontDataName->charCount, OSFileFlagsTypes::READ, &fileHandle);
 
 	if (openFileRet < 0)
 	{
 		mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Cannot open font data"));
-		return texture;
+		return openFileRet;
 	}
 
 	char dataRead[sizeof(Font)];

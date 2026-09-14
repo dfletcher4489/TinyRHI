@@ -6,3 +6,4 @@ struct OSWindowInternalData
     HWND wnd;
     HINSTANCE inst;
 };
+

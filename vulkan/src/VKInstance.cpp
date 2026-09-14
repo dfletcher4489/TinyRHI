@@ -8,10 +8,9 @@
 #include <vulkan/vulkan_win32.h>
 #endif
 
-#include "new.h"
-
 #include <assert.h>
 #include <limits.h>
+#include <new.h>
 #include <string.h>
 #include <stdio.h>
 

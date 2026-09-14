@@ -279,6 +279,8 @@ struct RenderInstance
 	void WriteDeviceQuery(CommandRecorder* recorder, PipelineStage stage, uint32_t currentFrame);
 
 	void ToggleDeviceQueries(RenderDeviceIndex mainDeviceSelection);
+
+	void DumpLogger();
 	
 	void DestroyPhysicalDeviceIndices(RenderPhysicalDeviceIndex handle);
 	void DestroyLogicalDeviceIndices(RenderDeviceIndex handle);

@@ -96,14 +96,12 @@ void HandleSpotLightAssignment(uint lIndex)
     float r = posLoad.w;
     vec3 lightDir = lightBuffer.objects[lIndex].direction.xyz;
 
-
     vec3 AABBStart = clamp(posReal, gs.grid.min.xyz, gs.grid.max.xyz);
     vec3 AABBStop = clamp(posReal + (lightDir * r), gs.grid.min.xyz, gs.grid.max.xyz);
       
     vec3 AABBMin = min(AABBStart, AABBStop);
     vec3 AABBMax = max(AABBStart, AABBStop);
 
-    
     vec4 range = gs.grid.max - gs.grid.min;
     vec3 cellDiv = range.xyz / float(gs.grid.numberOfDivisions);
 
@@ -119,12 +117,11 @@ void HandleSpotLightAssignment(uint lIndex)
         {
             for (uint z = cellsMin.z; z<=cellsMax.z; z++)
             {
-
                 vec3 gridMinPoints = (vec3(x, y, z) * cellDiv) + gs.grid.min.xyz;
                 vec3 gridMaxPoints = gridMinPoints + cellDiv;
 
                 if (RayIntersectAABB(posReal, lightDir, gridMinPoints, gridMaxPoints, r)) {
-                     uint insertIndex = (x * gs.grid.numberOfDivisions * gs.grid.numberOfDivisions) + (y * gs.grid.numberOfDivisions) + z;
+                    uint insertIndex = (x * gs.grid.numberOfDivisions * gs.grid.numberOfDivisions) + (y * gs.grid.numberOfDivisions) + z;
                     atomicAdd(counts.countsAtN[insertIndex], 1);
                 }  
             }

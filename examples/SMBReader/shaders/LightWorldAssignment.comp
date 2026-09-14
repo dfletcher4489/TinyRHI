@@ -123,7 +123,6 @@ void HandleSpotLightAssignment(uint lIndex)
         {
             for (uint z = cellsMin.z; z<=cellsMax.z; z++)
             {
-
                 vec3 gridMinPoints = (vec3(x, y, z) * cellDiv) + gs.grid.min.xyz;
                 vec3 gridMaxPoints = gridMinPoints + cellDiv;
 

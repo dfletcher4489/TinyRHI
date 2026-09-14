@@ -1,0 +1,57 @@
+#version 450
+
+#extension GL_GOOGLE_include_directive: require
+
+#include "include/Math.iglsl"
+#include "include/Lights.iglsl"
+
+struct UniformGrid
+{
+    vec4 max;
+    vec4 min;
+	uint numberOfDivisions;
+    uint numberOfLights;
+};
+
+layout(push_constant) uniform GlobalContext 
+{
+    UniformGrid grid;
+} gs;
+
+layout(set = 0, binding = 0) readonly buffer LightCounts
+{
+	uint count[];
+} lightCounts;
+
+layout(set = 0, binding = 1) buffer GridCounts 
+{
+	uint count[];
+} gridCounts;
+
+void HandleDirectionalLight()
+{
+    for (uint x = 0; x<gs.grid.numberOfDivisions; x++)
+    {
+        for (uint y = 0; y<gs.grid.numberOfDivisions; y++)
+        {
+            for (uint z = 0; z<gs.grid.numberOfDivisions; z++)
+            {
+                uint insertIndex = (x * gs.grid.numberOfDivisions * gs.grid.numberOfDivisions) + (y * gs.grid.numberOfDivisions) + z;
+                atomicAdd(gridCounts.count[insertIndex], 1);
+            }
+        }
+    }
+}
+
+layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+void main()
+{
+	uint lIndex =  (gl_WorkGroupID.x * gl_WorkGroupSize.x) + gl_LocalInvocationID.x;
+
+    if (lIndex >= lightCounts.count[LIGHT_TYPE_DIRECTIONAL]) return;
+    
+    HandleDirectionalLight();
+   
+	return;
+}

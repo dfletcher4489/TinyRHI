@@ -1,0 +1,77 @@
+#version 450
+
+#extension GL_GOOGLE_include_directive: require
+
+#include "include/Lights.iglsl"
+
+struct UniformGrid
+{
+    vec4 max;
+    vec4 min;
+	uint numberOfDivisions;
+    uint numberOfLights;
+};
+
+layout(push_constant) uniform GlobalContext 
+{
+    UniformGrid grid;
+} gs;
+
+layout(set = 0, binding = 0) buffer Counts 
+{
+	uint countsAtN[];
+} counts;
+
+layout(set = 0, binding = 1) uniform usamplerBuffer globalLightTypes;
+
+layout(set = 0, binding = 2) buffer LightAssigns
+{
+	uint indices[];
+} lightAssigns[LIGHT_TYPE_COUNT];
+
+shared uint perTypeCount[LIGHT_TYPE_COUNT];
+
+layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+void main()
+{
+	uint lIndex =  (gl_WorkGroupID.x * gl_WorkGroupSize.x) + gl_LocalInvocationID.x;
+
+    if (gl_LocalInvocationID.x == 0)
+    {
+        perTypeCount[LIGHT_TYPE_DIRECTIONAL] = 0;
+        perTypeCount[LIGHT_TYPE_POINT] = 0;
+        perTypeCount[LIGHT_TYPE_SPOT] = 0;
+    }
+
+    barrier();
+
+    uint bufferIndex = gs.grid.numberOfLights;
+
+    uint lType = LIGHT_TYPE_COUNT;
+
+    if (lIndex < gs.grid.numberOfLights)
+    {
+        lType = uint(texelFetch(globalLightTypes, int(lIndex)).r);
+
+        bufferIndex = atomicAdd(perTypeCount[lType], 1u);
+    }
+   
+    barrier();
+
+    if (gl_LocalInvocationID.x == 0)
+    {
+        perTypeCount[LIGHT_TYPE_DIRECTIONAL] = atomicAdd(counts.countsAtN[LIGHT_TYPE_DIRECTIONAL], perTypeCount[LIGHT_TYPE_DIRECTIONAL]);
+        perTypeCount[LIGHT_TYPE_SPOT] = atomicAdd(counts.countsAtN[LIGHT_TYPE_SPOT], perTypeCount[LIGHT_TYPE_SPOT]);
+        perTypeCount[LIGHT_TYPE_POINT] = atomicAdd(counts.countsAtN[LIGHT_TYPE_POINT], perTypeCount[LIGHT_TYPE_POINT]);
+    }
+
+    barrier();
+
+    if (lIndex < gs.grid.numberOfLights)
+    {
+        lightAssigns[lType].indices[bufferIndex + perTypeCount[lType]] = lIndex;
+    }
+  
+	return;
+}

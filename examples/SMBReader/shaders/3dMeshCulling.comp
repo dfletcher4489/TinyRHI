@@ -255,7 +255,11 @@ void main()
     uint lightOffsets =  texelFetch(globalLightOffsets, int(worldIndex)).r;
     uint lightCounts =  texelFetch(globalLightCounts, int(worldIndex)).r;
 
-    lightOffsets -= lightCounts;
+    uint dc = GET_LIGHT_TYPE_DIRECTIONAL_COUNT(lightCounts);
+    uint poc = GET_LIGHT_TYPE_POINT_COUNT(lightCounts);
+    uint sc = GET_LIGHT_TYPE_SPOT_COUNT(lightCounts);
+
+    lightCounts = sc + poc + dc;
 
     uint lightMeshCount = 0;
 

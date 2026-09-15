@@ -72,7 +72,6 @@ void main()
     vec4 AABBMin = min(transformMin, transformMax);
     vec4 AABBMax = max(transformMin, transformMax);
 
-
     vec3 clampedMin = max(AABBMin.xyz, gs.grid.min.xyz);
     vec3 clampedMax = min(AABBMax.xyz, gs.grid.max.xyz);
 

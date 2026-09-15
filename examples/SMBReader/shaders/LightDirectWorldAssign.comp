@@ -38,21 +38,10 @@ layout(set = 0, binding = 4) buffer LightAssigns
 	uint indices[];
 } lightAssigns[LIGHT_TYPE_COUNT];
 
-void HandleDirectionalLight(uint lIndex)
+layout(set = 0, binding = 5) buffer GridCounts 
 {
-    for (uint x = 0; x<gs.grid.numberOfDivisions; x++)
-    {
-        for (uint y = 0; y<gs.grid.numberOfDivisions; y++)
-        {
-            for (uint z = 0; z<gs.grid.numberOfDivisions; z++)
-            {
-                uint insertIndex = (x * gs.grid.numberOfDivisions * gs.grid.numberOfDivisions) + (y * gs.grid.numberOfDivisions) + z;
-                uint index = atomicAdd(gridOffsets.offset[insertIndex], 1u);
-                imageStore(WorldAssignments, int(index), uvec4(lIndex, 0, 0, 0));
-            }
-        }
-    }
-}
+	uint count[];
+} gridCounts;
 
 layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
 
@@ -60,11 +49,17 @@ void main()
 {
 	uint lIndex =  (gl_WorkGroupID.x * gl_WorkGroupSize.x) + gl_LocalInvocationID.x;
 
-    if (lIndex >= lightCounts.count[LIGHT_TYPE_DIRECTIONAL]) return;
+    if (lIndex < (gs.grid.numberOfDivisions*gs.grid.numberOfDivisions*gs.grid.numberOfDivisions))
+    {
+        uint indexBase = gridOffsets.offset[lIndex];
 
-    uint lightIndex = lightAssigns[LIGHT_TYPE_DIRECTIONAL].indices[lIndex];
-    
-    HandleDirectionalLight(lightIndex);
+        for (uint i = 0; i<lightCounts.count[LIGHT_TYPE_DIRECTIONAL]; i++)
+        {
+            uint lightIndex = lightAssigns[LIGHT_TYPE_DIRECTIONAL].indices[i];
+
+            imageStore(WorldAssignments, int(indexBase +  i), uvec4(lightIndex, 0, 0, 0));
+        }
+    }
    
 	return;
 }

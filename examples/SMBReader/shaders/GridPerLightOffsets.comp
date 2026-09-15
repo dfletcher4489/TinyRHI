@@ -1,0 +1,41 @@
+#version 450
+
+#include "include/Lights.iglsl"
+
+layout(push_constant) uniform GlobalContext 
+{
+    uint count;
+} gs;
+
+layout(set = 0, binding = 0) buffer Counts 
+{
+	uint countsAtN[];
+} counts;
+
+layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+void main()
+{
+	uint lIndex =  gl_LocalInvocationID.x;
+
+	uint globalIndex = (gl_WorkGroupID.x * gl_WorkGroupSize.x) + lIndex;
+
+	uint n = gs.count;
+
+	if (globalIndex < n)
+	{
+		uint pc = counts.countsAtN[globalIndex];
+
+		uint dc = GET_LIGHT_TYPE_DIRECTIONAL_COUNT(pc); 
+		uint poc = GET_LIGHT_TYPE_POINT_COUNT(pc); 
+		uint sc = GET_LIGHT_TYPE_SPOT_COUNT(pc);
+
+		//sc = dc + poc;
+		//poc = dc;
+		//dc = 0;
+
+		//counts.countsAtN[globalIndex] = PACK_LIGHT_STR_POS(dc, poc, sc);
+	}
+	
+	return;
+}

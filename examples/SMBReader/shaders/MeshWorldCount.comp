@@ -49,56 +49,49 @@ void main()
 {
 	uint lIndex =  (gl_WorkGroupID.x * gl_WorkGroupSize.x) + gl_LocalInvocationID.x;
 
-    if (lIndex >= gs.grid.numberOfMeshes) 
-        return;
+    uint x = lIndex / (gs.grid.numberOfDivisions*gs.grid.numberOfDivisions);
+    uint y = (lIndex%(gs.grid.numberOfDivisions*gs.grid.numberOfDivisions)) / gs.grid.numberOfDivisions;
+    uint z = lIndex % gs.grid.numberOfDivisions;
 
-    MeshRenderable currentRenderable = rends.renderables[lIndex];
-
-    GeometryRenderable lGeomRenderable = geomRends.geomRenderables[currentRenderable.geomInstIndex];
-
-    GeometryDetails lGeomDetails = geomDetails.details[lGeomRenderable.geomDescIndex];
-
-    MeshDetails lModelData = perModelBuffer.objects[currentRenderable.meshIndex];
-
-    mat4 worldM = lGeomRenderable.transform * currentRenderable.transform;
-
-    AABB objBox = lGeomDetails.minMaxBox;
-
-    AABB outObjTransform = TransformAABBArvo(worldM, objBox);
-
-    vec4 transformMin = outObjTransform.min;
-    vec4 transformMax = outObjTransform.max;
-
-    vec4 AABBMin = min(transformMin, transformMax);
-    vec4 AABBMax = max(transformMin, transformMax);
-
-    vec3 clampedMin = max(AABBMin.xyz, gs.grid.min.xyz);
-    vec3 clampedMax = min(AABBMax.xyz, gs.grid.max.xyz);
-
-    if (any(lessThan(clampedMax, clampedMin)))
-        return;
-    
     vec4 range = gs.grid.max - gs.grid.min;
     vec3 cellDiv = range.xyz / float(gs.grid.numberOfDivisions);
 
-    ivec3 cellsMin = ivec3(floor((clampedMin-gs.grid.min.xyz)/cellDiv ));
-    ivec3 cellsMax = ivec3(floor((clampedMax-gs.grid.min.xyz)/cellDiv ));  
+    vec3 gridMinPoints = (vec3(x, y, z) * cellDiv) + gs.grid.min.xyz;
+    vec3 gridMaxPoints = gridMinPoints + cellDiv;
 
-    cellsMin = clamp(cellsMin, ivec3(0), ivec3(gs.grid.numberOfDivisions - 1));
-    cellsMax = clamp(cellsMax, ivec3(0), ivec3(gs.grid.numberOfDivisions - 1));
+    AABB gridAABB;
 
-    for (uint x = cellsMin.x; x<=cellsMax.x; x++)
+    gridAABB.min = vec4(gridMinPoints, 1.0);
+    gridAABB.max = vec4(gridMaxPoints, 1.0);
+
+    if (lIndex < (gs.grid.numberOfDivisions*gs.grid.numberOfDivisions*gs.grid.numberOfDivisions))
     {
-        for (uint y = cellsMin.y; y<=cellsMax.y; y++)
+        uint counter = 0;
+
+        for (uint i = 0; i<gs.grid.numberOfMeshes; i++)
         {
-            for (uint z = cellsMin.z; z<=cellsMax.z; z++)
+            uint currentRenderableGeom = rends.renderables[i].geomInstIndex;
+
+            GeometryRenderable lGeomRenderable = geomRends.geomRenderables[currentRenderableGeom];
+
+            GeometryDetails lGeomDetails = geomDetails.details[lGeomRenderable.geomDescIndex];
+
+            mat4 worldM = lGeomRenderable.transform * rends.renderables[i].transform;
+
+            AABB objBox = lGeomDetails.minMaxBox;
+
+            AABB outObjTransform = TransformAABBArvo(worldM, objBox);
+
+            bool intersect = AABBIntersect(gridAABB, outObjTransform);
+
+            if (intersect)
             {
-                uint insertIndex = (x * gs.grid.numberOfDivisions * gs.grid.numberOfDivisions) + (y * gs.grid.numberOfDivisions) + z;
-                atomicAdd(counts.countsAtN[insertIndex], 1u);
-            }
+                counter++;
+            }   
         }
+
+        counts.countsAtN[lIndex] = counter;
     }
     
-
 	return;
 }

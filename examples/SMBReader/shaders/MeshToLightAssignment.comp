@@ -1,0 +1,177 @@
+#version 450
+
+#include "include/Math.iglsl"
+#include "include/Mesh.iglsl"
+#include "include/Lights.iglsl"
+
+layout(set = 0, binding = 0) uniform usamplerBuffer globalLightOffsets;
+layout(set = 0, binding = 1) uniform usamplerBuffer globalLightCounts;
+layout(set = 0, binding = 2) uniform usamplerBuffer globalLightAllocations;
+
+layout(set = 0, binding = 3) uniform usamplerBuffer globalMeshCounts;
+layout(set = 0, binding = 4) uniform usamplerBuffer globalMeshOffsets;
+layout(set = 0, binding = 5) uniform usamplerBuffer globalMeshAllocations;
+
+layout(set = 0, binding = 6) buffer RENDBuffer
+{
+    MeshRenderable renderables[];
+} rends;
+
+layout(set = 0, binding = 7) readonly buffer PMBuffer 
+{
+    MeshDetails objects[];
+} perModelBuffer;
+
+layout(set = 0, binding = 8) readonly buffer GeomDescBuffer
+{
+    GeometryDetails details[];
+} geomDetails;
+
+layout(set = 0, binding = 9) readonly buffer GeomInstBuffer
+{
+    GeometryRenderable geomRenderables[];
+} geomRends;
+
+layout(set = 0, binding = 10) readonly buffer GLBuffer 
+{
+    LightSource objects[];
+} lightBuffer;
+
+layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+void main()
+{
+	uint lIndex =  gl_LocalInvocationID.x;
+
+	uint gridIndex = gl_WorkGroupID.x;
+
+    uint lightOffsets =  texelFetch(globalLightOffsets, int(gridIndex)).r;
+    uint lightCounts =  texelFetch(globalLightCounts, int(gridIndex)).r;
+    uint meshOffsets =  texelFetch(globalMeshOffsets, int(gridIndex)).r;
+    uint meshCounts =  texelFetch(globalMeshCounts, int(gridIndex)).r;
+
+    if (meshCounts > lIndex)
+    {
+        uint dc = GET_LIGHT_TYPE_DIRECTIONAL_COUNT(lightCounts);
+        uint poc = GET_LIGHT_TYPE_POINT_COUNT(lightCounts);
+        uint sc = GET_LIGHT_TYPE_SPOT_COUNT(lightCounts);
+
+        uint index = texelFetch(globalMeshAllocations, int(meshOffsets+lIndex)).r;
+
+        GeometryRenderable lGeomRenderable = geomRends.geomRenderables[rends.renderables[index].geomInstIndex];
+
+        GeometryDetails lGeomDetails = geomDetails.details[lGeomRenderable.geomDescIndex];
+
+        vec4 sphere = perModelBuffer.objects[rends.renderables[index].meshIndex].sphere;
+
+        mat4 worldM = lGeomRenderable.transform * rends.renderables[index].transform;
+
+        float r = sphere.w;
+
+        vec3 sphereWPos = vec3(worldM * vec4(sphere.xyz, 1.0f));
+
+        uint lightMeshCount = 0;
+
+        uint lightStage = 0;
+
+        uint ObjLightCopies[4]; 
+
+        while (lightMeshCount < 4 && lightStage < 3)
+        {
+           if (lightStage == 0)
+           {
+               for (uint light = 0; light<dc; light++)
+               {
+                   uint lightIndex = texelFetch(globalLightAllocations, int(lightOffsets+light)).r;
+
+                  uint objLightIndex = lightMeshCount;
+
+                  if (objLightIndex < 4)
+                   {
+                       ObjLightCopies[objLightIndex] = lightIndex;
+                       lightMeshCount++;
+                   }
+               }
+            }
+            else if (lightStage == 1)
+            {
+                for (uint light = 0; light<poc; light++)
+                {
+                    uint lightIndex = texelFetch(globalLightAllocations, int(lightOffsets+dc+light)).r;
+
+                   vec4 posLoad = lightBuffer.objects[lightIndex].pos;
+
+                   float lR = posLoad.w;
+
+                   vec3 posTest = posLoad.xyz;
+
+                   posTest = sphereWPos - posTest;
+
+                   float totalRadius = lR + r;
+
+                   float d = dot(posTest, posTest);
+
+                   if (d <= totalRadius * totalRadius)
+                    {
+                       uint objLightIndex = lightMeshCount;
+
+                      if (objLightIndex < 4)
+                       {
+                            ObjLightCopies[objLightIndex] = lightIndex;
+                            lightMeshCount++;
+                       } 
+                    }
+                }
+            }
+            else
+            {
+                for (uint light = 0; light<sc; light++)
+                {
+                   uint lightIndex = texelFetch(globalLightAllocations, int(lightOffsets+dc+poc+light)).r;
+
+                   vec4 posLoad = lightBuffer.objects[lightIndex].pos;
+                   vec3 dirLoad = lightBuffer.objects[lightIndex].direction.xyz;
+
+                   bool addToLights = ConeIntersectSphere(posLoad.xyz, dirLoad, sphereWPos, r, posLoad.w, lightBuffer.objects[lightIndex].ancillary.y);
+
+                   if (addToLights)
+                    {
+                        uint objLightIndex = lightMeshCount;
+
+                        if (objLightIndex < 4)
+                        {
+                            ObjLightCopies[objLightIndex] = lightIndex;
+                            lightMeshCount++;
+                        }   
+                    } 
+                }
+            }
+
+           lightStage++;
+        }
+
+        if (lightMeshCount > 0)
+        {
+           uint old = atomicAdd(rends.renderables[index].lightCount, lightMeshCount);
+        
+           if ((old+lightMeshCount) >= 4) 
+           {
+              uint diff = ((old+lightMeshCount)-4);
+          
+              lightMeshCount -= diff;
+        
+             atomicAdd(rends.renderables[index].lightCount, -diff);
+           }
+        
+           if (old < 4)
+           {
+              for (uint i = 0; i<lightMeshCount; i++)
+              {
+                  rends.renderables[index].lightIndices[old+i] = ObjLightCopies[i];
+              }
+           }
+        }
+    } 
+
+	return;
+}

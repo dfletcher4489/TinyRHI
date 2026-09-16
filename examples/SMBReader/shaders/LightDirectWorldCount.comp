@@ -9,7 +9,7 @@ struct UniformGrid
     vec4 max;
     vec4 min;
 	uint numberOfDivisions;
-    uint numberOfLights;
+
 };
 
 layout(push_constant) uniform GlobalContext 

@@ -10,7 +10,6 @@ struct UniformGrid
     vec4 max;
     vec4 min;
 	uint numberOfDivisions;
-    uint numberOfLights;
 };
 
 layout(push_constant) uniform GlobalContext 
@@ -52,7 +51,7 @@ void main()
 	uint lIndex =  (gl_WorkGroupID.x * gl_WorkGroupSize.x) + gl_LocalInvocationID.x;
 
     uint x = lIndex / (gs.grid.numberOfDivisions*gs.grid.numberOfDivisions);
-    uint y = (lIndex-(x*(gs.grid.numberOfDivisions*gs.grid.numberOfDivisions))) / (gs.grid.numberOfDivisions);
+    uint y = (lIndex%(gs.grid.numberOfDivisions*gs.grid.numberOfDivisions)) / gs.grid.numberOfDivisions;
     uint z = lIndex % gs.grid.numberOfDivisions;
 
     vec4 range = gs.grid.max - gs.grid.min;

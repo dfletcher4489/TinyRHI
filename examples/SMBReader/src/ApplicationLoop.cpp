@@ -58,8 +58,6 @@ enum ShaderResourceLayoutIdentifiers
 	PREFIXADD,
 	WORLDORGANIZE,
 	WORLDASSIGN,
-	LIGHTORGANIZE,
-	LIGHTASSIGN,
 	NORMALDEBUGDRAW,
 	SKYBOX,
 	OUTLINE, 
@@ -87,7 +85,7 @@ enum ShaderResourceLayoutIdentifiers
 	LIGHTSPOTASSIGN,
 	LIGHTTYPECOUNTASSIGN,
 	LIGHTGRIDPREFIX,
-	GRIDPERLIGHTOFFSET,
+	MESHTOLIGHTASSIGNMENT,
 	SHADERRESOURCECOUNT
 };
 
@@ -111,7 +109,7 @@ static std::array<StringView, 12> pds = {
 
 std::array<GenericRenderPipelineInfoIndex, 12> pdsHandles{};
 
-static std::array<StringView, 40> layouts = {
+static std::array<StringView, SHADERRESOURCECOUNT> layouts = {
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("3DTexturedLayout.sgr"),
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("InterpolateMeshLayout.sgr"),
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("PolynomialLayout.sgr"),
@@ -122,8 +120,6 @@ static std::array<StringView, 40> layouts = {
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("PrefixSumAdd.sgr"),
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("WorldObjectDivison.sgr"),
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("MeshWorldAssignments.sgr"),
-	STRING_VIEW_FROM_LITERAL_INIT_LIST("LightObjectDivision.sgr"),
-	STRING_VIEW_FROM_LITERAL_INIT_LIST("LightWorldAssignment.sgr"),
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("NormalDebug.sgr"),
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("Skybox.sgr"),
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("OutlineLayout.sgr"),
@@ -151,7 +147,7 @@ static std::array<StringView, 40> layouts = {
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("LightSpotWorldAssign.sgr"),
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("LightTypeCountAssign.sgr"),
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("LightGridPrefixSum.sgr"),
-	STRING_VIEW_FROM_LITERAL_INIT_LIST("GridPerLightOffsets.sgr"),
+	STRING_VIEW_FROM_LITERAL_INIT_LIST("MeshToLightAssignments.sgr"),
 };
 
 static std::array<StringView, 2> mainLayoutAttachments =
@@ -287,7 +283,7 @@ struct GPULightPartition
 	PipelineHandleIndex spotTypeCountPipeline;
 	PipelineHandleIndex spotTypeAssignPipeline;
 	PipelineHandleIndex worldSpacePrefixSumPipeline;
-	PipelineHandleIndex lightCountGridOffsets;
+	PipelineHandleIndex meshToLightAssignmentPipe;
 };
 
 static int sizeOfLightTypeCount = sizeof(uint32_t) * 3;
@@ -1200,7 +1196,6 @@ void ApplicationLoop::Execute()
 				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, lightPartition.directTypeCountPipeline);
 				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, lightPartition.spotTypeCountPipeline);
 				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, lightPartition.worldSpacePrefixSumPipeline);
-				//GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, lightPartition.lightCountGridOffsets);
 				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, lightPartition.directTypeAssignPipeline);
 				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, lightPartition.spotTypeAssignPipeline);
 
@@ -1244,6 +1239,8 @@ void ApplicationLoop::Execute()
 					GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, worldSpaceAssignment.prefixSumPipeline);
 
 					GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, worldSpaceAssignment.postWorldSpaceDivisionPipeline);
+
+					GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, lightPartition.meshToLightAssignmentPipe);
 
 					if (updateMainDrawCommand == 1)
 						mainDrawRenderableCount = mainIndirectDrawData.commandBufferCount;
@@ -1363,14 +1360,15 @@ void ApplicationLoop::Execute()
 			{
 				mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Missed image handle during drawing, closing app"));
 				running = false;
+
 			}	
 
-			std::array<int, 10> arr{}, arr2{};
+			std::array<int, 125> arr{}, arr2{};
 
-			//GlobalRenderer::gRenderInstance.ReadData(lightPartition.worldSpaceDivisionAlloc, arr.data(), sizeof(arr), 0);
-			//GlobalRenderer::gRenderInstance.ReadData(lightPartition.gridOffsetsAlloc, arr2.data(), sizeof(arr), 0);
-
-
+			//GlobalRenderer::gRenderInstance.ReadData(lightPartition.gridCountsAlloc, arr.data(), sizeof(arr), 0);
+			//GlobalRenderer::gRenderInstance.ReadData(lightPartition.gridCountsAlloc, arr2.data(), sizeof(arr), 0);
+			//GlobalRenderer::gRenderInstance.ReadData(lightPartition.worldSpaceDivisionAlloc, arr2.data(), sizeof(arr), 0);
+			
 
 			fps();
 
@@ -2904,31 +2902,17 @@ int CreateGenericMeshCommandBuffers(int count)
 		return -1;
 	}
 
-	ShaderResourceSetBuilder cullLightDescriptorBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[RENDEROBJCULL], 1, MAX_FRAMES_IN_FLIGHT);
-
-
-	cullLightDescriptorBuilder.BindBufferView(&genericMeshRSContext, &lightPartition.worldSpaceDivisionAlloc, 0, 1, 2);
-	cullLightDescriptorBuilder.BindBufferView(&genericMeshRSContext, &lightPartition.gridOffsetsAlloc, 0, 1, 0);
-	cullLightDescriptorBuilder.BindBufferView(&genericMeshRSContext, &lightPartition.gridCountsAlloc, 0, 1, 1);
-	cullLightDescriptorBuilder.BindBufferToShaderResource(&genericMeshRSContext, &globalLightBuffer, 0, 1, 3);
-	cullLightDescriptorBuilder.BindBufferView(&genericMeshRSContext, &globalLightTypesBuffer, 0, 1, 4 );
-
-	if (genericMeshRSContext.contextFailed)
-	{
-		genericMeshRSContext.contextLogger->ProcessMessage();
-		return -1;
-	}
 
 	ShaderComputeLayout* layout = GlobalRenderer::gRenderInstance.GetComputeLayout(shaderGraphHandles[RENDEROBJCULL]);
 
-	std::array<ShaderResourceSetHandle, 2> computeDescriptors = { mainIndirectDrawData.indirectCullDescriptor, cullLightDescriptorBuilder() };
+	std::array<ShaderResourceSetHandle, 2> computeDescriptors = { mainIndirectDrawData.indirectCullDescriptor };
 
 	ComputeIntermediaryPipelineInfo mainCullComputeSetup = {
 			.x = count / layout->x,
 			.y = 1,
 			.z = 1,
 			.pipelinename = pipelineHandles[RENDEROBJCULL],
-			.descCount = 2,
+			.descCount = 1,
 			.indirectDispatchAllocation = -1,
 			.descriptorsetid = computeDescriptors.data()
 	};
@@ -3012,9 +2996,9 @@ int CreateMeshWorldAssignment(int count)
 
 	worldSpaceAssignment.prefixSumDescriptors = prefixSumBuilder();
 	 
-	worldSpaceAssignment.deviceOffsetsAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(uint32_t), worldSpaceAssignment.totalElementsCount, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
+	worldSpaceAssignment.deviceOffsetsAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(uint32_t), worldSpaceAssignment.totalElementsCount, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::R32_UINT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
 
-	worldSpaceAssignment.deviceCountsAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(uint32_t), worldSpaceAssignment.totalElementsCount, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
+	worldSpaceAssignment.deviceCountsAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(uint32_t), worldSpaceAssignment.totalElementsCount, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::R32_UINT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
 
 	if (worldSpaceAssignment.totalSumsNeeded)
 	{
@@ -3130,10 +3114,6 @@ int CreateMeshWorldAssignment(int count)
 		}
 	}
 
-	ShaderComputeLayout* assignmentLayout = GlobalRenderer::gRenderInstance.GetComputeLayout(shaderGraphHandles[WORLDORGANIZE]);
-
-	uint32_t assignmentGroupCount = (uint32_t)ceil(worldSpaceAssignment.totalElementsCount / (float)assignmentLayout->x);
-
 	ShaderResourceSetBuilder worldSpaceDivisionBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[WORLDORGANIZE], 0, MAX_FRAMES_IN_FLIGHT);
 
 	worldSpaceAssignment.worldSpaceDivisionAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(uint32_t), worldSpaceAssignment.totalElementsCount * 2, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::R32_UINT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
@@ -3157,7 +3137,7 @@ int CreateMeshWorldAssignment(int count)
 	}
 
 	ComputeIntermediaryPipelineInfo preWorldDivComputePipeline = {
-			.x = assignmentGroupCount,
+			.x = 4,
 			.y = 1,
 			.z = 1,
 			.pipelinename = pipelineHandles[WORLDORGANIZE],
@@ -3196,7 +3176,7 @@ int CreateMeshWorldAssignment(int count)
 	}
 
 	ComputeIntermediaryPipelineInfo postWorldDivComputePipeline = {
-			.x = assignmentGroupCount,
+			.x = 4,
 			.y = 1,
 			.z = 1,
 			.pipelinename = pipelineHandles[WORLDASSIGN],
@@ -3216,20 +3196,22 @@ int CreateMeshWorldAssignment(int count)
 	return 0;
 }
 
-int CreateLightAssignments2(int count)
+int CreateLightAssignments(int lightCount, int gridCount)
 {
 	ShaderResourceSetContext genericLightWorldRSContext{ &mainAppLogger, false };
 
 	lightPartition.typeCountAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(uint32_t), 3, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
 
-	lightPartition.directLightOffset = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(uint32_t), 10, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
-	lightPartition.pointLightOffset = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(uint32_t), 10, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
-	lightPartition.spotLightOffset = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(uint32_t), 10, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
+	lightPartition.directLightOffset = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(uint32_t), lightCount, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
+	lightPartition.pointLightOffset = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(uint32_t), lightCount, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
+	lightPartition.spotLightOffset = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(uint32_t), lightCount, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
 
-	lightPartition.worldSpaceDivisionAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(uint32_t), 125 * 2, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::R32_UINT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
+	lightPartition.worldSpaceDivisionAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(uint32_t), gridCount * 2, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::R32_UINT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
 
-	lightPartition.gridCountsAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(uint32_t), 125, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::R32_UINT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
-	lightPartition.gridOffsetsAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(uint32_t), 125, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::R32_UINT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
+	lightPartition.gridCountsAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(uint32_t), gridCount, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::R32_UINT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
+	lightPartition.gridOffsetsAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(uint32_t), gridCount, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::R32_UINT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
+
+	static uint32_t partitionCount = gridCount;
 
 	{
 		ShaderResourceSetBuilder builder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[LIGHTTYPECOUNTASSIGN], 0, MAX_FRAMES_IN_FLIGHT);
@@ -3273,8 +3255,6 @@ int CreateLightAssignments2(int count)
 	{
 		ShaderResourceSetBuilder prefixSumBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[LIGHTGRIDPREFIX], 0, MAX_FRAMES_IN_FLIGHT);
 
-		static uint32_t partitionCount = 125;
-
 		prefixSumBuilder.BindBufferToShaderResource(&genericLightWorldRSContext, &lightPartition.gridCountsAlloc, 0, 1, 0);
 		prefixSumBuilder.BindBufferToShaderResource(&genericLightWorldRSContext, &lightPartition.gridOffsetsAlloc, 0, 1, 1);
 		prefixSumBuilder.UploadConstant(&genericLightWorldRSContext, &partitionCount, 0);
@@ -3307,12 +3287,21 @@ int CreateLightAssignments2(int count)
 	}
 
 	{
-		ShaderResourceSetBuilder builder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[GRIDPERLIGHTOFFSET], 0, MAX_FRAMES_IN_FLIGHT);
+		ShaderResourceSetBuilder builder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[MESHTOLIGHTASSIGNMENT], 0, MAX_FRAMES_IN_FLIGHT);
 
-		static uint32_t partitionCount = 125;
+		builder.BindBufferView(&genericLightWorldRSContext, &lightPartition.gridOffsetsAlloc, 0, 1, 0);
+		builder.BindBufferView(&genericLightWorldRSContext, &lightPartition.gridCountsAlloc, 0, 1, 1);
+		builder.BindBufferView(&genericLightWorldRSContext, &lightPartition.worldSpaceDivisionAlloc, 0, 1, 2);
 
-		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &lightPartition.gridCountsAlloc, 0, 1, 0);
-		builder.UploadConstant(&genericLightWorldRSContext, &partitionCount, 0);
+		builder.BindBufferView(&genericLightWorldRSContext, &worldSpaceAssignment.deviceCountsAlloc, 0, 1, 3);
+		builder.BindBufferView(&genericLightWorldRSContext, &worldSpaceAssignment.deviceOffsetsAlloc, 0, 1, 4);
+		builder.BindBufferView(&genericLightWorldRSContext, &worldSpaceAssignment.worldSpaceDivisionAlloc, 0, 1, 5);
+
+		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &globalRenderableLocation, 0, 1, 6);
+		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &globalMeshLocation, 0, 1, 7);
+		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &globalGeometryDescriptionsLocation, 0, 1, 8);
+		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &globalGeometryRenderableLocation, 0, 1, 9);
+		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &globalLightBuffer, 0, 1, 10);
 
 		std::array<ShaderResourceSetHandle, 1> prefixSumDescriptor = { builder() };
 
@@ -3323,20 +3312,20 @@ int CreateLightAssignments2(int count)
 		}
 
 		ComputeIntermediaryPipelineInfo worldAssignmentPrefix = {
-				.x = 4,
+				.x = partitionCount,
 				.y = 1,
 				.z = 1,
-				.pipelinename = pipelineHandles[GRIDPERLIGHTOFFSET],
+				.pipelinename = pipelineHandles[MESHTOLIGHTASSIGNMENT],
 				.descCount = 1,
 				.indirectDispatchAllocation = -1,
 				.descriptorsetid = prefixSumDescriptor.data()
 		};
 
-		lightPartition.lightCountGridOffsets = GlobalRenderer::gRenderInstance.CreateComputePipelineObject(&worldAssignmentPrefix);
+		lightPartition.meshToLightAssignmentPipe = GlobalRenderer::gRenderInstance.CreateComputePipelineObject(&worldAssignmentPrefix);
 
-		if (PipelineHandleIndex() == lightPartition.lightCountGridOffsets)
+		if (PipelineHandleIndex() == lightPartition.meshToLightAssignmentPipe)
 		{
-			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Special Prefix Sum After failed creation"));
+			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Light Mesh World Assignment failed creation"));
 			return -1;
 		}
 	}
@@ -3347,7 +3336,6 @@ int CreateLightAssignments2(int count)
 		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &lightPartition.typeCountAlloc, 0, 1, 0);
 		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &lightPartition.gridCountsAlloc, 0, 1, 1);
 		builder.UploadConstant(&genericLightWorldRSContext, &mainGrid, 0);
-		builder.UploadConstant(&genericLightWorldRSContext, &globalLightCount, 1);
 
 		if (genericLightWorldRSContext.contextFailed)
 		{
@@ -3358,7 +3346,7 @@ int CreateLightAssignments2(int count)
 		ShaderResourceSetHandle descriptorHandle = builder();
 
 		ComputeIntermediaryPipelineInfo pipeinfo = {
-				.x = 4,
+				.x = (partitionCount + 31) / 32,
 				.y = 1,
 				.z = 1,
 				.pipelinename = pipelineHandles[LIGHTDIRECTCOUNT],
@@ -3389,9 +3377,7 @@ int CreateLightAssignments2(int count)
 		builder.BindBufferToShaderResource(&genericLightWorldRSContext, offsetIndices.data(), 0, 3, 4);
 		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &lightPartition.gridCountsAlloc, 0, 1, 5);
 
-
 		builder.UploadConstant(&genericLightWorldRSContext, &mainGrid, 0);
-		builder.UploadConstant(&genericLightWorldRSContext, &globalLightCount, 1);
 
 		if (genericLightWorldRSContext.contextFailed)
 		{
@@ -3402,7 +3388,7 @@ int CreateLightAssignments2(int count)
 		ShaderResourceSetHandle descriptorHandle = builder();
 
 		ComputeIntermediaryPipelineInfo pipeinfo = {
-				.x = 4,
+				.x = (partitionCount + 31) / 32,
 				.y = 1,
 				.z = 1,
 				.pipelinename = pipelineHandles[LIGHTDIRECTASSIGN],
@@ -3432,7 +3418,6 @@ int CreateLightAssignments2(int count)
 		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &lightPartition.gridCountsAlloc, 0, 1, 3);
 
 		builder.UploadConstant(&genericLightWorldRSContext, &mainGrid, 0);
-		builder.UploadConstant(&genericLightWorldRSContext, &globalLightCount, 1);
 
 		if (genericLightWorldRSContext.contextFailed)
 		{
@@ -3443,7 +3428,7 @@ int CreateLightAssignments2(int count)
 		ShaderResourceSetHandle descriptorHandle = builder();
 
 		ComputeIntermediaryPipelineInfo pipeinfo = {
-				.x = 4,
+				.x = (partitionCount + 31) / 32,
 				.y = 1,
 				.z = 1,
 				.pipelinename = pipelineHandles[LIGHTSPOTCOUNT],
@@ -3472,9 +3457,7 @@ int CreateLightAssignments2(int count)
 		builder.BindBufferView(&genericLightWorldRSContext, &lightPartition.worldSpaceDivisionAlloc, 0, 1, 4);
 		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &lightPartition.gridCountsAlloc, 0, 1, 5);
 
-
 		builder.UploadConstant(&genericLightWorldRSContext, &mainGrid, 0);
-		builder.UploadConstant(&genericLightWorldRSContext, &globalLightCount, 1);
 
 		if (genericLightWorldRSContext.contextFailed)
 		{
@@ -3485,7 +3468,7 @@ int CreateLightAssignments2(int count)
 		ShaderResourceSetHandle descriptorHandle = builder();
 
 		ComputeIntermediaryPipelineInfo pipeinfo = {
-				.x = 4,
+				.x = (partitionCount + 31) / 32,
 				.y = 1,
 				.z = 1,
 				.pipelinename = pipelineHandles[LIGHTSPOTASSIGN],
@@ -3505,223 +3488,6 @@ int CreateLightAssignments2(int count)
 
 	return 0;
 }
-
-/*
-int CreateLightAssignments(int count)
-{
-	ShaderResourceSetContext genericLightWorldRSContext{ &mainAppLogger, false };
-
-	ShaderComputeLayout* prefixLayout = GlobalRenderer::gRenderInstance.GetComputeLayout(shaderGraphHandles[PREFIXSUM]);
-
-	lightAssignment.totalElementsCount = count;
-	lightAssignment.totalSumsNeeded = (int)floor(lightAssignment.totalElementsCount / (float)prefixLayout->x);
-
-	uint32_t prefixCount = (uint32_t)ceil(lightAssignment.totalElementsCount / (float)prefixLayout->x);
-
-	ShaderResourceSetBuilder prefixSumBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[PREFIXSUM], 0, MAX_FRAMES_IN_FLIGHT);
-
-	lightAssignment.prefixSumDescriptors = prefixSumBuilder();
-
-	lightAssignment.deviceOffsetsAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(uint32_t), lightAssignment.totalElementsCount, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::R32_UINT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, -1, &mainDeviceAllocator);
-
-	lightAssignment.deviceCountsAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(uint32_t), lightAssignment.totalElementsCount, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::R32_UINT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, -1, &mainDeviceAllocator);
-
-	prefixSumBuilder.BindBufferToShaderResource(&genericLightWorldRSContext, &lightAssignment.deviceCountsAlloc, 0, 1, 0);
-	prefixSumBuilder.BindBufferToShaderResource(&genericLightWorldRSContext, &lightAssignment.deviceOffsetsAlloc, 0, 1, 1);
-	prefixSumBuilder.UploadConstant(&genericLightWorldRSContext, &lightAssignment.totalElementsCount, 0);
-
-	if (lightAssignment.totalSumsNeeded)
-	{
-		lightAssignment.deviceSumsAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(uint32_t), lightAssignment.totalSumsNeeded, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainDeviceAllocator);
-
-		prefixSumBuilder.BindBufferToShaderResource(&genericLightWorldRSContext, &lightAssignment.deviceSumsAlloc, 0, 1, 2);
-
-	}
-	else
-	{
-		prefixSumBuilder.BindBufferToShaderResource(&genericLightWorldRSContext, nullptr, 0, 0, 2);
-	}
-
-	std::array<ShaderResourceSetHandle, 1> prefixSumDescriptor = { lightAssignment.prefixSumDescriptors };
-
-	if (genericLightWorldRSContext.contextFailed)
-	{
-		genericLightWorldRSContext.contextLogger->ProcessMessage();
-		return -1;
-	}
-
-	ComputeIntermediaryPipelineInfo worldAssignmentPrefix = {
-			.x = prefixCount,
-			.y = 1,
-			.z = 1,
-			.pipelinename = pipelineHandles[PREFIXSUM],
-			.descCount = 1,
-			.indirectDispatchAllocation = -1,
-			.descriptorsetid = prefixSumDescriptor.data()
-	};
-
-	lightAssignment.prefixSumPipeline = GlobalRenderer::gRenderInstance.CreateComputePipelineObject(&worldAssignmentPrefix);
-
-	if (PipelineHandleIndex() == lightAssignment.prefixSumPipeline)
-	{
-		mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Prefix Sum After failed creation"));
-		return -1;
-	}
-
-	if (lightAssignment.totalSumsNeeded)
-	{
-		ShaderResourceSetBuilder sumAfterBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[PREFIXSUM], 0, MAX_FRAMES_IN_FLIGHT);
-
-		lightAssignment.sumAfterDescriptors = sumAfterBuilder();
-		sumAfterBuilder.BindBufferToShaderResource(&genericLightWorldRSContext, &lightAssignment.deviceSumsAlloc, 0, 1, 0);
-		sumAfterBuilder.BindBufferToShaderResource(&genericLightWorldRSContext, &lightAssignment.deviceSumsAlloc, 0, 1, 1);
-		sumAfterBuilder.BindBufferToShaderResource(&genericLightWorldRSContext, &lightAssignment.deviceSumsAlloc, 0, 1, 2);
-		sumAfterBuilder.UploadConstant(&genericLightWorldRSContext, &lightAssignment.totalSumsNeeded, 0);
-
-		std::array<ShaderResourceSetHandle, 1> prefixSumOverflowDescriptor = { lightAssignment.sumAfterDescriptors };
-
-		ComputeIntermediaryPipelineInfo prefixSumComputePipeline = {
-				.x = (uint32_t)lightAssignment.totalSumsNeeded,
-				.y = 1,
-				.z = 1,
-				.pipelinename = pipelineHandles[PREFIXSUM],
-				.descCount = 1,
-				.indirectDispatchAllocation = -1,
-				.descriptorsetid = prefixSumOverflowDescriptor.data()
-		};
-
-		if (genericLightWorldRSContext.contextFailed)
-		{
-			genericLightWorldRSContext.contextLogger->ProcessMessage();
-			return -1;
-		}
-
-		lightAssignment.sumAfterPipeline = GlobalRenderer::gRenderInstance.CreateComputePipelineObject(&prefixSumComputePipeline);
-
-		if (PipelineHandleIndex() == lightAssignment.sumAfterPipeline)
-		{
-			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("World Sum After failed creation"));
-			return -1;
-		}
-
-
-		ShaderResourceSetBuilder sumAppliedToBinBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[PREFIXADD], 0, MAX_FRAMES_IN_FLIGHT);
-		lightAssignment.sumAppliedToBinDescriptors = sumAppliedToBinBuilder();
-
-		sumAppliedToBinBuilder.BindBufferToShaderResource(&genericLightWorldRSContext, &lightAssignment.deviceOffsetsAlloc, 0, 1, 0);
-		sumAppliedToBinBuilder.BindBufferToShaderResource(&genericLightWorldRSContext, &lightAssignment.deviceSumsAlloc, 0, 1, 1);
-		sumAppliedToBinBuilder.UploadConstant(&genericLightWorldRSContext, &lightAssignment.totalElementsCount, 0);
-
-		std::array<ShaderResourceSetHandle, 1> incrementSumsDescriptor = { lightAssignment.sumAppliedToBinDescriptors, };
-
-		if (genericLightWorldRSContext.contextFailed)
-		{
-			genericLightWorldRSContext.contextLogger->ProcessMessage();
-			return -1;
-		}
-
-		ComputeIntermediaryPipelineInfo incrementSumsComputePipeline = {
-				.x = (uint32_t)lightAssignment.totalSumsNeeded,
-				.y = 1,
-				.z = 1,
-				.pipelinename = pipelineHandles[PREFIXADD],
-				.descCount = 1,
-				.indirectDispatchAllocation = -1,
-				.descriptorsetid = incrementSumsDescriptor.data()
-		};
-
-
-		lightAssignment.sumAppliedToBinPipeline = GlobalRenderer::gRenderInstance.CreateComputePipelineObject(&incrementSumsComputePipeline);
-
-		if (PipelineHandleIndex() == lightAssignment.sumAppliedToBinPipeline)
-		{
-			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("World Sum failed creation"));
-			return -1;
-		}
-	}
-
-	ShaderComputeLayout* assignmentLayout = GlobalRenderer::gRenderInstance.GetComputeLayout(shaderGraphHandles[LIGHTASSIGN]);
-
-	uint32_t assignmentGroupCount = (uint32_t)ceil(lightAssignment.totalElementsCount / (float)assignmentLayout->x);
-
-	lightAssignment.worldSpaceDivisionAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(uint32_t), lightAssignment.totalElementsCount * 2, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::R32_UINT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, -1, &mainDeviceAllocator);
-
-	ShaderResourceSetBuilder preWorldSpaceBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[LIGHTORGANIZE], 0, MAX_FRAMES_IN_FLIGHT);
-
-	lightAssignment.preWorldSpaceDivisionDescriptor = preWorldSpaceBuilder();
-
-	preWorldSpaceBuilder.BindBufferToShaderResource(&genericLightWorldRSContext, &lightAssignment.deviceCountsAlloc, 0, 1, 0);
-	preWorldSpaceBuilder.BindBufferToShaderResource(&genericLightWorldRSContext, &globalLightBuffer, 0, 1, 1);
-	preWorldSpaceBuilder.BindBufferView(&genericLightWorldRSContext, &globalLightTypesBuffer, 0, 1, 2);
-	preWorldSpaceBuilder.UploadConstant(&genericLightWorldRSContext, &mainGrid, 0);
-	preWorldSpaceBuilder.UploadConstant(&genericLightWorldRSContext, &globalLightCount, 1);
-
-	std::array<ShaderResourceSetHandle, 1> preWorldDivDescriptor = { lightAssignment.preWorldSpaceDivisionDescriptor, };
-
-	if (genericLightWorldRSContext.contextFailed)
-	{
-		genericLightWorldRSContext.contextLogger->ProcessMessage();
-		return -1;
-	}
-
-	ComputeIntermediaryPipelineInfo preWorldDivComputePipeline = {
-			.x = assignmentGroupCount,
-			.y = 1,
-			.z = 1,
-			.pipelinename = pipelineHandles[LIGHTORGANIZE],
-			.descCount = 1,
-			.indirectDispatchAllocation = -1,
-			.descriptorsetid = preWorldDivDescriptor.data()
-	};
-
-	lightAssignment.preWorldSpaceDivisionPipeline = GlobalRenderer::gRenderInstance.CreateComputePipelineObject(&preWorldDivComputePipeline);
-
-	if (PipelineHandleIndex() == lightAssignment.preWorldSpaceDivisionPipeline)
-	{
-		mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Pre World Division Pipeline failed creation"));
-		return -1;
-	}
-
-	ShaderResourceSetBuilder postWorldBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[LIGHTASSIGN], 0, MAX_FRAMES_IN_FLIGHT);
-	
-	lightAssignment.postWorldSpaceDivisionDescriptor = postWorldBuilder();
-
-	postWorldBuilder.BindBufferToShaderResource(&genericLightWorldRSContext, &lightAssignment.deviceOffsetsAlloc, 0, 1, 0);
-	postWorldBuilder.BindBufferToShaderResource(&genericLightWorldRSContext, &globalLightBuffer, 0, 1, 1);
-	postWorldBuilder.BindBufferView(&genericLightWorldRSContext, &globalLightTypesBuffer, 0, 1, 3);
-	postWorldBuilder.BindBufferView(&genericLightWorldRSContext, &lightAssignment.worldSpaceDivisionAlloc, 0, 1, 2);
-	postWorldBuilder.UploadConstant(&genericLightWorldRSContext, &mainGrid, 0);
-	postWorldBuilder.UploadConstant(&genericLightWorldRSContext, &globalLightCount, 1);
-
-	std::array<ShaderResourceSetHandle, 1> postWorldDivDescriptor = { lightAssignment.postWorldSpaceDivisionDescriptor, };
-
-	if (genericLightWorldRSContext.contextFailed)
-	{
-		genericLightWorldRSContext.contextLogger->ProcessMessage();
-		return -1;
-	}
-
-	ComputeIntermediaryPipelineInfo postWorldDivComputePipeline = {
-			.x = assignmentGroupCount,
-			.y = 1,
-			.z = 1,
-			.pipelinename = pipelineHandles[LIGHTASSIGN],
-			.descCount = 1,
-			.indirectDispatchAllocation = -1,
-			.descriptorsetid = postWorldDivDescriptor.data()
-	};
-
-	lightAssignment.postWorldSpaceDivisionPipeline = GlobalRenderer::gRenderInstance.CreateComputePipelineObject(&postWorldDivComputePipeline);
-
-	if (PipelineHandleIndex() == lightAssignment.postWorldSpaceDivisionPipeline)
-	{
-		mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Post World Division failed creation"));
-		return -1;
-	}
-
-	return 0;
-}
-*/
 
 int CreateShadowMapManager(int maxShadowMapAssignment, int maxObjCount, int shadowMapHeight, int shadowMapWidth, int shadowMapAtlasHeight, int shadowMapAtlasWidth)
 {
@@ -4469,8 +4235,6 @@ int ApplicationLoop::InitializeRuntime()
 	pipelineHandles[PREFIXADD] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[PREFIXADD]);
 	pipelineHandles[WORLDORGANIZE] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[WORLDORGANIZE]);
 	pipelineHandles[WORLDASSIGN] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[WORLDASSIGN]);
-	pipelineHandles[LIGHTORGANIZE] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[LIGHTORGANIZE]);
-	pipelineHandles[LIGHTASSIGN] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[LIGHTASSIGN]);
 	pipelineHandles[SHADOWMAPCULL] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[SHADOWMAPCULL]);
 	pipelineHandles[UICULLING] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[UICULLING]);
 	pipelineHandles[UIDEPTHCOUNT] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[UIDEPTHCOUNT]);
@@ -4489,7 +4253,7 @@ int ApplicationLoop::InitializeRuntime()
 	pipelineHandles[LIGHTSPOTASSIGN] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[LIGHTSPOTASSIGN]);
 	pipelineHandles[LIGHTTYPECOUNTASSIGN] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[LIGHTTYPECOUNTASSIGN]);
 	pipelineHandles[LIGHTGRIDPREFIX] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[LIGHTGRIDPREFIX]);
-	pipelineHandles[GRIDPERLIGHTOFFSET] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[GRIDPERLIGHTOFFSET]);
+	pipelineHandles[MESHTOLIGHTASSIGNMENT] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[MESHTOLIGHTASSIGNMENT]);
 
 	for (int i = 0; i < pipelineHandles.size(); i++)
 	{
@@ -4559,15 +4323,15 @@ int ApplicationLoop::InitializeRuntime()
 
 	int creationRetSB = CreateSkyBox();
 	int creationRetDB = CreateDebugCommandBuffers(globalDebugStructMaxCount);
-	int creationRetLW = 0;//CreateLightAssignments(globalLightMax);
-	int create2 = CreateLightAssignments2(125);
 	int creationRetMW = CreateMeshWorldAssignment(mainGrid.numberOfDivision * mainGrid.numberOfDivision * mainGrid.numberOfDivision);
+	int creationRetLW = CreateLightAssignments(globalLightMax, mainGrid.numberOfDivision * mainGrid.numberOfDivision * mainGrid.numberOfDivision);
+	
 	int creationRetGMB = CreateGenericMeshCommandBuffers(globalMeshCountMax);
 	int creationRetSM = CreateShadowMapManager(4, globalMeshCountMax, 1024, 1024, mainShadowWidth, mainShadowHeight);
 	int creationRetFS = 0;//CreateMSAAPostFullScreen();
 	int creationRetUI = CreateUITools(25);
 
-	if (create2 < 0 ||
+	if (
 		creationRetSB < 0 ||
 		creationRetDB < 0 ||
 		creationRetLW < 0 ||

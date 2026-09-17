@@ -15,7 +15,7 @@
 #include "UI.h"
 #include "WindowManager.h"
 
-#if defined(_WIN32) || defined(_WIN64)
+#if defined(_WIN32)
 #include "WinOSFile.h"
 #endif
 
@@ -4762,6 +4762,8 @@ void ScanSTDIN(void* data)
 
 		if (ret < 0) continue;
 
+		int inputCharMakeUp = 0;
+
 #ifdef WIN32
 		int success = OSPollWindowsCommandLine();
 
@@ -4772,6 +4774,8 @@ void ScanSTDIN(void* data)
 		}
 
 		if (!success) continue;
+
+		inputCharMakeUp = 2;
 #endif
 		readReturn = OSReadFile(&stdIn, 1024, inputBuffer);
 
@@ -4781,10 +4785,10 @@ void ScanSTDIN(void* data)
 			break;
 		}
 
-		if (readReturn <= 2)
+		if (readReturn <= inputCharMakeUp)
 			continue;
 
-		int wordCount = FindWords(inputBuffer, readReturn - 2);
+		int wordCount = FindWords(inputBuffer, readReturn - inputCharMakeUp);
 
 		AddCommandTS(wordCount);
 

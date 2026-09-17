@@ -257,7 +257,7 @@ void* OSMemoryAllocate(void* startingAddress, uint64_t size, OSMemoryAllocationT
 
     if (!startingAddress)
     {
-        adjustedSize = ((adjustedSize + sizeof(MemBlockHeader)) + (pageSize - 1)) & ~(pageSize - 1);
+        adjustedSize = ((adjustedSize + sizeof(MemBlockHeader) + pageSize) + (pageSize - 1)) & ~(pageSize - 1);
 
         index = FindFreeIndex();
 

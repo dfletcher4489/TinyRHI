@@ -60,17 +60,6 @@ layout(set = 0, binding = 7) readonly buffer GeomInstBuffer
     GeometryRenderable geomRenderables[];
 } geomRends;
 
-layout(set = 1, binding = 0) uniform usamplerBuffer globalLightOffsets;
-layout(set = 1, binding = 1) uniform usamplerBuffer globalLightCounts;
-layout(set = 1, binding = 2) uniform usamplerBuffer globalLightAllocations;
-
-layout(set = 1, binding = 3) readonly buffer GLBuffer 
-{
-    LightSource objects[];
-} lightBuffer;
-
-layout(set = 1, binding = 4) uniform usamplerBuffer globalLightTypes;
-
 Frustum CalculateFrustrum()
 {
     Frustum transformFrustrum;

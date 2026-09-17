@@ -50,5 +50,3 @@ int OSCreateThread(OSThreadHandle* handle, void* argumentToThread, ThreadPointer
 int OSCloseThread(OSThreadHandle* handle);
 
 int OSWaitThread(OSThreadHandle* handle, int timeout);
-
-int OSJoinThread(OSThreadHandle* handle);

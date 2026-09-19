@@ -1,6 +1,6 @@
 # Vulkan/DX12 RHI & Renderer
 
-A backend-agnostic rendering hardware interface with Vulkan and DirectX 12 implementations. This project is mostly serving as a base layer for any future GPU driven projects of mine in the future. I will be using some modern features of each graphics API, but the current Vulkan architecture is mostly 1.2 with some extensions standardized in 1.3. The example projects are mostly using compute and graphic techniques popularized 5-10 years ago. 
+A backend-agnostic rendering hardware interface with Vulkan and planned DirectX 12, Metal implementations. This project is mostly serving as a base layer for any future GPU driven projects of mine in the future. I will be using some modern features of each graphics API, but the current Vulkan architecture is mostly 1.2 with some extensions standardized in 1.3. The example projects are mostly using compute and graphic techniques popularized 5-10 years ago. 
 
 ---
 

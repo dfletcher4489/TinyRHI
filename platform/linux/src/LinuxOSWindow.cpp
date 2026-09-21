@@ -10,8 +10,135 @@
 #include <string.h>
 #include <poll.h>
 
-static std::atomic<int8_t>* freeList;
+static MPMCQueueData* freeList;
 static int maxFreeListEntry = 0;
+
+ALIGNAS(128) static std::atomic<int> boundedLinearAllocator{ 0 };
+ALIGNAS(128) static std::atomic<size_t> enqueuePos{ 0 };
+ALIGNAS(128) static std::atomic<size_t> dequeuePos{ 0 };
+
+static int PopFromFreeList()
+{
+    MPMCQueueData* cell;
+
+    size_t pos = dequeuePos.load(std::memory_order_relaxed);
+
+    for (;;)
+    {
+        cell = &freeList[pos % maxFreeListEntry];
+        size_t seq = cell->currentSequence.load(std::memory_order_acquire);
+        intptr_t diff = (intptr_t)seq - (intptr_t)(pos + 1);
+        if (diff == 0)
+        {
+            if (dequeuePos.compare_exchange_weak(pos, pos + 1, std::memory_order_relaxed, std::memory_order_relaxed))
+                break;
+        }
+        else if (diff < 0)
+            return -1;
+        else
+            pos = dequeuePos.load(std::memory_order_relaxed);
+    }
+
+    cell->currentSequence.store(pos + maxFreeListEntry, std::memory_order_release);
+
+    int freeListIndex = cell->freeIndex;
+
+    cell->freeIndex = -1;
+
+    return freeListIndex;
+}
+
+static int FindFreeIndex()
+{
+    int ret = PopFromFreeList();
+
+    if (ret < 0)
+    {
+        int linearTop = boundedLinearAllocator.load(std::memory_order_acquire);
+
+        while (linearTop < maxFreeListEntry)
+        {
+            if (boundedLinearAllocator.compare_exchange_weak(linearTop, linearTop + 1, std::memory_order_relaxed, std::memory_order_relaxed))
+            {
+                ret = linearTop;
+                break;
+            }
+        }
+    }
+
+    return ret;
+}
+
+static GenericWindowEventPacked* GetWindowEventPacked(GenericWindowEventBuffer* buffer)
+{
+    size_t currentWrite = buffer->dataWrite.load(std::memory_order_relaxed);
+    size_t currentRead = buffer->dataRead.load(std::memory_order_relaxed);
+
+    void* currentWritePtr = (void*)((uintptr_t)buffer->dataHead + (currentWrite & (buffer->dataSize - 1)));
+
+    if ((currentWrite-currentRead) >= buffer->dataSize)
+    {
+        buffer->ringLapsSinceLastRead.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    return (GenericWindowEventPacked*)(currentWritePtr);
+}
+
+static void CommitWindowEventPacked(GenericWindowEventBuffer* buffer)
+{
+    buffer->dataWrite.fetch_add(sizeof(GenericWindowEventPacked), std::memory_order_release);
+}
+
+static int PumpWindowEventsPacked(GenericWindowEventBuffer* buffer, GenericWindowInfo* info)
+{
+    int packedEventsCount = 0;
+
+    size_t writeHead = buffer->dataWrite.load(std::memory_order_acquire);
+    size_t readPos = buffer->dataRead.load(std::memory_order_relaxed);
+
+    while (readPos < writeHead)
+    {
+        GenericWindowEventPacked* currentPacked = (GenericWindowEventPacked*)((uintptr_t)buffer->dataHead + (readPos & (buffer->dataSize - 1)));
+
+        switch (currentPacked->EventType)
+        {
+        case WINDOW_EVENT_TYPE_MOUSE_LEFT_BUTTON:
+            info->clicked = currentPacked->EventPacked;
+            break;
+        case WINDOW_EVENT_TYPE_RESIZE_REQUESTED:
+            info->resizeRequested = currentPacked->EventPacked;
+            break;
+        case WINDOW_EVENT_TYPE_SHOULD_BE_CLOSED:
+            info->shouldBeClosed = currentPacked->EventPacked;
+            break;
+        case WINDOW_EVENT_TYPE_WINDOW_SIZE:
+            info->width = GET_WINDOW_SIZE_EVENT_WIDTH(currentPacked->EventPacked);
+            info->height = GET_WINDOW_SIZE_EVENT_HEIGHT(currentPacked->EventPacked);
+            info->maximized = GET_WINDOW_SIZE_EVENT_MAXIMIZED(currentPacked->EventPacked);
+            info->minimized = GET_WINDOW_SIZE_EVENT_MINIMIZED(currentPacked->EventPacked);
+            break;
+        case WINDOW_EVENT_TYPE_MOUSE_COORDINATES:
+            info->currentCursorX = GET_WINDOW_COORDINATES_EVENT_X(currentPacked->EventPacked);
+            info->currentCursorY = GET_WINDOW_COORDINATES_EVENT_Y(currentPacked->EventPacked);
+            break;
+        case WINDOW_EVENT_TYPE_KEY_ACTION:
+            info->actions[GET_KEY_CODE(currentPacked->EventPacked)].Update(GET_KEY_ACTION(currentPacked->EventPacked));
+            break;
+        }
+
+        readPos += sizeof(GenericWindowEventPacked);
+        packedEventsCount++;
+    }
+
+    buffer->dataRead.store(readPos, std::memory_order_release);
+
+    if (buffer->ringLapsSinceLastRead.load(std::memory_order_acquire))
+        packedEventsCount = -packedEventsCount;
+
+    buffer->ringLapsSinceLastRead.store(0, std::memory_order_relaxed);
+
+    return packedEventsCount;
+}
 
 #if defined(WINDOW_USE_WAYLAND)
 
@@ -27,6 +154,45 @@ struct pool_data {
     unsigned size;
 };
 
+static void ReturnIndex(int index)
+{
+    MPMCQueueData* cell;
+
+    size_t pos = enqueuePos.load(std::memory_order_relaxed);
+
+    for (;;)
+    {
+        cell = &freeList[pos % maxFreeListEntry];
+        size_t seq = cell->currentSequence.load(std::memory_order_acquire);
+        intptr_t diff = (intptr_t)seq - (intptr_t)pos;
+        if (diff == 0)
+        {
+            if (enqueuePos.compare_exchange_weak(pos, pos + 1, std::memory_order_relaxed))
+                break;
+        }
+        else if (diff < 0)
+            return;
+        else
+            pos = enqueuePos.load(std::memory_order_relaxed);
+    }
+
+    //windowPtrs[index] = NULL;
+    //instancePointers[index] = NULL;
+    cell->freeIndex = index;
+    cell->currentSequence.store(pos + 1, std::memory_order_release);
+}
+
+OSWindowMemoryRequirements OSGetWindowMemoryRequirements(int maxNumberOfWindows)
+{
+    int handlesSize = (maxNumberOfWindows) * 0;
+    int handlesWndSize = (maxNumberOfWindows) * 0;
+    int freeListSize = (maxNumberOfWindows) * sizeof(MPMCQueueData);
+
+    OSWindowMemoryRequirements memReqs{ handlesSize + handlesWndSize + freeListSize, alignof(uintptr_t) };
+
+    return memReqs;
+}
+
 static struct wl_display *display = NULL;
 static struct wl_compositor *compositor = NULL;
 static struct wl_shm *shm = NULL;
@@ -40,15 +206,6 @@ static struct xdg_wm_base* xdg_wm_base;
 static struct zxdg_decoration_manager_v1* decoration_manager;
 
 static char framebuffer[1 * 1024 * 1024];
-
-static int FindFreeIndex()
-{
-    for (int i = 0; i < maxFreeListEntry; i++)
-    {
-       
-    }
-    return -1;
-}
 
 static void RegistryGlobalHandler
 (
@@ -86,13 +243,6 @@ void RegistryGlobalRemoveHandler
 ) 
 {
     printf("removed: %u\n", name);
-}
-
-OSWindowMemoryRequirements OSGetWindowMemoryRequirements(int maxNumberOfWindows)
-{
-    OSWindowMemoryRequirements memReqs{ 0, alignof(void*) };
-
-    return memReqs;
 }
 
 void CloseAllWindows()
@@ -211,7 +361,7 @@ static const struct xdg_toplevel_listener xdg_toplevel_listener = {
     .close = XdgToplevelClose,
 };
 
-int CreateOSWindow(const char* name, int requestedDimensionX, int requestDimensionY, OSWindow* windowData)
+int OSCreateWindow(const char* name, int requestedDimensionX, int requestDimensionY, OSWindow* windowData)
 {
     surface = wl_compositor_create_surface(compositor);
 
@@ -255,7 +405,7 @@ int CreateOSWindow(const char* name, int requestedDimensionX, int requestDimensi
     return 0;
 }
 
-int PollOSWindowEvents(OSWindow* window)
+int OSWindowPollEvents(OSWindow* window, GenericWindowInfo* info)
 {
     int ret = 0;
 
@@ -265,13 +415,35 @@ int PollOSWindowEvents(OSWindow* window)
     return ret;
 }
 
-int GetInternalOSData(OSWindow* window, void* internalDataStruct)
+int OSWindowGetInternalData(OSWindow* window, void* internalDataStruct)
 {
-    return 0;
+    return OS_WINDOW_SUCCESS;
 }
 
-int SetOSWindowText(OSWindow* window, const char* text)
+int OSWindowSetText(OSWindow* window, const char* text)
 {
+    return OS_WINDOW_SUCCESS;
+}
+
+int OSWindowShow(OSWindow* window)
+{
+    return OS_WINDOW_SUCCESS;
+}
+
+int OSWindowSeedEventBuffer(OSWindow* window, void* bufferMemory, size_t bufferSize)
+{
+    if (bufferSize & (bufferSize - 1))
+    {
+        return -1;
+    }
+
+    window->eventBuffer.dataHead = bufferMemory;
+    window->eventBuffer.dataSize = bufferSize;
+    window->eventBuffer.dataRead = 0;
+    window->eventBuffer.dataWrite = 0;
+    window->eventBuffer.ringLapsSinceLastRead = 0;
+    window->eventBuffer.requestedFullScreen = 0;
+
     return 0;
 }
 
@@ -306,7 +478,7 @@ int OSSeedWindowMemory(void* dataSource, int dataSize, int maxNumberOfWindows)
     return 0;
 }
 
-int CreateOSWindow(const char* name, int requestedDimensionX, int requestDimensionY, OSWindow* windowData)
+int OSCreateWindow(const char* name, int requestedDimensionX, int requestDimensionY, OSWindow* windowData)
 {
     return 0;
 }

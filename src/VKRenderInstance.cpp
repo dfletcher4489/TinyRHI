@@ -8,6 +8,8 @@
 #include "VKPipelineBuilder.h"
 #include "VKSwapChain.h"
 
+#include <math.h>
+
 #define RENDER_MIN(a, b) ((a) > (b) ? (b) : (a))
 #define RENDER_MAX(a, b) ((a) < (b) ? (b) : (a))
 #define RENDER_PWR2UP(size, align) (((size) + ((align)-1)) & ~((align)-1))
@@ -1031,14 +1033,14 @@ uint32_t RenderInstance::BeginFrame(SwapChainIndex swapChainIndex)
 
 	int32_t res = dev->CommandBufferWaitOn(UINT64_MAX, rhiDevice->container.currentCommandBufferIndex[currentFrame]);
 
-	uint32_t imageIndex = ~0UL;
+	uint32_t imageIndex = (uint32_t)~0;
 
 	if (!res)
 	{
 		imageIndex = dev->BeginFrameForSwapchain(swcData->swapChainIdx, swcData->rendererWaitSemaphores[currentFrame], currentFrame);
 	}
 
-	if (imageIndex == ~0UL)
+	if (imageIndex == (uint32_t)~0)
 	{
 		GetLastDeviceDriverError(rhiDevice, STRING_VIEW_FROM_LITERAL("BeginFrame failed:"));
 

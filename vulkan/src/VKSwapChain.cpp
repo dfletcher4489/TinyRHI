@@ -4,6 +4,8 @@
 #include "VKDevice.h"
 #include "VKInstance.h"
 
+#include <limits.h>
+
 #define VK_SWC_MIN(a, b) ((a) > (b) ? (b) : (a))
 #define VK_SWC_MAX(a, b) ((a) < (b) ? (b) : (a))
 

@@ -4,6 +4,7 @@
 #include <cctype>
 #include <locale>
 #include <string>
+#include <string.h>
 
 ProgramArgs::ProgramArgs(int argc, char** argv) : justexport(false)
 {

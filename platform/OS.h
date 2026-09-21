@@ -5,7 +5,10 @@
 
 #ifdef _MSC_VER
 #define ALIGNAS(x) __declspec(align(x))
+#elif defined(__GNUC__)
+#define ALIGNAS(x) __attribute__((aligned(x)))
 #endif
+
 
 struct MPMCQueueData
 {

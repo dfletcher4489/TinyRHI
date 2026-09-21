@@ -10,9 +10,10 @@
 
 #include <assert.h>
 #include <limits.h>
-#include <new.h>
 #include <string.h>
 #include <stdio.h>
+
+#include <new>
 
 #define BASE_ERROR_STRING_ALLOCATION 150
 

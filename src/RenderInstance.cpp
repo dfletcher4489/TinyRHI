@@ -265,7 +265,7 @@ void RenderInstance::CreateDriverSpecificBarrierArenas(BarrierAccumulator* barri
 uint32_t RenderInstance::PopBarrierAccumulator(RHIDevice* rhiDevice)
 {
 	if (rhiDevice->container.currentBarrierAccumulationTop == rhiDevice->container.maxBarrierAccumulationCount)
-		return ~0ul;
+		return (uint32_t)~0;
 
 	uint32_t barrierAccumIndex = rhiDevice->container.barriersQueue[rhiDevice->container.currentBarrierAccumulationTop++];
 
@@ -2797,7 +2797,7 @@ uint32_t RenderInstance::GetSwapChainHeight(SwapChainIndex swapChainIndex)
 {
 	RenderSwapchainData* data = swapChains.Get(swapChainIndex);
 
-	if (!data) return ~0ul;
+	if (!data) return (uint32_t)~0;
 
 	return data->height;
 }
@@ -2806,7 +2806,7 @@ uint32_t RenderInstance::GetSwapChainWidth(SwapChainIndex swapChainIndex)
 {
 	RenderSwapchainData* data = swapChains.Get(swapChainIndex);
 
-	if (!data) return ~0ul;
+	if (!data) return (uint32_t)~0;
 
 	return data->width;
 }

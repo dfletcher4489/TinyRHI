@@ -2875,7 +2875,7 @@ uint32_t VKDevice::GetQueueManagerFamilyIndex(EntryHandle queueManagerIndex)
 	if (objHandle.type != VulkQueueManager || !objHandle.memoryLocation)
 	{
 		AddDeviceErrorCode(MINOR_CODE_PACK(DEVICE_VK_TYPE_QUEUE_MANAGER_FAILED) | DEVICE_VK_TYPE_INCORRECT_TYPE_ON_RETRIEVE, VK_RESULT_MAX_ENUM);
-		return ~0ul;
+		return (uint32_t)~0;
 	}
 
 	QueueManager* queueManager = reinterpret_cast<QueueManager*>(objHandle.memoryLocation);
@@ -3104,7 +3104,7 @@ uint32_t VKDevice::BeginFrameForSwapchain(EntryHandle swapChainIndex, EntryHandl
 	VkSemaphore acquireSemaphore = GetSemaphore(acquireSemaphoreHandle);
 
 	if (!swapChain || !acquireSemaphore)
-		return ~0UL;
+		return (uint32_t)~0;
 
 	uint32_t imageIndex = swapChain->AcquireNextSwapChainImage2(UINT64_MAX, acquireSemaphore, currentFrame);
 
@@ -3168,7 +3168,7 @@ MemoryTypeInfo VKDevice::FindImageMemoryIndexForPool(uint32_t width,
 	if ((vkRes = vkCreateImage(device, &imageInfo, nullptr, &image)) != VK_SUCCESS) 
 	{
 		AddDeviceErrorCode(MINOR_CODE_PACK(DEVICE_VK_TYPE_IMAGE_HANDLE_FAILED) | DEVICE_VK_TYPE_CREATION_FAILED, vkRes);
-		return { ~0ul, (VkDeviceSize)~0 };
+		return { (uint32_t)~0, (VkDeviceSize)~0 };
 	}
 
 	VkMemoryRequirements memRequirements;

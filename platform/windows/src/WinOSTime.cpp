@@ -25,7 +25,7 @@ double OSGetTimeSeconds(int64_t tickCounter)
 {
 	if (!initialize) return 0.0;
 
-	return static_cast<double>(tickCounter / systemFrequency.QuadPart);
+	return static_cast<double>(tickCounter) / static_cast<double>(systemFrequency.QuadPart);
 }
 
 double OSGetCurrentTimeSeconds()
@@ -36,5 +36,5 @@ double OSGetCurrentTimeSeconds()
 
 	QueryPerformanceCounter(&currentTickCount);
 
-	return static_cast<double>(currentTickCount.QuadPart / systemFrequency.QuadPart);
+	return static_cast<double>(currentTickCount.QuadPart) / static_cast<double>(systemFrequency.QuadPart);
 }

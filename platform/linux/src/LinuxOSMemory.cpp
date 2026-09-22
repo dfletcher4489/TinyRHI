@@ -1,5 +1,10 @@
 #include "OSMemory.h"
 
+#include <linux/mman.h>
+#include <sys/mman.h>
+ 
+#include <unistd.h>
+
 #define BLOCK_HEADER_SENTINEL_VALUE 0xbbadbeefbbadbeef
 
 #define MAX_DETAILS_PROTECTION 255
@@ -112,59 +117,45 @@ static int FindFreeIndex()
     return ret;
 }
 
-static int ConverMemoryAllocationType(OSMemoryAllocationType allocType)
+static int ConvertMemoryAllocationType(OSMemoryAllocationType allocType)
 {
 	int ret = 0;
 
-//	ret |= MEM_LARGE_PAGES * ((allocType & OSMemoryAllocationTypes::USE_LARGE_PAGES) != 0);
-//	ret |= MEM_COMMIT * ((allocType & OSMemoryAllocationTypes::COMMIT) != 0);
-//	ret |= MEM_RESERVE * ((allocType & OSMemoryAllocationTypes::RESERVE) != 0);
+	ret |= (MAP_HUGETLB | MAP_HUGE_2MB) * ((allocType & OSMemoryAllocationTypes::USE_LARGE_PAGES) != 0);
 
 	return ret;
 }
 
 static int ConvertMemoryProtection(OSMemoryAllocationProtection protection)
 {
-    int ret = 0;
+    int ret = PROT_NONE;
 
     if (protection == OSMemoryAllocationProtections::READONLY)
     {
-   //     ret = PAGE_READONLY;
+       ret = PROT_READ;
     }
 
     if (protection == OSMemoryAllocationProtections::READWRITE)
     {
-     //   ret = PAGE_READWRITE;
+        ret = PROT_READ | PROT_WRITE;
     }
 
     if (protection == OSMemoryAllocationProtections::EXECUTE)
     {
-     //   ret = PAGE_EXECUTE;
+        ret = PROT_EXEC;
     }
 
     if (protection == (OSMemoryAllocationProtections::EXECUTE | OSMemoryAllocationProtections::READONLY))
     {
-     //   ret = PAGE_EXECUTE_READ;
+        ret = PROT_EXEC | PROT_READ;
     }
 
     if (protection == (OSMemoryAllocationProtections::EXECUTE | OSMemoryAllocationProtections::READWRITE))
     {
-      //  ret = PAGE_EXECUTE_READWRITE;
+        ret = PROT_EXEC | PROT_READ | PROT_WRITE;
     }
 
     return ret;
-}
-
-static int ConvertReleaseType(OSMemoryReleaseTypes release)
-{
-    /*
-	if (release == OSMemoryReleaseTypes::DECOMMIT)
-		return MEM_DECOMMIT;
-	else if (release == OSMemoryReleaseTypes::RELEASE)
-		return MEM_RELEASE;
-    */
-	
-	return 0;
 }
 
 OSMemoryRequirements OSGetMemoryRequirements(int maxNumberOfAllocations)
@@ -220,14 +211,12 @@ void ReleaseAllMemoryAllocations()
 
 uint64_t OSGetStandardPageSize()
 {
-	//SYSTEM_INFO systemInfo;
-	//GetSystemInfo(&systemInfo);
-	return 0;
+	return (uint64_t)sysconf(_SC_PAGESIZE);
 }
 
 uint64_t OSGetLargePageSize()
 {
-	return 0;
+	return 2 * 1024 * 1024;
 }
 
 void* OSMemoryAllocate(void* startingAddress, uint64_t size, OSMemoryAllocationType allocType, OSMemoryAllocationProtection protection)

@@ -113,7 +113,7 @@ static int FindFreeIndex()
     return ret;
 }
 
-static DWORD ConverMemoryAllocationType(OSMemoryAllocationType allocType)
+static DWORD ConvertMemoryAllocationType(OSMemoryAllocationType allocType)
 {
 	DWORD ret = 0;
 
@@ -266,7 +266,7 @@ void* OSMemoryAllocate(void* startingAddress, uint64_t size, OSMemoryAllocationT
             return retAddr;
         }
 
-        retAddr = VirtualAlloc(startingAddress, adjustedSize, ConverMemoryAllocationType(allocType), ConvertMemoryProtection(protection));
+        retAddr = VirtualAlloc(startingAddress, adjustedSize, ConvertMemoryAllocationType(allocType), ConvertMemoryProtection(protection));
 
         if (!retAddr)
         {
@@ -289,7 +289,7 @@ void* OSMemoryAllocate(void* startingAddress, uint64_t size, OSMemoryAllocationT
 
         adjustedSize = (adjustedSize + (pageSize - 1)) & ~(pageSize - 1);
 
-        retAddr = VirtualAlloc((void*)(((uintptr_t)startingAddress - pageSize) + currentCommitHeader), adjustedSize, ConverMemoryAllocationType(allocType), ConvertMemoryProtection(protection));
+        retAddr = VirtualAlloc((void*)(((uintptr_t)startingAddress - pageSize) + currentCommitHeader), adjustedSize, ConvertMemoryAllocationType(allocType), ConvertMemoryProtection(protection));
 
         if (!retAddr)
         {
@@ -310,7 +310,7 @@ void* OSMemoryAllocate(void* startingAddress, uint64_t size, OSMemoryAllocationT
 
     if ((allocType & OSMemoryAllocationTypes::RESERVE) && !(allocType & OSMemoryAllocationTypes::COMMIT))
     {
-        void* committedAddr = VirtualAlloc(retAddr, sizeof(MemBlockHeader), ConverMemoryAllocationType(OSMemoryAllocationTypes::COMMIT), ConvertMemoryProtection(protection));
+        void* committedAddr = VirtualAlloc(retAddr, sizeof(MemBlockHeader), ConvertMemoryAllocationType(OSMemoryAllocationTypes::COMMIT), ConvertMemoryProtection(protection));
 
         if (!committedAddr)
         {

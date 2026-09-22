@@ -634,7 +634,7 @@ int OSSetCurrentDirectory(const char* inputPath, int charCount)
 
 int OSExtractFileName(const char* inputFilePath, int inputFilePathCount, char* outputBuffer)
 {
-    if (inputFilePathCount <= 0 || inputFilePathCount >= MAX_PATH)
+    if (inputFilePathCount <= 0 || inputFilePathCount >= MAX_PATH || !outputBuffer)
     {
         return OS_FILE_INVALID_ARGUMENT;
     }

@@ -4762,7 +4762,7 @@ void ScanSTDIN(void* data)
 
 		if (ret < 0) continue;
 
-		int inputCharMakeUp = 0;
+		int inputCharMakeUp = 1;
 
 #ifdef WIN32
 		int success = OSPollWindowsCommandLine();

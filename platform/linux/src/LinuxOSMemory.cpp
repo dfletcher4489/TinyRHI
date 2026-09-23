@@ -197,7 +197,19 @@ void ReleaseAllMemoryAllocations()
     {
         if (memoryLocations[i])
         {
-            //BOOL ret = VirtualFree(memoryLocations[i], 0, MEM_RELEASE);
+            MemBlockHeader* header = ((MemBlockHeader*)memoryLocations[i]);
+
+            uint64_t pageSize = OSGetStandardPageSize();
+
+            if (GET_BLOCK_DETAILS_ALLOCATION_TYPE(header->blockDetails) & OSMemoryAllocationTypes::USE_LARGE_PAGES)
+            {
+                pageSize = OSGetLargePageSize();
+            }
+
+            uintptr_t absoluteMemAddr = ((uintptr_t)memoryLocations[i]) - (pageSize-sizeof(MemBlockHeader));
+
+            munmap((void*)absoluteMemAddr, header->blockSize);
+
             memoryLocations[i] = nullptr;
         }
 
@@ -245,7 +257,11 @@ void* OSMemoryAllocate(void* startingAddress, uint64_t size, OSMemoryAllocationT
 
     uint64_t adjustedSize = size;
 
-    if (!startingAddress)
+    int toCommit = allocType & OSMemoryAllocationTypes::COMMIT;
+
+    int toReserve = allocType & OSMemoryAllocationTypes::RESERVE;
+
+    if (!startingAddress || toReserve)
     {
         adjustedSize = ((adjustedSize + sizeof(MemBlockHeader) + pageSize) + (pageSize - 1)) & ~(pageSize - 1);
 
@@ -256,12 +272,19 @@ void* OSMemoryAllocate(void* startingAddress, uint64_t size, OSMemoryAllocationT
             return retAddr;
         }
 
-       // retAddr = VirtualAlloc(startingAddress, adjustedSize, ConverMemoryAllocationType(allocType), ConvertMemoryProtection(protection));
+        if (!toCommit)
+        {
+            retAddr = mmap(startingAddress, adjustedSize, PROT_NONE, MAP_ANONYMOUS | MAP_PRIVATE | ConvertMemoryAllocationType(allocType), -1, 0);
+        }
+        else
+        {
+            retAddr = mmap(startingAddress, adjustedSize, ConvertMemoryProtection(protection), MAP_ANONYMOUS | MAP_PRIVATE | ConvertMemoryAllocationType(allocType), -1, 0);
+        }
 
-        if (!retAddr)
+        if (retAddr == MAP_FAILED)
         {
             ReturnIndex(index);
-            return retAddr;
+            return nullptr;
         }
     }
     else
@@ -279,34 +302,27 @@ void* OSMemoryAllocate(void* startingAddress, uint64_t size, OSMemoryAllocationT
 
         adjustedSize = (adjustedSize + (pageSize - 1)) & ~(pageSize - 1);
 
-       // retAddr = VirtualAlloc((void*)(((uintptr_t)startingAddress - pageSize) + currentCommitHeader), adjustedSize, ConverMemoryAllocationType(allocType), ConvertMemoryProtection(protection));
+        retAddr = mmap((void*)(((uintptr_t)startingAddress - pageSize) + currentCommitHeader), adjustedSize, ConvertMemoryProtection(protection), MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED | ConvertMemoryAllocationType(allocType), -1, 0);
 
-        if (!retAddr)
+        if (retAddr == MAP_FAILED)
         {
-            return retAddr;
+            return nullptr;
         }
- 
-        if (allocType & OSMemoryAllocationTypes::COMMIT)
-        {
-            potentialBlockHeader->blockCommitSize += adjustedSize;
-        }
-        else if (allocType & OSMemoryAllocationTypes::RESERVE)
-        {
-            potentialBlockHeader->blockSize += adjustedSize;
-        }
+  
+        potentialBlockHeader->blockCommitSize += adjustedSize;
 
         return retAddr;
     }
 
-    if ((allocType & OSMemoryAllocationTypes::RESERVE) && !(allocType & OSMemoryAllocationTypes::COMMIT))
+    if (toReserve && !toCommit)
     {
-        void* committedAddr = nullptr; //VirtualAlloc(retAddr, sizeof(MemBlockHeader), ConverMemoryAllocationType(OSMemoryAllocationTypes::COMMIT), ConvertMemoryProtection(protection));
+        int retCode = mprotect((void*)retAddr, pageSize, ConvertMemoryProtection(protection));
 
-        if (!committedAddr)
+        if (retCode)
         {
-            //VirtualFree(retAddr, 0, MEM_RELEASE);
+            munmap(retAddr, adjustedSize);
             ReturnIndex(index);
-            return committedAddr;
+            return nullptr;
         }
     }
 
@@ -315,7 +331,7 @@ void* OSMemoryAllocate(void* startingAddress, uint64_t size, OSMemoryAllocationT
     blockHeader->blockCommitSentinel = BLOCK_HEADER_SENTINEL_VALUE;
     blockHeader->blockDetails = MAKE_BLOCK_DETAILS(index, protection, allocType);
     blockHeader->blockSize = adjustedSize;
-    blockHeader->blockCommitSize = (allocType & OSMemoryAllocationTypes::COMMIT) ? adjustedSize : pageSize;
+    blockHeader->blockCommitSize = toCommit ? adjustedSize : pageSize;
 
     memoryLocations[index] = blockHeader;
 
@@ -324,11 +340,6 @@ void* OSMemoryAllocate(void* startingAddress, uint64_t size, OSMemoryAllocationT
 
 int OSMemoryRelease(void* memAddr, uint64_t size, OSMemoryReleaseTypes freeType)
 {
-    if (size && (freeType == OSMemoryReleaseTypes::RELEASE))
-    {
-        return OS_MEMORY_FREE_FAILURE;
-    }
-
     MemBlockHeader* header = ((MemBlockHeader*)memAddr) - 1;
 
     if (header->blockCommitSentinel != BLOCK_HEADER_SENTINEL_VALUE)
@@ -343,34 +354,50 @@ int OSMemoryRelease(void* memAddr, uint64_t size, OSMemoryReleaseTypes freeType)
         pageSize = OSGetLargePageSize();
     }
 
-    size = (size + (pageSize - 1)) & ~(pageSize - 1);
+    int index = GET_BLOCK_DETAILS_ALLOCATION_INDEX(header->blockDetails);
+
+    uintptr_t absoluteMemAddr = ((uintptr_t)memAddr) - pageSize;
 
     size_t headerCommitSize = header->blockCommitSize;
+
+    if (freeType == OSMemoryReleaseTypes::RELEASE)
+    {
+        int retCode = munmap((void*)absoluteMemAddr, header->blockSize);
+
+        if (retCode)
+        {
+            return OS_MEMORY_FREE_FAILURE;
+        }
+
+        ReturnIndex(index);
+
+        return OS_MEMORY_SUCCESS;
+    }
+
+    size = (size + (pageSize - 1)) & ~(pageSize - 1);
 
     if ((headerCommitSize - pageSize) < size)
     {
         return OS_MEMORY_FREE_FAILURE;
     }
 
-    uintptr_t absoluteMemAddr = ((uintptr_t)memAddr) - pageSize;
+    absoluteMemAddr += (headerCommitSize - size);
 
-    if (freeType == OSMemoryReleaseTypes::DECOMMIT)
+    int retCode = madvise((void*)absoluteMemAddr, size, MADV_DONTNEED);
+
+    if (retCode)
     {
-        absoluteMemAddr = absoluteMemAddr + (headerCommitSize - size);
+        return OS_MEMORY_FREE_FAILURE;
     }
 
-    int index = GET_BLOCK_DETAILS_ALLOCATION_INDEX(header->blockDetails);
+    retCode = mprotect((void*)absoluteMemAddr, size, PROT_NONE); //Make the decommitted range inaccessible. Physical backing has already been discarded with MADV_DONTNEED.
 
-    int virtualFreeReturn = 1;//VirtualFree((void*)absoluteMemAddr, size, ConvertReleaseType(freeType));
-
-    if (freeType == OSMemoryReleaseTypes::RELEASE)
+    if (retCode)
     {
-        ReturnIndex(index);
-    }
-    else
-    {
-        header->blockCommitSize -= size;
+        return OS_MEMORY_FREE_FAILURE;
     }
 
-	return (virtualFreeReturn ? OS_MEMORY_SUCCESS : OS_MEMORY_FREE_FAILURE);
+    header->blockCommitSize -= size;
+    
+	return OS_MEMORY_SUCCESS;
 }

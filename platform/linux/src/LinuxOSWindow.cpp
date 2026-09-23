@@ -373,7 +373,7 @@ int OSCreateWindow(const char* name, int requestedDimensionX, int requestDimensi
     struct xdg_surface *xdg_surface = xdg_wm_base_get_xdg_surface(xdg_wm_base, surface);
     struct xdg_toplevel *xdg_toplevel = xdg_surface_get_toplevel(xdg_surface);
 
-    xdg_toplevel_set_title(xdg_toplevel, "My Window");
+    xdg_toplevel_set_title(xdg_toplevel, name);
 
     struct zxdg_toplevel_decoration_v1 *decoration = zxdg_decoration_manager_v1_get_toplevel_decoration(decoration_manager, xdg_toplevel);
     

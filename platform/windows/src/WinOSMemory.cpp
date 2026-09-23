@@ -205,7 +205,19 @@ void ReleaseAllMemoryAllocations()
     {
         if (memoryLocations[i])
         {
-            BOOL ret = VirtualFree(memoryLocations[i], 0, MEM_RELEASE);
+            MemBlockHeader* header = ((MemBlockHeader*)memoryLocations[i]);
+
+            uint64_t pageSize = OSGetStandardPageSize();
+
+            if (GET_BLOCK_DETAILS_ALLOCATION_TYPE(header->blockDetails) & OSMemoryAllocationTypes::USE_LARGE_PAGES)
+            {
+                pageSize = OSGetLargePageSize();
+            }
+
+            uintptr_t absoluteMemAddr = ((uintptr_t)memoryLocations[i]) - (pageSize-sizeof(MemBlockHeader));
+
+            BOOL ret = VirtualFree((void*)(absoluteMemAddr), 0, MEM_RELEASE);
+
             memoryLocations[i] = nullptr;
         }
 
@@ -373,6 +385,11 @@ int OSMemoryRelease(void* memAddr, uint64_t size, OSMemoryReleaseTypes freeType)
 
     BOOL virtualFreeReturn = VirtualFree((void*)absoluteMemAddr, size, ConvertReleaseType(freeType));
 
+    if (virtualFreeReturn == FALSE)
+    {
+        return OS_MEMORY_FREE_FAILURE;
+    }
+
     if (freeType == OSMemoryReleaseTypes::RELEASE)
     {
         ReturnIndex(index);
@@ -382,5 +399,5 @@ int OSMemoryRelease(void* memAddr, uint64_t size, OSMemoryReleaseTypes freeType)
         header->blockCommitSize -= size;
     }
 
-	return (virtualFreeReturn ? OS_MEMORY_SUCCESS : OS_MEMORY_FREE_FAILURE);
+	return OS_MEMORY_SUCCESS;
 }

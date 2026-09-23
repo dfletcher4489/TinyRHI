@@ -32,7 +32,7 @@ void ScanSTDIN(void* argument)
 
         if (!pollCommand)
         {
-            int inputCharMakeUp = 0;
+            int inputCharMakeUp = 1;
 #ifdef WIN32
             int success = OSPollWindowsCommandLine();
 
@@ -53,7 +53,7 @@ void ScanSTDIN(void* argument)
             }
             else
             {
-                printf("%s\n", inputBuffer);
+                printf("%s %d\n", inputBuffer, readSize);
             }
         }
     }

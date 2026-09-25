@@ -515,8 +515,6 @@ static std::atomic<int> globalMeshCount = 0;
 static std::atomic<int> globalDebugStructCount = 0;
 static std::atomic<int> globalMaterialRangeCount = 0;
 
-
-
 static const int globalMaterialsMax = globalMaterialsSize / sizeof(GPUMaterial);
 static const int globalBlendDetailMax = globalBlendDetailsSize / sizeof(GPUBlendDetails);
 static const int globalBlendRangeMax = globalBlendRangesSize / sizeof(uint32_t);

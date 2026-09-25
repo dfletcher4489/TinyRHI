@@ -117,9 +117,9 @@ int OSSeedThreadMemory(void* dataSource, int dataSize, int numberOfOpenThreads)
 {
     uintptr_t dataHead = (uintptr_t)dataSource;
 
-    handles = (HANDLE*)dataSource;
-
     int handleSize = numberOfOpenThreads;
+
+    handles = (HANDLE*)dataHead;
 
     dataHead += sizeof(HANDLE) * handleSize;
 

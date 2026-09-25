@@ -112,7 +112,7 @@ OSThreadMemoryRequirements OSGetThreadMemoryRequirements(int maxNumberOfOpenThre
     int freeListSize = (maxNumberOfOpenThreads) * sizeof(MPMCQueueData);
     int definedSize = (maxNumberOfOpenThreads) * sizeof(int);
 
-    OSThreadMemoryRequirements memReqs{ handlesSize + threadDataSize + freeListSize + definedSize, alignof(pthread_t) };
+    OSThreadMemoryRequirements memReqs{ handlesSize + threadDataSize + freeListSize + definedSize, alignof(MPMCQueueData) };
 
     return memReqs;
 }
@@ -123,17 +123,17 @@ int OSSeedThreadMemory(void* dataSource, int dataSize, int numberOfOpenThreads)
 
     int handleSize = numberOfOpenThreads;
 
-    handles = (pthread_t*)dataSource;
+    freeList = (MPMCQueueData*)dataHead;
+
+    dataHead += sizeof(MPMCQueueData) * handleSize;
+
+    handles = (pthread_t*)dataHead;
 
     dataHead += sizeof(pthread_t) * handleSize;
 
     dataThreads = (ThreadData*)dataHead;
 
     dataHead += sizeof(ThreadData) * handleSize;
-
-    freeList = (MPMCQueueData*)dataHead;
-
-    dataHead += sizeof(MPMCQueueData) * handleSize;
 
     handleDefined = (int*)dataHead;
 

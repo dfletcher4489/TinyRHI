@@ -147,7 +147,7 @@ OSSyncMemoryRequirements OSGetSyncMemoryRequirements(int maxNumberOfOpenSyncObje
 	int handlesTypeSize = (maxNumberOfOpenSyncObjects) * sizeof(int);
 	int freeListSize = (maxNumberOfOpenSyncObjects) * sizeof(MPMCQueueData);
 
-	OSSyncMemoryRequirements memReqs{ handlesSize + handlesTypeSize + freeListSize, alignof(void*) };
+	OSSyncMemoryRequirements memReqs{ handlesSize + handlesTypeSize + freeListSize, alignof(MPMCQueueData) };
 	
 	return memReqs;
 }
@@ -157,17 +157,19 @@ int OSSeedSyncMemory(void* dataSource, int dataSize, int maxNumberSyncObjects)
 	uintptr_t dataHead = (uintptr_t)dataSource;
 	uintptr_t dataStart = dataHead;
 
-	handles = (WinHandleUnion*)dataSource;
-
 	int handleSize = maxNumberSyncObjects;
 
-	dataHead += handleSize * sizeof(void*);
+	freeList = (MPMCQueueData*)dataHead;
+
+	dataHead += sizeof(MPMCQueueData) * handleSize;
+
+	handles = (WinHandleUnion*)dataHead;
+
+	dataHead += handleSize * sizeof(WinHandleUnion);
 
 	handleTypes = (int*)dataHead;
 
 	dataHead += sizeof(int) * handleSize;
-
-	freeList = (MPMCQueueData*)dataHead;
 
 	for (int i = 0; i < handleSize; i++)
 	{
@@ -187,11 +189,6 @@ int CreateOSSemaphore(OSSemaphore* semaphore, int count)
 	if (osIndex < 0)
 	{
 		return OS_SEMAPHORE_HANDLE_EXHAUSTED;
-	}
-
-	if (handleTypes[osIndex] != SEMAPHORE_HANDLE)
-	{
-		return OS_SEMAPHORE_WRONG_TYPE;
 	}
 
 	HANDLE semaIndex = CreateSemaphore(NULL, count, count, NULL);
@@ -294,7 +291,6 @@ int DeleteOSSemaphore(OSSemaphore* semaphore)
 
 	return OS_SEMAPHORE_SUCCESS;
 }
-
 
 int CreateOSSharedExclusive(OSSharedExclusive* osse)
 {

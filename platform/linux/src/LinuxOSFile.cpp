@@ -1,7 +1,9 @@
 #include "OSFile.h"
 
 #include <string.h>
+#include <stdlib.h>
 
+#include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <sys/types.h>
@@ -585,7 +587,10 @@ int OSCreateDirectory(const char* directoryPath, int charCount, OSDirectoryFlag 
 
     if (retCode < 0)
     {
-        return OS_FILE_FAILED_CREATE_DIRECTORY;
+        if (errno != EEXIST)
+        {
+            return OS_FILE_FAILED_CREATE_DIRECTORY;
+        }
     }
 
     return OS_FILE_SUCCESS;

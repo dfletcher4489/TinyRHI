@@ -140,7 +140,24 @@ static int PumpWindowEventsPacked(GenericWindowEventBuffer* buffer, GenericWindo
     return packedEventsCount;
 }
 
-#if defined(WINDOW_USE_WAYLAND)
+int OSWindowSeedEventBuffer(OSWindow* window, void* bufferMemory, size_t bufferSize)
+{
+    if (bufferSize & (bufferSize - 1))
+    {
+        return -1;
+    }
+
+    window->eventBuffer.dataHead = bufferMemory;
+    window->eventBuffer.dataSize = bufferSize;
+    window->eventBuffer.dataRead = 0;
+    window->eventBuffer.dataWrite = 0;
+    window->eventBuffer.ringLapsSinceLastRead = 0;
+    window->eventBuffer.requestedFullScreen = 0;
+
+    return 0;
+}
+
+#if defined(WINDOW_USE_WAYLAND) || 1
 
 #include <wayland-client.h>
 #include <xdg-shell-client-protocol.h>
@@ -148,11 +165,24 @@ static int PumpWindowEventsPacked(GenericWindowEventBuffer* buffer, GenericWindo
 #include <xdg-decoration-client-protocol.h>
 #include <xdg-decoration-client-protocol.c>
 
-struct pool_data {
-    int fd;
-    unsigned capacity;
-    unsigned size;
+struct OSWaylandData
+{
+    struct wl_surface *surface;
+    struct xdg_surface *xdg_surface;
+    struct xdg_toplevel *xdg_toplevel;
+    GenericWindowEventBuffer* windowEventBuffer;
+    size_t surfaceConfigured;
 };
+
+static int initialize = 0;
+
+static struct wl_display *display = NULL;
+static struct wl_compositor *compositor = NULL;
+static struct wl_shm *shm = NULL;
+static struct xdg_wm_base* xdg_wm_base = NULL;
+static struct zxdg_decoration_manager_v1* decoration_manager = NULL;
+
+static OSWaylandData* instancePointers;
 
 static void ReturnIndex(int index)
 {
@@ -176,66 +206,44 @@ static void ReturnIndex(int index)
             pos = enqueuePos.load(std::memory_order_relaxed);
     }
 
-    //windowPtrs[index] = NULL;
-    //instancePointers[index] = NULL;
+    instancePointers[index].surface = NULL;
+    instancePointers[index].xdg_surface = NULL;
+    instancePointers[index].xdg_toplevel = NULL;
+    instancePointers[index].windowEventBuffer = NULL;
+    instancePointers[index].surfaceConfigured = 0;
+
     cell->freeIndex = index;
     cell->currentSequence.store(pos + 1, std::memory_order_release);
 }
 
-OSWindowMemoryRequirements OSGetWindowMemoryRequirements(int maxNumberOfWindows)
-{
-    int handlesSize = (maxNumberOfWindows) * 0;
-    int handlesWndSize = (maxNumberOfWindows) * 0;
-    int freeListSize = (maxNumberOfWindows) * sizeof(MPMCQueueData);
-
-    OSWindowMemoryRequirements memReqs{ handlesSize + handlesWndSize + freeListSize, alignof(uintptr_t) };
-
-    return memReqs;
-}
-
-static struct wl_display *display = NULL;
-static struct wl_compositor *compositor = NULL;
-static struct wl_shm *shm = NULL;
-static struct wl_surface *surface = NULL;
-static struct wl_shm_pool *pool = NULL;
-static struct wl_buffer *buffer;
-static struct pool_data data;
-static int memfd = -1;
-static void *shm_data; 
-static struct xdg_wm_base* xdg_wm_base;
-static struct zxdg_decoration_manager_v1* decoration_manager;
-
-static char framebuffer[1 * 1024 * 1024];
-
-static void RegistryGlobalHandler
-(
+static void
+RegistryGlobalHandler(
     void *data,
     struct wl_registry *registry,
     uint32_t name,
     const char *interface,
-    uint32_t version
-) {
+    uint32_t version)
+{
 
-    if (strcmp(interface, "wl_compositor") == 0) {
-        compositor = (wl_compositor*)wl_registry_bind(registry, name,
-            &wl_compositor_interface, 4);
-    } else if (strcmp(interface, "wl_shm") == 0) {
-        shm = (wl_shm*)wl_registry_bind(registry, name,
-            &wl_shm_interface, 1);
+    if (strcmp(interface, "wl_compositor") == 0) 
+    {
+        compositor = (wl_compositor*)wl_registry_bind(registry, name, &wl_compositor_interface, 4);
+    } 
+    else if (strcmp(interface, "wl_shm") == 0) 
+    {
+        shm = (wl_shm*)wl_registry_bind(registry, name, &wl_shm_interface, 1);
     }
-    else if (strcmp(interface, xdg_wm_base_interface.name) == 0) {
+    else if (strcmp(interface, xdg_wm_base_interface.name) == 0) 
+    {
         xdg_wm_base = (struct xdg_wm_base*)wl_registry_bind(registry, name, &xdg_wm_base_interface, 1);
     }
-    else if (strcmp(interface, zxdg_decoration_manager_v1_interface.name) == 0) {
-        decoration_manager = (zxdg_decoration_manager_v1*)wl_registry_bind(
-            registry, name, &zxdg_decoration_manager_v1_interface, 1);
+    else if (strcmp(interface, zxdg_decoration_manager_v1_interface.name) == 0) 
+    {
+        decoration_manager = (zxdg_decoration_manager_v1*)wl_registry_bind(registry, name, &zxdg_decoration_manager_v1_interface, 1);
     }
-
-
-   // printf("interface: '%s', version: %u, name: %u\n", interface, version, name);
 }
 
-void RegistryGlobalRemoveHandler
+static void RegistryGlobalRemoveHandler
 (
     void *data,
     struct wl_registry *registry,
@@ -243,42 +251,6 @@ void RegistryGlobalRemoveHandler
 ) 
 {
     printf("removed: %u\n", name);
-}
-
-void CloseAllWindows()
-{
-    zxdg_decoration_manager_v1_destroy(decoration_manager);
-
-    wl_buffer_destroy(buffer);
-
-    wl_surface_destroy(surface);
-
-    wl_shm_pool_destroy(pool);
-
-    munmap(shm_data, 1024 * 1024);
-
-    close(memfd);
-
-    xdg_wm_base_destroy(xdg_wm_base);
-    wl_shm_destroy(shm);
-    wl_compositor_destroy(compositor);
-    wl_display_disconnect(display);
-}
-
-
-void hello_create_memory_pool()
-{
-    memfd = memfd_create("whatever", 0);
-
-    ftruncate(memfd , 1024*1024);
-
-    data.capacity = 1024 * 1024;
-    data.size = 0;
-    data.fd = memfd;
-
-    shm_data = mmap(NULL, 1024*1024, PROT_READ | PROT_WRITE, MAP_SHARED, memfd, 0);
-
-    pool = wl_shm_create_pool(shm, data.fd, data.capacity);
 }
 
 static void XdgWmBasePing(void *data, struct xdg_wm_base *xdg_wm_base, uint32_t serial)
@@ -290,88 +262,172 @@ static const struct xdg_wm_base_listener xdg_wm_base_listener = {
     .ping = XdgWmBasePing,
 };
 
-int OSSeedWindowMemory(void* dataSource, int dataSize, int maxNumberOfWindows)
-{
-    if (!display)
-    {
-        display = wl_display_connect(NULL);
-
-        struct wl_registry *registry = wl_display_get_registry(display);
-
-        struct wl_registry_listener registry_listener = {
-            .global = RegistryGlobalHandler,
-            .global_remove = RegistryGlobalRemoveHandler
-        };
-
-        wl_registry_add_listener(registry, &registry_listener, NULL);
-
-        wl_display_roundtrip(display);
-
-        if (!compositor || !shm || !xdg_wm_base || !decoration_manager) {
-            printf("Missing required globals: decomanager\n",
-            (void*)decoration_manager);
-             fflush(stdout);
-        }
-
-        xdg_wm_base_add_listener(xdg_wm_base, &xdg_wm_base_listener, NULL);
-
-        wl_registry_destroy(registry);
-
-        hello_create_memory_pool();
-    }
-
-    return 0;
-}
-
-static const uint32_t PIXEL_FORMAT_ID = WL_SHM_FORMAT_ARGB8888;
-
-struct wl_buffer *hello_create_buffer(struct wl_shm_pool *pool,
-    unsigned width, unsigned height)
-{
-    buffer = wl_shm_pool_create_buffer(pool,
-        data.size, width, height,
-        width*sizeof(uint32_t), PIXEL_FORMAT_ID);
-
-    if (buffer == NULL)
-    {
-        data.size += width*height*sizeof(uint32_t);
-    }
-
-    return buffer;
-}
-
-static bool surface_configured = false;
-
 static void XdgSurfaceConfigure(void *data, struct xdg_surface *xdg_surface, uint32_t serial)
 {
     xdg_surface_ack_configure(xdg_surface, serial);
-    surface_configured = true;
+    OSWaylandData* osData = (OSWaylandData*)data;
+    osData->surfaceConfigured = true;
 }
 
-static const struct xdg_surface_listener xdg_surface_listener = {
+static const struct xdg_surface_listener xdg_surface_listener = 
+{
     .configure = XdgSurfaceConfigure,
 };
 
-static void XdgToplevelConfigure(void *data, struct xdg_toplevel *toplevel,
-                                  int32_t width, int32_t height, struct wl_array *states) {}
-static void XdgToplevelClose(void *data, struct xdg_toplevel *toplevel) { /* set running=false */ }
+static void XdgToplevelConfigure(void *data, struct xdg_toplevel *toplevel, int32_t width, int32_t height, struct wl_array *states) 
+{
 
-static const struct xdg_toplevel_listener xdg_toplevel_listener = {
+}
+
+static void XdgToplevelClose(void *data, struct xdg_toplevel *toplevel) 
+{ 
+
+}
+
+static const struct xdg_toplevel_listener xdg_toplevel_listener = 
+{
     .configure = XdgToplevelConfigure,
     .close = XdgToplevelClose,
 };
 
+static int InitializeWayland()
+{
+    if (initialize)
+    {
+        return OS_WINDOW_CREATE_FAILED;
+    }
+
+    display = wl_display_connect(NULL);
+
+    struct wl_registry *registry = wl_display_get_registry(display);
+
+    struct wl_registry_listener registry_listener = 
+    {
+        .global = RegistryGlobalHandler,
+        .global_remove = RegistryGlobalRemoveHandler
+    };
+
+    wl_registry_add_listener(registry, &registry_listener, NULL);
+
+    wl_display_roundtrip(display);
+
+    if (!compositor || !shm || !xdg_wm_base || !decoration_manager)
+    {
+        printf("Missing required globals\n");
+        return OS_WINDOW_CREATE_FAILED;
+    }
+
+    xdg_wm_base_add_listener(xdg_wm_base, &xdg_wm_base_listener, NULL);
+
+    wl_registry_destroy(registry);
+
+    initialize = 1;
+
+    return OS_WINDOW_SUCCESS;
+}
+
+OSWindowMemoryRequirements OSGetWindowMemoryRequirements(int maxNumberOfWindows)
+{
+    int windowDataSize = (maxNumberOfWindows) * sizeof(OSWaylandData);
+    int freeListSize = (maxNumberOfWindows) * sizeof(MPMCQueueData);
+
+    OSWindowMemoryRequirements memReqs{ windowDataSize + freeListSize, alignof(OSWaylandData) };
+
+    return memReqs;
+}
+
+int OSSeedWindowMemory(void* dataSource, int dataSize, int maxNumberOfWindows)
+{
+    uintptr_t dataHead = (uintptr_t)dataSource;
+
+    int handleSize = maxNumberOfWindows;
+
+    instancePointers = (OSWaylandData*)dataHead;
+
+    dataHead += handleSize * sizeof(OSWaylandData);
+
+    freeList = (MPMCQueueData*)dataHead;
+
+    for (int i = 0; i < handleSize; i++)
+    {
+        freeList[i].currentSequence.store(i, std::memory_order_relaxed);
+        instancePointers[i].surface = NULL;
+        instancePointers[i].xdg_surface = NULL;
+        instancePointers[i].xdg_toplevel = NULL;
+        instancePointers[i].windowEventBuffer = NULL;
+        instancePointers[i].surfaceConfigured = 0;
+    }
+
+    maxFreeListEntry = handleSize;
+
+    return OS_WINDOW_SUCCESS;
+}
+
+void CloseAllWindows()
+{
+    for (int idx = 0; idx < maxFreeListEntry; idx++)
+    {
+        if (instancePointers[idx].surface)
+        {
+            wl_surface_destroy(instancePointers[idx].surface);
+        }
+
+        instancePointers[idx].surface = NULL;
+        instancePointers[idx].xdg_surface = NULL;
+        instancePointers[idx].xdg_toplevel = NULL;
+        instancePointers[idx].windowEventBuffer = NULL;
+        instancePointers[idx].surfaceConfigured = 0;
+
+        freeList[idx].currentSequence.store(idx, std::memory_order_relaxed);
+    }
+
+    enqueuePos.store(0, std::memory_order_relaxed);
+    dequeuePos.store(0, std::memory_order_relaxed);
+    boundedLinearAllocator.store(0, std::memory_order_relaxed);
+
+    zxdg_decoration_manager_v1_destroy(decoration_manager);
+    xdg_wm_base_destroy(xdg_wm_base);
+    wl_shm_destroy(shm);
+    wl_compositor_destroy(compositor);
+    wl_display_disconnect(display);
+    initialize = 0;
+}
+
 int OSCreateWindow(const char* name, int requestedDimensionX, int requestDimensionY, OSWindow* windowData)
 {
+    if (!initialize)
+    {
+        int retCode = InitializeWayland();
+
+        if (retCode)
+        {
+            return OS_WINDOW_CREATE_FAILED;
+        }
+    }
+
+    struct wl_surface *surface = NULL;
+
     surface = wl_compositor_create_surface(compositor);
 
-    if (surface == NULL)
+    if (!surface)
     {
-        return -1;
+        return OS_WINDOW_CREATE_FAILED;
     }
+
+    int osIndex = FindFreeIndex();
 
     struct xdg_surface *xdg_surface = xdg_wm_base_get_xdg_surface(xdg_wm_base, surface);
     struct xdg_toplevel *xdg_toplevel = xdg_surface_get_toplevel(xdg_surface);
+
+    OSWaylandData* data = &instancePointers[osIndex];
+
+    data->xdg_surface = xdg_surface;
+    data->xdg_toplevel = xdg_toplevel;
+    data->surface = surface;
+    data->surfaceConfigured = 0; 
+    data->windowEventBuffer = &windowData->eventBuffer;
+
+    wl_surface_set_user_data(surface, data);
 
     xdg_toplevel_set_title(xdg_toplevel, name);
 
@@ -379,35 +435,26 @@ int OSCreateWindow(const char* name, int requestedDimensionX, int requestDimensi
     
     zxdg_toplevel_decoration_v1_set_mode(decoration, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 
-    xdg_surface_add_listener(xdg_surface, &xdg_surface_listener, NULL);
+    xdg_surface_add_listener(xdg_surface, &xdg_surface_listener, data);
 
     xdg_toplevel_add_listener(xdg_toplevel, &xdg_toplevel_listener, NULL);
-
-    wl_surface_set_user_data(surface, NULL);
-
+    
     wl_surface_commit(surface); 
     wl_display_flush(display);
     
-    while (!surface_configured) 
+    while (!data->surfaceConfigured) 
     {
         wl_display_dispatch(display);    
     }
 
-    buffer = hello_create_buffer(pool, requestedDimensionX, requestDimensionY);
+    windowData->internalOSHandle = osIndex;
 
-    memset(shm_data, 0xFF, requestDimensionY * requestedDimensionX * sizeof(uint32_t));
-    
-    wl_surface_attach(surface, buffer, 0, 0);
-    wl_surface_damage_buffer(surface, 0, 0, requestedDimensionX, requestDimensionY);
-    wl_surface_commit(surface);
-    wl_display_flush(display);
-
-    return 0;
+    return OS_WINDOW_SUCCESS;
 }
 
 int OSWindowPollEvents(OSWindow* window, GenericWindowInfo* info)
 {
-    int ret = 0;
+    int ret = OS_WINDOW_SUCCESS;
 
     wl_display_dispatch_pending(display);
     wl_display_flush(display);
@@ -422,29 +469,16 @@ int OSWindowGetInternalData(OSWindow* window, void* internalDataStruct)
 
 int OSWindowSetText(OSWindow* window, const char* text)
 {
+    OSWaylandData* data = &instancePointers[window->internalOSHandle];
+
+    xdg_toplevel_set_title(data->xdg_toplevel, text);
+
     return OS_WINDOW_SUCCESS;
 }
 
 int OSWindowShow(OSWindow* window)
 {
     return OS_WINDOW_SUCCESS;
-}
-
-int OSWindowSeedEventBuffer(OSWindow* window, void* bufferMemory, size_t bufferSize)
-{
-    if (bufferSize & (bufferSize - 1))
-    {
-        return -1;
-    }
-
-    window->eventBuffer.dataHead = bufferMemory;
-    window->eventBuffer.dataSize = bufferSize;
-    window->eventBuffer.dataRead = 0;
-    window->eventBuffer.dataWrite = 0;
-    window->eventBuffer.ringLapsSinceLastRead = 0;
-    window->eventBuffer.requestedFullScreen = 0;
-
-    return 0;
 }
 
 #elif defined(WINDOW_USE_X11)

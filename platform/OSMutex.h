@@ -48,7 +48,6 @@ int NotifyOSSemaphore(OSSemaphore* semaphore);
 
 int DeleteOSSemaphore(OSSemaphore* semaphore);
 
-
 struct OSSharedExclusive
 {
 	int internalOSHandle;

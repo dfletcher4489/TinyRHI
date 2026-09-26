@@ -342,7 +342,12 @@ int main(int argc, const char** argv)
 
     OSCreateThread(&handle, nullptr, ScanSTDIN, OS_THREAD_NONE);
 
-    OSCreateWindow("Multi Platform Test", 320, 240, &window);
+    closeWindow = OSCreateWindow("Multi Platform Test", 320, 240, &window);
+
+    if (closeWindow)
+    {
+        goto end;
+    }
 
     OSWindowSeedEventBuffer(&window, MainWindowEventBuffer, sizeof(MainWindowEventBuffer));
 

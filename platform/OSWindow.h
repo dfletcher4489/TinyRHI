@@ -184,3 +184,7 @@ int OSWindowClose(OSWindow* window);
 int OSWindowSeedEventBuffer(OSWindow* window, void* bufferMemory, size_t bufferSize);
 
 int OSWindowShow(OSWindow* window);
+
+int OSWindowHide(OSWindow* window);
+
+int OSWindowAttachBuffer(OSWindow* window, void** bufferData, size_t bufferSize, int width, int height);

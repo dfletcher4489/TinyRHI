@@ -157,7 +157,10 @@ int OSWindowSeedEventBuffer(OSWindow* window, void* bufferMemory, size_t bufferS
     return 0;
 }
 
-#if defined(WINDOW_USE_WAYLAND) || 1
+#if defined(WINDOW_USE_WAYLAND)
+
+#define USE_BUFFER
+#define WINDOW_HEADER_TEXT_MAX_LEN 32
 
 #include <wayland-client.h>
 #include <xdg-shell-client-protocol.h>
@@ -167,22 +170,53 @@ int OSWindowSeedEventBuffer(OSWindow* window, void* bufferMemory, size_t bufferS
 
 struct OSWaylandData
 {
-    struct wl_surface *surface;
-    struct xdg_surface *xdg_surface;
-    struct xdg_toplevel *xdg_toplevel;
+    struct wl_surface* surface;
+    struct xdg_surface* xdg_surface;
+    struct xdg_toplevel* xdg_toplevel;
+    struct zxdg_toplevel_decoration_v1 *decoration;
     GenericWindowEventBuffer* windowEventBuffer;
     size_t surfaceConfigured;
+    char windowHeader[WINDOW_HEADER_TEXT_MAX_LEN]; 
+    int width;
+    int height;
+#ifdef USE_BUFFER
+    struct wl_buffer* buffer;
+    struct wl_shm_pool* pool;
+    void* shmdata;
+    size_t bufferSize;
+    int bufferFile;
+    int pad;
+#endif
 };
 
 static int initialize = 0;
-
 static struct wl_display *display = NULL;
 static struct wl_compositor *compositor = NULL;
-static struct wl_shm *shm = NULL;
 static struct xdg_wm_base* xdg_wm_base = NULL;
 static struct zxdg_decoration_manager_v1* decoration_manager = NULL;
 
+#ifdef USE_BUFFER
+static struct wl_shm *shm = NULL;
+#endif
+
 static OSWaylandData* instancePointers;
+
+static void CleanOSWaylandData(OSWaylandData* data)
+{
+    data->surface = NULL;
+    data->xdg_surface = NULL;
+    data->xdg_toplevel = NULL;
+    data->windowEventBuffer = NULL;
+    data->surfaceConfigured = 0;
+    data->decoration = NULL;
+#ifdef USE_BUFFER
+    data->buffer = NULL;
+    data->pool = NULL;
+    data->shmdata = NULL;
+    data->bufferSize = 0;
+    data->bufferFile = -1;
+#endif
+}
 
 static void ReturnIndex(int index)
 {
@@ -206,11 +240,7 @@ static void ReturnIndex(int index)
             pos = enqueuePos.load(std::memory_order_relaxed);
     }
 
-    instancePointers[index].surface = NULL;
-    instancePointers[index].xdg_surface = NULL;
-    instancePointers[index].xdg_toplevel = NULL;
-    instancePointers[index].windowEventBuffer = NULL;
-    instancePointers[index].surfaceConfigured = 0;
+    CleanOSWaylandData(&instancePointers[index]);
 
     cell->freeIndex = index;
     cell->currentSequence.store(pos + 1, std::memory_order_release);
@@ -229,10 +259,12 @@ RegistryGlobalHandler(
     {
         compositor = (wl_compositor*)wl_registry_bind(registry, name, &wl_compositor_interface, 4);
     } 
+#ifdef USE_BUFFER
     else if (strcmp(interface, "wl_shm") == 0) 
     {
         shm = (wl_shm*)wl_registry_bind(registry, name, &wl_shm_interface, 1);
     }
+#endif
     else if (strcmp(interface, xdg_wm_base_interface.name) == 0) 
     {
         xdg_wm_base = (struct xdg_wm_base*)wl_registry_bind(registry, name, &xdg_wm_base_interface, 1);
@@ -290,6 +322,8 @@ static const struct xdg_toplevel_listener xdg_toplevel_listener =
     .close = XdgToplevelClose,
 };
 
+
+
 static int InitializeWayland()
 {
     if (initialize)
@@ -311,11 +345,19 @@ static int InitializeWayland()
 
     wl_display_roundtrip(display);
 
-    if (!compositor || !shm || !xdg_wm_base || !decoration_manager)
+    if (!compositor || !xdg_wm_base || !decoration_manager)
     {
         printf("Missing required globals\n");
         return OS_WINDOW_CREATE_FAILED;
     }
+
+#ifdef USE_BUFFER
+    if (!shm)
+    {
+        printf("Missing required globals\n");
+        return OS_WINDOW_CREATE_FAILED;
+    }
+#endif
 
     xdg_wm_base_add_listener(xdg_wm_base, &xdg_wm_base_listener, NULL);
 
@@ -351,11 +393,8 @@ int OSSeedWindowMemory(void* dataSource, int dataSize, int maxNumberOfWindows)
     for (int i = 0; i < handleSize; i++)
     {
         freeList[i].currentSequence.store(i, std::memory_order_relaxed);
-        instancePointers[i].surface = NULL;
-        instancePointers[i].xdg_surface = NULL;
-        instancePointers[i].xdg_toplevel = NULL;
-        instancePointers[i].windowEventBuffer = NULL;
-        instancePointers[i].surfaceConfigured = 0;
+
+        CleanOSWaylandData(&instancePointers[i]);
     }
 
     maxFreeListEntry = handleSize;
@@ -369,14 +408,31 @@ void CloseAllWindows()
     {
         if (instancePointers[idx].surface)
         {
+#ifdef USE_BUFFER
+            if (instancePointers[idx].buffer)
+            {
+                wl_buffer_destroy(instancePointers[idx].buffer);
+            }
+
+            if (instancePointers[idx].pool)
+            {
+                wl_shm_pool_destroy(instancePointers[idx].pool);
+            }
+
+            if (instancePointers[idx].shmdata)
+            {
+                munmap(instancePointers[idx].shmdata, instancePointers[idx].bufferSize);
+            }
+
+            if (instancePointers[idx].bufferFile >= 0)
+            {
+                close(instancePointers[idx].bufferFile);
+            }
+#endif
             wl_surface_destroy(instancePointers[idx].surface);
         }
 
-        instancePointers[idx].surface = NULL;
-        instancePointers[idx].xdg_surface = NULL;
-        instancePointers[idx].xdg_toplevel = NULL;
-        instancePointers[idx].windowEventBuffer = NULL;
-        instancePointers[idx].surfaceConfigured = 0;
+        CleanOSWaylandData(&instancePointers[idx]);
 
         freeList[idx].currentSequence.store(idx, std::memory_order_relaxed);
     }
@@ -385,12 +441,17 @@ void CloseAllWindows()
     dequeuePos.store(0, std::memory_order_relaxed);
     boundedLinearAllocator.store(0, std::memory_order_relaxed);
 
-    zxdg_decoration_manager_v1_destroy(decoration_manager);
-    xdg_wm_base_destroy(xdg_wm_base);
-    wl_shm_destroy(shm);
-    wl_compositor_destroy(compositor);
-    wl_display_disconnect(display);
-    initialize = 0;
+    if (initialize)
+    {
+        zxdg_decoration_manager_v1_destroy(decoration_manager);
+        xdg_wm_base_destroy(xdg_wm_base);
+#ifdef USE_BUFFER
+        wl_shm_destroy(shm);
+#endif
+        wl_compositor_destroy(compositor);
+        wl_display_disconnect(display);
+        initialize = 0;
+    }
 }
 
 int OSCreateWindow(const char* name, int requestedDimensionX, int requestDimensionY, OSWindow* windowData)
@@ -416,36 +477,19 @@ int OSCreateWindow(const char* name, int requestedDimensionX, int requestDimensi
 
     int osIndex = FindFreeIndex();
 
-    struct xdg_surface *xdg_surface = xdg_wm_base_get_xdg_surface(xdg_wm_base, surface);
-    struct xdg_toplevel *xdg_toplevel = xdg_surface_get_toplevel(xdg_surface);
-
     OSWaylandData* data = &instancePointers[osIndex];
 
-    data->xdg_surface = xdg_surface;
-    data->xdg_toplevel = xdg_toplevel;
+    CleanOSWaylandData(data);
+
     data->surface = surface;
     data->surfaceConfigured = 0; 
     data->windowEventBuffer = &windowData->eventBuffer;
+    data->width = requestedDimensionX;
+    data->height = requestDimensionY;
+
+    memcpy(data->windowHeader, name, strnlen(name, WINDOW_HEADER_TEXT_MAX_LEN));
 
     wl_surface_set_user_data(surface, data);
-
-    xdg_toplevel_set_title(xdg_toplevel, name);
-
-    struct zxdg_toplevel_decoration_v1 *decoration = zxdg_decoration_manager_v1_get_toplevel_decoration(decoration_manager, xdg_toplevel);
-    
-    zxdg_toplevel_decoration_v1_set_mode(decoration, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
-
-    xdg_surface_add_listener(xdg_surface, &xdg_surface_listener, data);
-
-    xdg_toplevel_add_listener(xdg_toplevel, &xdg_toplevel_listener, NULL);
-    
-    wl_surface_commit(surface); 
-    wl_display_flush(display);
-    
-    while (!data->surfaceConfigured) 
-    {
-        wl_display_dispatch(display);    
-    }
 
     windowData->internalOSHandle = osIndex;
 
@@ -471,13 +515,111 @@ int OSWindowSetText(OSWindow* window, const char* text)
 {
     OSWaylandData* data = &instancePointers[window->internalOSHandle];
 
-    xdg_toplevel_set_title(data->xdg_toplevel, text);
+    int count = strnlen(text, WINDOW_HEADER_TEXT_MAX_LEN);
+
+    memcpy(data->windowHeader, text, count);
+
+    data->windowHeader[count] = '\0';
+
+    xdg_toplevel_set_title(data->xdg_toplevel, data->windowHeader);
+
+    return OS_WINDOW_SUCCESS;
+}
+
+int OSWindowHide(OSWindow* window)
+{
+    OSWaylandData* data = &instancePointers[window->internalOSHandle];
+
+    if (!data->xdg_surface || !data->xdg_toplevel)
+    {
+        return OS_WINDOW_SUCCESS;
+    }
+
+    zxdg_toplevel_decoration_v1_destroy(data->decoration);
+    xdg_toplevel_destroy(data->xdg_toplevel);
+    xdg_surface_destroy(data->xdg_surface);
+
+    data->xdg_surface = NULL;
+    data->xdg_toplevel = NULL;
+    data->decoration = NULL;
+    data->surfaceConfigured = 0;
+
+    wl_surface_attach(data->surface, NULL, 0, 0);
+    wl_surface_commit(data->surface);
 
     return OS_WINDOW_SUCCESS;
 }
 
 int OSWindowShow(OSWindow* window)
 {
+    OSWaylandData* data = &instancePointers[window->internalOSHandle];
+
+    if (data->xdg_surface || data->xdg_toplevel)
+    {
+        return OS_WINDOW_SUCCESS;
+    }
+
+    struct xdg_surface *xdg_surface = xdg_wm_base_get_xdg_surface(xdg_wm_base, data->surface);
+    
+    struct xdg_toplevel *xdg_toplevel = xdg_surface_get_toplevel(xdg_surface);
+
+    struct zxdg_toplevel_decoration_v1 *decoration = zxdg_decoration_manager_v1_get_toplevel_decoration(decoration_manager, xdg_toplevel);
+
+    data->xdg_surface = xdg_surface;
+    data->xdg_toplevel = xdg_toplevel;
+    data->decoration = decoration;
+    
+    zxdg_toplevel_decoration_v1_set_mode(decoration, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+
+    xdg_surface_add_listener(xdg_surface, &xdg_surface_listener, data);
+
+    xdg_toplevel_add_listener(xdg_toplevel, &xdg_toplevel_listener, NULL);
+
+    xdg_toplevel_set_title(data->xdg_toplevel, data->windowHeader);
+    
+    wl_surface_commit(data->surface); 
+    wl_display_flush(display);
+    
+    while (!data->surfaceConfigured) 
+    {
+        wl_display_dispatch(display);    
+    }
+
+    if (data->buffer)
+    {
+        wl_surface_attach(data->surface, data->buffer, 0, 0);
+        wl_surface_damage_buffer(data->surface, 0, 0, data->width, data->height);
+        wl_surface_commit(data->surface);
+        wl_display_flush(display);
+    }
+
+    return OS_WINDOW_SUCCESS;
+}
+
+int OSWindowAttachBuffer(OSWindow* window, void** bufferData, size_t bufferSize, int width, int height)
+{
+#ifdef USE_BUFFER
+    OSWaylandData* data = &instancePointers[window->internalOSHandle];
+
+    data->bufferFile = memfd_create("bufferPool", 0);
+
+    data->bufferSize = bufferSize;
+
+    ftruncate(data->bufferFile, bufferSize);
+
+    data->shmdata = mmap(NULL, bufferSize, PROT_READ | PROT_WRITE, MAP_SHARED, data->bufferFile, 0);
+
+    *bufferData = data->shmdata;
+
+    data->pool = wl_shm_create_pool(shm, data->bufferFile, data->bufferSize);
+
+    data->buffer = wl_shm_pool_create_buffer(data->pool, 0, width, height, width*sizeof(uint32_t), WL_SHM_FORMAT_ARGB8888);
+
+    wl_surface_attach(data->surface, data->buffer, 0, 0);
+    wl_surface_damage_buffer(data->surface, 0, 0, width, height);
+    wl_surface_commit(data->surface);
+    wl_display_flush(display);
+#endif
     return OS_WINDOW_SUCCESS;
 }
 

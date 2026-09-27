@@ -16,7 +16,9 @@ static volatile bool done = false;
 static char MainWindowEventBuffer[512];
 static char OSMemoryBuffer[4096*2];
 
-SlabAllocator osMemoryAllocator { OSMemoryBuffer, sizeof(OSMemoryBuffer), STRING_VIEW_FROM_LITERAL("Global OS Memory Storage Buffer"), nullptr };
+static SlabAllocator osMemoryAllocator { OSMemoryBuffer, sizeof(OSMemoryBuffer), STRING_VIEW_FROM_LITERAL("Global OS Memory Storage Buffer"), nullptr };
+
+static OSWindow window{};
 
 void ScanSTDIN(void* argument)
 {
@@ -55,8 +57,17 @@ void ScanSTDIN(void* argument)
             {
                 break;
             }
+            else if (!strcmp(inputBuffer, "show"))
+            {
+                OSWindowShow(&window);
+            }
+            else if (!strcmp(inputBuffer, "hide"))
+            {
+                OSWindowHide(&window);
+            }
             else
             {
+                OSWindowSetText(&window, inputBuffer);
                 printf("%s %d\n", inputBuffer, readSize);
             }
         }
@@ -266,6 +277,8 @@ int TestOSSync()
     return retCode;
 }
 
+#define BUFFER_SIZE 1024*1204
+
 int main(int argc, const char** argv)
 {
     StringView mainInputFile = STRING_VIEW_FROM_LITERAL("test.txt");
@@ -318,8 +331,6 @@ int main(int argc, const char** argv)
 
     OSThreadHandle handle{};
 
-    OSWindow window{};
-
     GenericWindowInfo info{};
 
     int closeWindow = 0;
@@ -353,6 +364,12 @@ int main(int argc, const char** argv)
 
     OSWindowShow(&window);
 
+    void* FrameBuffer;
+
+    OSWindowAttachBuffer(&window, &FrameBuffer, BUFFER_SIZE, 320, 240);
+
+    memset(FrameBuffer, 0xFF, BUFFER_SIZE);
+
     closeWindow = 1;
 
     while(!done && !info.shouldBeClosed)
@@ -366,72 +383,13 @@ int main(int argc, const char** argv)
     }
 
 end:
+    CloseAllFiles();
+
+    CloseAllSyncObject();
 
     CloseAllThreads();
 
-    if (closeWindow)
-    {
-        CloseAllWindows();
-    }
-
+    CloseAllWindows();
+    
     return retCode;
 }
-
-/*
-    int retCode = OSOpenFile(mainInputFile.stringData, mainInputFile.charCount, READ, &inputFileHandle);
-
-    if (retCode < 0)
-    {
-        StringView errorText = STRING_VIEW_FROM_LITERAL("Could not open input file");
-        OSWriteFile(&stdOutHandle, errorText.charCount, errorText.stringData);
-        return -1;
-    }
-
-    char* inputBuffer = (char*)malloc(inputFileHandle.fileLength);
-
-    int readCount = OSReadFile(&inputFileHandle, inputFileHandle.fileLength, inputBuffer);
-
-*/
-/*
-        int retCode = OSCreateFile(mainOutputFile.stringData, mainOutputFile.charCount, WRITE|CREATE_IF_NOT_EXIST, &outputFileHandle);
-
-        uint64_t writeOutSize = 0;
-
-        if (retCode < 0)
-        {
-            StringView errorText = STRING_VIEW_FROM_LITERAL("Could not open output file\n");
-            OSWriteFile(&stdOutHandle, errorText.charCount, errorText.stringData, &writeOutSize);
-            return -1;
-        }
-
-        char inputBuffer[1024];
-
-        int pollCommand = OS_FILE_POLL_TIMEOUT;
-
-        while(pollCommand == OS_FILE_POLL_TIMEOUT)
-        {
-            pollCommand = OSPollFile(&stdInHandle, 500);
-        }
-
-        retCode = 0;
-
-        if (pollCommand > 0)
-        {
-            uint64_t readCount = 0;
-
-            OSReadFile(&stdInHandle, 1024, inputBuffer, &readCount);
-
-            OSWriteFile(&outputFileHandle, readCount, inputBuffer, &writeOutSize);
-        }
-        else
-        {
-            StringView errorText = STRING_VIEW_FROM_LITERAL("Could not poll std in file\n");
-
-            OSWriteFile(&stdOutHandle, errorText.charCount, errorText.stringData, &writeOutSize);
-
-            retCode = -1;
-        }
-
-        OSCloseFile(&outputFileHandle);
-
-*/

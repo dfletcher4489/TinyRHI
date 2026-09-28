@@ -3224,9 +3224,9 @@ int VKDevice::PresentSwapChainCommandBufferInline(EntryHandle swapChainIdx, Entr
 		info.swapchainCount = 1;
 		info.pFences = &fence;
 
-		vkResetFences(device, 1, &fence);
+		//vkResetFences(device, 1, &fence);
 
-		presentInfo.pNext = &info;
+		//presentInfo.pNext = &info;
 	}
 
 	VkResult result = vkQueuePresentKHR(queue, &presentInfo);

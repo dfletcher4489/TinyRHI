@@ -7,6 +7,8 @@
 #include <string.h>
 
 #include "allocator/AppAllocator.h"
+#include "RenderInstance.h"
+#include "WindowManager.h"
 
 #if defined(_WIN32)
 #include "WinOSFile.h"
@@ -19,6 +21,242 @@ static char OSMemoryBuffer[4096*2];
 static SlabAllocator osMemoryAllocator { OSMemoryBuffer, sizeof(OSMemoryBuffer), STRING_VIEW_FROM_LITERAL("Global OS Memory Storage Buffer"), nullptr };
 
 static OSWindow window{};
+
+static RenderPhysicalDeviceIndex mainGPU{};
+static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 3;
+static RenderDeviceIndex mainLogicalDevice{};
+static SwapChainIndex mainPresentationSwapChain{};
+static WindowIndex mainPresentationWindow{};
+static BufferMemoryIndex mainHostBuffer{};
+static BufferMemoryIndex mainDeviceBuffer{};
+static ShaderResourceManagerIndex mainDescriptorManagerIndex{};
+static GPUCommandStreamIndex mainCommandStreamIndex{};
+static AttachmentGraphInstanceIndex basicGraphInstance{};
+
+static char RenderInstanceMemoryPool[64 * MiB];
+static char RenderInstanceTemporaryPool[64 * KiB];
+static char LoggerMessageMemory[64 * KiB];
+
+static Logger mainAppLogger{};
+
+static TLSFAllocator RenderInstanceMemoryAllocator{ RenderInstanceMemoryPool, sizeof(RenderInstanceMemoryPool), STRING_VIEW_FROM_LITERAL("Global Render Instance Storage Buffer"), &mainAppLogger };
+static RingAllocator RenderInstanceTemporaryAllocator{ RenderInstanceTemporaryPool, sizeof(RenderInstanceTemporaryPool), STRING_VIEW_FROM_LITERAL("Global Render Instance Frame Buffer"), &mainAppLogger };
+
+static int graphicsInit = 0;
+
+static int windowWidth = 320;
+static int windowHeight = 240;
+
+int InitGraphicsRuntime()
+{
+    mainAppLogger.InitLogger(LoggerMessageMemory, sizeof(LoggerMessageMemory));
+
+    RenderInstanceCreateInfo riCreateInfo{};
+	riCreateInfo.maxAttachmentGraphTemplates = 1;
+	riCreateInfo.maxAttachmentGraphInstances = 1;
+	riCreateInfo.maxImagePoolsCount = 1;
+	riCreateInfo.maxBufferPoolsCount = 1;
+	riCreateInfo.maxRenderTargets = 1;
+	riCreateInfo.maxShaderGraphs = 1;
+	riCreateInfo.maxShaderHandles = 2;
+	riCreateInfo.maxDescriptorManagers = 1;
+	riCreateInfo.maxShaderResourceTemplates = 1;
+	riCreateInfo.maxComputeQueues = 1;
+	riCreateInfo.maxRenderQueues = 1;
+	riCreateInfo.maxPipelineTemplates = 5;
+	riCreateInfo.maxPipelineInstances = 5;
+	riCreateInfo.maxPipelineHandles = 5;
+	riCreateInfo.maxAllocations = 10;
+	riCreateInfo.maxGPUCommandsStreams = 1;
+	riCreateInfo.maxTextureHandles = 15;
+	riCreateInfo.maxSamplerHandles = 1;
+	riCreateInfo.maxResourceStatuses = 15;
+	riCreateInfo.commandBuffersSize = 32 * KiB;
+	riCreateInfo.commandsCacheSize = 64 * KiB;
+	riCreateInfo.internalLoggerRingSize = 8 * KiB;
+	riCreateInfo.numberOfDriverHostAllocations = 10;
+	riCreateInfo.numberOfTransferCommandAllocations = 10;
+	riCreateInfo.numberOfResourceUpdateAllocations = 10;
+	riCreateInfo.numberOfDriverDeviceAllocations = 10;
+	riCreateInfo.numberOfImageMemoryAllocations = 10;
+	riCreateInfo.maxWindows = 1;
+	riCreateInfo.maxSwapChains = 1;
+	riCreateInfo.maxGPUS = 1;
+	riCreateInfo.maxLogicalDevices = 1;
+
+	OSGetSTDOutput(&riCreateInfo.internalRendererHandle);
+
+	GPUFeatureRequest request{};
+
+	request.desiredMaxImageWidth = 4096;
+	request.desiredMaxImageHeight = 4096;
+	request.deviceType = DISCRETE | INTEGRATED;
+	request.requireDescriptorBindingPartiallyBound = false;
+	request.requireDescriptorBindingSampledImageUpdateAfterBind = false;
+	request.requireDescriptorBindingUpdateUnusedWhilePending = false;
+	request.requireDescriptorBindingVariableDescriptorCount = false;
+	request.requireShaderSampledImageArrayNonUniformIndexing = false;
+	request.requireStorageBuffer8BitAccess = false;
+	request.requireDrawIndirectCount = false;
+	request.requireRuntimeDescriptorArray = false;
+	request.requireGeometryShader = false;
+	request.requireTextureCompressionBC = false;
+	request.requireTessellationShader = false;
+	request.requireSamplerAnisotropy = false;
+	request.requireMultiDrawIndirect = false;
+	request.requireWideLines = false;
+	request.requireTimelineSemaphores = false;
+
+	LogicalDeviceFeatures deviceFeatures{};
+
+	deviceFeatures.useSPVDebugInfo = false;
+	deviceFeatures.useSPVDrawParameters = false;
+	deviceFeatures.useSwapChain = true;
+	deviceFeatures.useSwapChainMaintenance = false;
+
+	GlobalRenderer::gRenderInstance.CreateRenderInstance(&riCreateInfo, &RenderInstanceMemoryAllocator, &RenderInstanceTemporaryAllocator);
+
+	int rendererRetCode = GlobalRenderer::gRenderInstance.CreateHighLevelInstance(4*MiB, 4 * MiB, 4 * KiB, 96 * KiB, false);
+
+	if (rendererRetCode)
+	{
+        GlobalRenderer::gRenderInstance.internalRendererLogger->ProcessMessage();
+		return -1;
+	}
+    
+	OSWindowInternalData internalWindowData;
+
+    OSWindowGetInternalData(&window, &internalWindowData);
+
+	mainPresentationWindow = GlobalRenderer::gRenderInstance.CreateWindowedSurface(&internalWindowData);
+
+	if (mainPresentationWindow == WindowIndex())
+	{
+        GlobalRenderer::gRenderInstance.internalRendererLogger->ProcessMessage();
+		return -1;
+	}
+
+	int foundPhysicalDevice = GlobalRenderer::gRenderInstance.OpenPhysicalDevicePicker();
+
+	if (foundPhysicalDevice)
+	{
+        GlobalRenderer::gRenderInstance.internalRendererLogger->ProcessMessage();
+		return -1;
+	}
+
+	mainGPU = GlobalRenderer::gRenderInstance.CreatePhysicalDeviceAdapterWithQuerying(&request, &deviceFeatures);
+
+	if (RenderPhysicalDeviceIndex() == mainGPU)
+	{
+        GlobalRenderer::gRenderInstance.internalRendererLogger->ProcessMessage();
+		return -1;
+	}
+
+	GlobalRenderer::gRenderInstance.ClosePhysicalDevicePicker();
+
+	LogicalDeviceCreateInfo lDeviceCreateInfo{};
+
+	lDeviceCreateInfo.maxQueries = 0;
+	lDeviceCreateInfo.physicalDeviceIndex = mainGPU;
+	lDeviceCreateInfo.surfaceIndexForPresent = mainPresentationWindow;
+	lDeviceCreateInfo.requestedDeviceFeatures = &deviceFeatures;
+	lDeviceCreateInfo.requestedPhysicalFeatures = &request;
+	lDeviceCreateInfo.deviceInstCacheSize = 96 * KiB;
+	lDeviceCreateInfo.deviceInstHandleSize = 16 * KiB;
+	lDeviceCreateInfo.deviceInstPermanentSize = 32 * KiB;
+	lDeviceCreateInfo.driverCacheSize = 2 * MiB;
+	lDeviceCreateInfo.driverPermanentSize = 2 * MiB;
+	lDeviceCreateInfo.maxFramesInFlight = 1;
+	lDeviceCreateInfo.maxConcurrentRecordings = 1;
+	lDeviceCreateInfo.maxAllocations = 10;
+	lDeviceCreateInfo.maxTextureHandles = 15;
+
+	mainLogicalDevice = GlobalRenderer::gRenderInstance.CreateLogicalDevice(&lDeviceCreateInfo);
+
+	if (RenderDeviceIndex() == mainLogicalDevice)
+	{
+        GlobalRenderer::gRenderInstance.internalRendererLogger->ProcessMessage();
+		return -1;
+	}
+
+    ImageFormat requestedColorFormats = ImageFormat::B8G8R8A8;
+
+	ImageFormat mainColorFormat = GlobalRenderer::gRenderInstance.FindSupportedBackBufferColorFormat(mainGPU, mainPresentationWindow, &requestedColorFormats, 1);
+
+	if (ImageFormat::IMAGE_UNKNOWN == mainColorFormat)
+	{
+        GlobalRenderer::gRenderInstance.internalRendererLogger->ProcessMessage();
+		return -1;
+	}
+
+	ImageFormat requestedDSVFormats = ImageFormat::D32FLOAT;
+
+	ImageFormat mainDepthFormat = GlobalRenderer::gRenderInstance.FindSupportedDepthFormat(mainLogicalDevice, &requestedDSVFormats, 1);
+
+	if (ImageFormat::IMAGE_UNKNOWN == mainDepthFormat)
+	{
+        GlobalRenderer::gRenderInstance.internalRendererLogger->ProcessMessage();
+		return -1;
+	}
+    
+    mainPresentationSwapChain = GlobalRenderer::gRenderInstance.CreateSwapChainHandle(mainLogicalDevice, mainPresentationWindow, mainColorFormat, windowWidth, windowHeight);
+
+	if (SwapChainIndex() == mainPresentationSwapChain)
+	{
+        GlobalRenderer::gRenderInstance.internalRendererLogger->ProcessMessage();
+		return -1;
+	}
+
+    
+
+    AttachmentGraphLayoutIndex basicLayout = GlobalRenderer::gRenderInstance.CreateAttachmentGraph(STRING_VIEW_FROM_LITERAL("BasicLayout.adf"));
+
+    if (AttachmentGraphLayoutIndex() == basicLayout)
+	{
+        GlobalRenderer::gRenderInstance.internalRendererLogger->ProcessMessage();
+		return -1;
+	}
+
+	basicGraphInstance = GlobalRenderer::gRenderInstance.CreateAttachmentGraphInstance(mainLogicalDevice, basicLayout);
+
+	if (AttachmentGraphInstanceIndex() == basicGraphInstance)
+	{
+        GlobalRenderer::gRenderInstance.internalRendererLogger->ProcessMessage();
+		return -1;
+	}
+
+	std::array<AttachmentClear, 1> clears {
+		CLEARCOLOR, {1.0, 0.0, 0.0, 0.0},
+	};
+
+     
+
+    rendererRetCode = GlobalRenderer::gRenderInstance.CreateSwapChainAttachment(basicGraphInstance, 0, mainPresentationSwapChain, clears.data(), nullptr, nullptr, {}, {});
+
+   
+
+    if (rendererRetCode)
+    {
+        GlobalRenderer::gRenderInstance.internalRendererLogger->ProcessMessage();
+		return -1;
+    }
+
+    GlobalRenderer::gRenderInstance.CreateGraphicsQueueForAttachments(basicGraphInstance , 0);
+
+    mainCommandStreamIndex = GlobalRenderer::gRenderInstance.CreateGPUCommandStream(10);
+
+	if (GPUCommandStreamIndex() == mainCommandStreamIndex)
+	{
+        GlobalRenderer::gRenderInstance.internalRendererLogger->ProcessMessage();
+		return -1;
+	}
+
+    GlobalRenderer::gRenderInstance.AddAttachmentCommandQueue(mainCommandStreamIndex, basicGraphInstance);
+
+    graphicsInit = 1;
+
+    return 0;
+}
 
 void ScanSTDIN(void* argument)
 {
@@ -55,6 +293,8 @@ void ScanSTDIN(void* argument)
 
             if (!strcmp(inputBuffer, "end"))
             {
+                printf("%s %d\n", inputBuffer, readSize);
+                done = true;
                 break;
             }
             else if (!strcmp(inputBuffer, "show"))
@@ -277,8 +517,6 @@ int TestOSSync()
     return retCode;
 }
 
-#define BUFFER_SIZE 1024*1204
-
 int main(int argc, const char** argv)
 {
     StringView mainInputFile = STRING_VIEW_FROM_LITERAL("test.txt");
@@ -335,42 +573,27 @@ int main(int argc, const char** argv)
 
     int closeWindow = 0;
 
-    int testSync = 0;
-
-    int testFiles = TestOSFiles();
-
-    if (testFiles)
-    {
-        goto end;
-    }
-
-    testSync = TestOSSync();
-
-    if (testSync)
-    {
-        goto end;
-    }
+    uint64_t frameCount = 0;
 
     OSCreateThread(&handle, nullptr, ScanSTDIN, OS_THREAD_NONE);
 
-    closeWindow = OSCreateWindow("Multi Platform Test", 320, 240, &window);
+    closeWindow = OSCreateWindow("Multi Platform Test", windowWidth, windowHeight, &window);
+
+    OSWindowSeedEventBuffer(&window, MainWindowEventBuffer, sizeof(MainWindowEventBuffer));
 
     if (closeWindow)
     {
         goto end;
     }
 
-    OSWindowSeedEventBuffer(&window, MainWindowEventBuffer, sizeof(MainWindowEventBuffer));
+    closeWindow = InitGraphicsRuntime();
+
+    if (closeWindow)
+    {
+        return -1;
+    }
 
     OSWindowShow(&window);
-
-    void* FrameBuffer;
-
-    OSWindowAttachBuffer(&window, &FrameBuffer, BUFFER_SIZE, 320, 240);
-
-    memset(FrameBuffer, 0xFF, BUFFER_SIZE);
-
-    closeWindow = 1;
 
     while(!done && !info.shouldBeClosed)
     {
@@ -379,6 +602,23 @@ int main(int argc, const char** argv)
         if (ret)
         {
             done = true;
+        }
+
+        uint32_t swcImageIndex = GlobalRenderer::gRenderInstance.BeginFrame(mainPresentationSwapChain);
+
+        if (swcImageIndex != (uint32_t)~0)
+        {
+            GlobalRenderer::gRenderInstance.DrawScene(mainLogicalDevice, mainCommandStreamIndex, swcImageIndex);
+
+            GlobalRenderer::gRenderInstance.SubmitFrame(mainPresentationSwapChain, swcImageIndex);
+
+            GlobalRenderer::gRenderInstance.EndFrame(mainLogicalDevice, mainCommandStreamIndex);
+
+           // printf("frameCount %llu imageIndex %d\n", frameCount++, swcImageIndex);
+        } 
+        else
+        {
+            printf("Something is happening!!!\n");
         }
     }
 

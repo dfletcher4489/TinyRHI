@@ -1,3 +1,5 @@
+#pragma once
+
 #include "OS.h"
 
 enum KeyCodes

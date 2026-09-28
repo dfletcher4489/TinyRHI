@@ -754,7 +754,7 @@ struct RenderTimelineSync
 
 #define MAX_INSTANCE_FRAME_IN_FLIGHT 4
 
-#define MAX_SWC_IMAGE_COUNT 4
+#define MAX_SWC_IMAGE_COUNT 8
 
 struct RenderSwapchainData
 {
@@ -917,7 +917,7 @@ struct ImagePoolDescription
 	size_t imagePoolSize;
 };
 
-#define MAX_RESOURCE_IMAGES 4
+#define MAX_RESOURCE_IMAGES 8
 
 struct AttachmentResourceInstance
 {

@@ -159,7 +159,7 @@ int OSWindowSeedEventBuffer(OSWindow* window, void* bufferMemory, size_t bufferS
 
 #if defined(WINDOW_USE_WAYLAND)
 
-#define USE_BUFFER
+//#define USE_BUFFER
 #define WINDOW_HEADER_TEXT_MAX_LEN 32
 
 #include <wayland-client.h>
@@ -487,7 +487,7 @@ int OSCreateWindow(const char* name, int requestedDimensionX, int requestDimensi
     data->width = requestedDimensionX;
     data->height = requestDimensionY;
 
-    memcpy(data->windowHeader, name, strnlen(name, WINDOW_HEADER_TEXT_MAX_LEN));
+    memcpy(data->windowHeader, name, strnlen(name, WINDOW_HEADER_TEXT_MAX_LEN-1));
 
     wl_surface_set_user_data(surface, data);
 
@@ -506,16 +506,11 @@ int OSWindowPollEvents(OSWindow* window, GenericWindowInfo* info)
     return ret;
 }
 
-int OSWindowGetInternalData(OSWindow* window, void* internalDataStruct)
-{
-    return OS_WINDOW_SUCCESS;
-}
-
 int OSWindowSetText(OSWindow* window, const char* text)
 {
     OSWaylandData* data = &instancePointers[window->internalOSHandle];
 
-    int count = strnlen(text, WINDOW_HEADER_TEXT_MAX_LEN);
+    int count = strnlen(text, WINDOW_HEADER_TEXT_MAX_LEN-1);
 
     memcpy(data->windowHeader, text, count);
 
@@ -584,7 +579,7 @@ int OSWindowShow(OSWindow* window)
     {
         wl_display_dispatch(display);    
     }
-
+#ifdef USE_BUFFER
     if (data->buffer)
     {
         wl_surface_attach(data->surface, data->buffer, 0, 0);
@@ -592,6 +587,7 @@ int OSWindowShow(OSWindow* window)
         wl_surface_commit(data->surface);
         wl_display_flush(display);
     }
+#endif
 
     return OS_WINDOW_SUCCESS;
 }
@@ -620,6 +616,23 @@ int OSWindowAttachBuffer(OSWindow* window, void** bufferData, size_t bufferSize,
     wl_surface_commit(data->surface);
     wl_display_flush(display);
 #endif
+    return OS_WINDOW_SUCCESS;
+}
+
+int OSWindowGetInternalData(OSWindow* window, void* internalDataStruct)
+{
+    int windowIndex = window->internalOSHandle;
+
+    if (windowIndex < 0 || windowIndex >= maxFreeListEntry)
+    {
+        return OS_WINDOW_HANDLE_OUT_OF_BOUNDS;
+    }
+
+    OSWindowInternalData* data = (OSWindowInternalData*)internalDataStruct;
+
+    data->display = display;
+    data->surface = instancePointers[windowIndex].surface;
+
     return OS_WINDOW_SUCCESS;
 }
 

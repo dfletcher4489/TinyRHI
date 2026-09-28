@@ -310,7 +310,7 @@ bool VKInstance::ValidateSwapChainFormatSupport(EntryHandle gpuIndex, VkFormat r
 	return false;
 }
 
-#if defined (_WIN32) || defined(_WIN64)
+#if defined (_WIN32)
 
 EntryHandle VKInstance::CreateWindowedSurface(HINSTANCE hInst, HWND hWnd)
 {
@@ -324,6 +324,38 @@ EntryHandle VKInstance::CreateWindowedSurface(HINSTANCE hInst, HWND hWnd)
 	VkResult vkResult = VK_SUCCESS;
 
 	if ((vkResult = vkCreateWin32SurfaceKHR(instance, &infoStruct, nullptr, &renderSurface)) != VK_SUCCESS)
+	{
+		AddInstanceErrorCode(MINOR_CODE_PACK(INSTANCE_RENDER_SURFACE) | INSTANCE_HANDLE_CREATION_FAILED, vkResult);
+		return EntryHandle();
+	}
+
+	EntryHandle allocIndex = AddTypedHandleToPool(RENDER_SURFACE, renderSurface);
+
+	if (allocIndex == EntryHandle())
+	{
+		AddInstanceErrorCode(MINOR_CODE_PACK(INSTANCE_RENDER_SURFACE) | INSTANCE_HANDLE_EXHAUSTION, vkResult);
+		vkDestroySurfaceKHR(instance, renderSurface, nullptr);
+	}
+
+	return allocIndex;
+}
+
+#endif
+
+#if defined(VK_USE_PLATFORM_WAYLAND_KHR)
+
+EntryHandle VKInstance::CreateWindowedSurface(struct wl_display* display, struct wl_surface* surface)
+{
+	VkSurfaceKHR renderSurface = VK_NULL_HANDLE;
+
+	VkWaylandSurfaceCreateInfoKHR infoStruct{};
+	infoStruct.sType = VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR;
+	infoStruct.display = display;
+	infoStruct.surface = surface;
+
+	VkResult vkResult = VK_SUCCESS;
+
+	if ((vkResult = vkCreateWaylandSurfaceKHR(instance, &infoStruct, nullptr, &renderSurface)) != VK_SUCCESS)
 	{
 		AddInstanceErrorCode(MINOR_CODE_PACK(INSTANCE_RENDER_SURFACE) | INSTANCE_HANDLE_CREATION_FAILED, vkResult);
 		return EntryHandle();
@@ -532,6 +564,7 @@ int VKInstance::CreateRenderInstance(void* dataHead, uint32_t storageSize, uint3
 
 		validationFeatures.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&instanceDebugInfo;
 	}
+
 
 	VkAllocationCallbacks allocationCBs = (*allocator)();
 
@@ -794,9 +827,9 @@ bool VKInstance::QuerySpecificPhysicalDeviceFeatures(GPUFeatureRequest* featureR
 
 	uint32_t deviceType = 0;
 
-	if ((deviceType = ((1 << deviceProperties.deviceType)) & ConvertGPUDeviceTypeToVkPhysicalDeviceType(featureRequest->deviceType)))
-		currentRequest.deviceType = deviceType;
-	else
+	currentRequest.deviceType = deviceProperties.deviceType;
+
+	if (!((deviceType = ((1 << deviceProperties.deviceType)) & ConvertGPUDeviceTypeToVkPhysicalDeviceType(featureRequest->deviceType))))
 		meetsRequirements = false;
 
 	uint64_t physicalBitField = 0;
@@ -804,10 +837,10 @@ bool VKInstance::QuerySpecificPhysicalDeviceFeatures(GPUFeatureRequest* featureR
 	if (!isDeviceSuitable(potentGPU, deviceExtensions, deviceExtCount, logicalDeviceBitFields))
 		meetsRequirements = false;
 
-	if (deviceProperties.limits.maxImageDimension2D >= featureRequest->desiredMaxImageWidth ||
-		deviceProperties.limits.maxImageDimension2D >= featureRequest->desiredMaxImageHeight)
-		currentRequest.desiredMaxImageWidth = currentRequest.desiredMaxImageHeight = deviceProperties.limits.maxImageDimension2D;
-	else
+	currentRequest.desiredMaxImageWidth = currentRequest.desiredMaxImageHeight = deviceProperties.limits.maxImageDimension2D;
+
+	if (deviceProperties.limits.maxImageDimension2D < featureRequest->desiredMaxImageWidth ||
+		deviceProperties.limits.maxImageDimension2D < featureRequest->desiredMaxImageHeight)
 		meetsRequirements = false;
 
 	currentRequest.requireDescriptorBindingPartiallyBound =
@@ -941,6 +974,8 @@ bool VKInstance::QuerySpecificPhysicalDeviceFeatures(GPUFeatureRequest* featureR
 		if (!features2.features.logicOp)
 			meetsRequirements = false;
 	}
+
+	*closestFeatures = currentRequest;
 
 	return meetsRequirements;
 }

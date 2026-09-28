@@ -3986,7 +3986,6 @@ int ApplicationLoop::InitializeRuntime()
 
 	if (RenderPhysicalDeviceIndex() == mainGPU)
 	{
-		
 		return -1;
 	}
 

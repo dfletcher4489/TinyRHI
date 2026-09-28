@@ -1269,9 +1269,12 @@ RenderDeviceIndex RenderInstance::CreateLogicalDevice(LogicalDeviceCreateInfo* c
 		rhiDevice->container.currentCommandBufferIndex[i] = *lprimaryCommandBuffers;
 	}
 
-	rhiDevice->container.maxQueryResults = createInfo->maxQueries;
+	if (createInfo->maxQueries)
+	{
+		rhiDevice->container.maxQueryResults = createInfo->maxQueries;
 
-	rhiDevice->container.queryPoolIndex = majorDevice->CreateQueryPool(VK_QUERY_TYPE_TIMESTAMP, rhiDevice->container.maxFramesInFlight * createInfo->maxQueries);
+		rhiDevice->container.queryPoolIndex = majorDevice->CreateQueryPool(VK_QUERY_TYPE_TIMESTAMP, rhiDevice->container.maxFramesInFlight * createInfo->maxQueries);
+	}
 
 	rhiDevice->container.queriesAreActive = 0;
 
@@ -2722,7 +2725,7 @@ void DestroyDriverInstance(RHIInstance* instance)
 int CreateDriverInstance(
 	RHIInstance* instance, WindowManagementType windowType,
 	uint32_t driverSpecificMemory, uint32_t driverCacheSize, 
-	uint32_t instancePermanentSpecificMemory, uint32_t instanceCacheMemory, 
+	uint32_t instancePermanentSpecificMemory, uint32_t instanceCacheMemory, bool useDebugCallbacks, 
 	Logger* logger, Allocator* allocator)
 {
 	void* driverInstanceDataHead = allocator->Allocate(driverSpecificMemory + driverCacheSize);
@@ -2740,14 +2743,19 @@ int CreateDriverInstance(
 	vkDebugData.enables[0] = VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT;
 	vkDebugData.enablesFeaturesCount = 0;
 
-	VKInstanceDebugData* vkDebugDataTemp = &vkDebugData;
+	VKInstanceDebugData* vkDebugDataTemp = nullptr;
+
+	if (useDebugCallbacks)
+	{
+		vkDebugDataTemp = &vkDebugData;
+	}
 
 	RenderingInstanceFeatures instanceFeaturesRequest{};
 
 	instanceFeaturesRequest.useSurface = true;
-	instanceFeaturesRequest.useSwapChainMaintenance = true;
-	instanceFeaturesRequest.useValidation = true;
-	instanceFeaturesRequest.useDebugExt = true;
+	instanceFeaturesRequest.useSwapChainMaintenance = false;
+	instanceFeaturesRequest.useValidation = (useDebugCallbacks);
+	instanceFeaturesRequest.useDebugExt = (useDebugCallbacks);
 	instanceFeaturesRequest.windowManagementType = windowType;
 
 	int ret = instance->mainInstance->CreateRenderInstance(instanceDataHead, instancePermanentSpecificMemory, instanceCacheMemory, vkDebugDataTemp, &instanceFeaturesRequest);
@@ -2759,8 +2767,8 @@ EntryHandle CreateDriverWindowSurface(RHIInstance* instance, OSWindowInternalDat
 {
 #if defined(_WIN32)
 	EntryHandle renderSurfaceIndex = instance->mainInstance->CreateWindowedSurface(windowData->inst, windowData->wnd);
-#else
-	EntryHandle renderSurfaceIndex = EntryHandle();
+#elif defined(WINDOW_USE_WAYLAND)
+	EntryHandle renderSurfaceIndex = instance->mainInstance->CreateWindowedSurface(windowData->display, windowData->surface);
 #endif
 	return renderSurfaceIndex;
 }

@@ -7,7 +7,7 @@
 
 namespace GlobalRenderer 
 {
-	RenderInstance gRenderInstance;
+	RenderInstance gRenderInstance{};
 }
 
 #define RENDER_MIN(a, b) ((a) > (b) ? (b) : (a))
@@ -2651,7 +2651,7 @@ SwapChainIndex RenderInstance::CreateSwapChainHandle(RenderDeviceIndex deviceSel
 		DestroySwapChain(swapChainInternalIndex);
 		return {};
 	}
-
+	
 	for (uint32_t i = 0; i < imageCount; i++)
 	{
 		swcData->rendererFinishedSemaphores[i] = renderFinished[i];
@@ -4481,9 +4481,15 @@ BufferMemoryIndex RenderInstance::CreateUniversalBuffer(RenderDeviceIndex device
 	return bufferIndex;
 }
 
-int RenderInstance::CreateHighLevelInstance(uint32_t vkDriverSpecificMemory, uint32_t vkDriverCacheSize, uint32_t instancePermanentSpecificMemory, uint32_t instanceCacheMemory)
+int RenderInstance::CreateHighLevelInstance(uint32_t vkDriverSpecificMemory, uint32_t vkDriverCacheSize, uint32_t instancePermanentSpecificMemory, uint32_t instanceCacheMemory, bool useDebugCallbacks)
 {
-	int ret = CreateDriverInstance(&mainRenderInstance, WindowManagementType::WINDOWS32, vkDriverSpecificMemory, vkDriverCacheSize, instancePermanentSpecificMemory, instanceCacheMemory, internalRendererLogger, storageAllocator);
+	WindowManagementType winType = WindowManagementType::WINDOWS32;
+
+#ifdef WINDOW_USE_WAYLAND
+	winType = WindowManagementType::WAYLAND;
+#endif
+
+	int ret = CreateDriverInstance(&mainRenderInstance, winType, vkDriverSpecificMemory, vkDriverCacheSize, instancePermanentSpecificMemory, instanceCacheMemory, useDebugCallbacks, internalRendererLogger, storageAllocator);
 
 	if (ret)
 	{

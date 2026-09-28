@@ -211,7 +211,7 @@ struct RenderInstance
 
 	WindowIndex CreateWindowedSurface(OSWindowInternalData* windowData);
 
-	int CreateHighLevelInstance(uint32_t vkDriverSpecificMemory, uint32_t vkDriverCacheSize, uint32_t instancePermanentSpecificMemory, uint32_t instanceCacheMemory);
+	int CreateHighLevelInstance(uint32_t vkDriverSpecificMemory, uint32_t vkDriverCacheSize, uint32_t instancePermanentSpecificMemory, uint32_t instanceCacheMemory, bool useDebugCallbacks);
 
 	RenderPhysicalDeviceIndex CreatePhysicalDeviceAdapter(GPUFeatureRequest* requestedPhysicalFeatures, LogicalDeviceFeatures* requestedDeviceFeatures);
 
@@ -333,7 +333,7 @@ struct RenderInstance
 	void CleanInitializeRenderTargetInfo(RenderTargetInfo* info);
 	void CleanInitializeRenderPass(RenderOldStyleVulkanRenderPassInfo* info);
 
-	RHIInstance mainRenderInstance;
+	RHIInstance mainRenderInstance{};
 
 	RenderPhysicalDeviceContainer* physicalDeviceIndices{};
 
@@ -567,7 +567,7 @@ void CreateDriverInstanceMemory(RHIInstance* instance, Allocator* allocator);
 
 void DestroyDriverInstance(RHIInstance* instance);
 
-int CreateDriverInstance(RHIInstance* instance, WindowManagementType windowType, uint32_t driverSpecificMemory, uint32_t driverCacheSize, uint32_t instancePermanentSpecificMemory, uint32_t instanceCacheMemory, Logger* logger, Allocator* allocator);
+int CreateDriverInstance(RHIInstance* instance, WindowManagementType windowType, uint32_t driverSpecificMemory, uint32_t driverCacheSize, uint32_t instancePermanentSpecificMemory, uint32_t instanceCacheMemory, bool useDebugCallbacks, Logger* logger, Allocator* allocator);
 
 EntryHandle CreateDriverWindowSurface(RHIInstance* instance, OSWindowInternalData* windowData);
 

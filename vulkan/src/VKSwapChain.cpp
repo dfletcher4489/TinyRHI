@@ -89,7 +89,6 @@ VKSwapChain::VKSwapChain(VKDevice* _d, VkSurfaceKHR _surface, uint32_t requestIm
 	imageViews = reinterpret_cast<EntryHandle*>(device->AllocFromPerDeviceData(sizeof(EntryHandle) * imageCount));
 }
 
-
 void VKSwapChain::SetSwapChainProperties(VK::Utils::SwapChainSupportDetails& swapChainSupport, uint32_t _imageCount, VkFormat requestedFormat)
 {
 	swapChainImageFormat = chooseSwapSurfaceFormat(swapChainSupport.formats, swapChainSupport.formatCount, requestedFormat);
@@ -97,18 +96,14 @@ void VKSwapChain::SetSwapChainProperties(VK::Utils::SwapChainSupportDetails& swa
 	
 	preTransform = swapChainSupport.capabilities.currentTransform;
 
-	if (!_imageCount)
+	uint32_t __imageCount = VK_SWC_MAX(swapChainSupport.capabilities.minImageCount + 1, _imageCount);
+
+	if (swapChainSupport.capabilities.maxImageCount && __imageCount > swapChainSupport.capabilities.maxImageCount)
 	{
-		imageCount = swapChainSupport.capabilities.minImageCount + 1;
-		if (swapChainSupport.capabilities.maxImageCount && imageCount > swapChainSupport.capabilities.maxImageCount)
-		{
-			imageCount = swapChainSupport.capabilities.maxImageCount;
-		}
+		__imageCount = swapChainSupport.capabilities.maxImageCount;
 	}
-	else 
-	{
-		imageCount = VK_SWC_MIN(VK_SWC_MAX(_imageCount, swapChainSupport.capabilities.minImageCount), swapChainSupport.capabilities.maxImageCount);
-	}
+
+	imageCount = __imageCount;
 }
 
 
@@ -321,10 +316,10 @@ uint32_t VKSwapChain::AcquireNextSwapChainImage2(uint64_t _timeout, VkSemaphore 
 {
 	uint32_t imageIndex;
 
-	VkFence fence = device->GetFence(presentationFences[currentFrameInFlight]);
+	//VkFence fence = device->GetFence(presentationFences[currentFrameInFlight]);
 
-	vkWaitForFences(device->device, 1, &fence, VK_TRUE, UINT64_MAX);
-
+	//vkWaitForFences(device->device, 1, &fence, VK_TRUE, UINT64_MAX);
+	
 	VkAcquireNextImageInfoKHR info{};
 	info.sType = VK_STRUCTURE_TYPE_ACQUIRE_NEXT_IMAGE_INFO_KHR;
 	info.semaphore = acquireSemaphore;

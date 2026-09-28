@@ -5,8 +5,14 @@
 #include "VKTypes.h"
 #include "VKUtilities.h"
 
+#include <vulkan/vulkan.h>
+
 #ifdef WIN32
 #include <Windows.h>
+#endif
+
+#ifdef WINDOW_USE_WAYLAND
+#include <wayland-client.h>
 #endif
 
 #define MAX_TYPED_HANDLES 15
@@ -185,9 +191,14 @@ struct VKInstance
 
 	int GetOptimalImageCopyOffsetAlignment(EntryHandle gpuIndex);
 
-#if defined (_WIN32) || defined(_WIN64)
+#if defined (_WIN32)
 	EntryHandle CreateWindowedSurface(HINSTANCE hInst, HWND hWnd);
 #endif
+
+#if defined (VK_USE_PLATFORM_WAYLAND_KHR) || defined (WINDOW_USE_WAYLAND)
+	EntryHandle CreateWindowedSurface(struct wl_display* display, struct wl_surface* surface);
+#endif
+
 	double GetTimeStampPeriod(EntryHandle gpuIndex);
 
 	EntryHandle AddTypedHandleToPool(VKInstanceHandleType handleType, void* handlePtr);

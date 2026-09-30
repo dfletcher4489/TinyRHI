@@ -96,7 +96,7 @@ void VKSwapChain::SetSwapChainProperties(VK::Utils::SwapChainSupportDetails& swa
 	
 	preTransform = swapChainSupport.capabilities.currentTransform;
 
-	uint32_t __imageCount = VK_SWC_MAX(swapChainSupport.capabilities.minImageCount + 1, _imageCount);
+	uint32_t __imageCount = VK_SWC_MAX(swapChainSupport.capabilities.minImageCount, _imageCount);
 
 	if (swapChainSupport.capabilities.maxImageCount && __imageCount > swapChainSupport.capabilities.maxImageCount)
 	{
@@ -161,9 +161,9 @@ int VKSwapChain::CreateSwapChain(uint32_t width, uint32_t height, EntryHandle gr
 
 void VKSwapChain::CreateSyncObject()
 {
-	EntryHandle* fences = device->CreateFences(imageCount, VK_FENCE_CREATE_SIGNALED_BIT);
+	EntryHandle* fences = device->CreateFences(maxFrameInFlight, VK_FENCE_CREATE_SIGNALED_BIT);
 
-	for (uint32_t i = 0; i < imageCount; i++)
+	for (uint32_t i = 0; i < maxFrameInFlight; i++)
 	{
 		presentationFences[i] = fences[i];
 	}
@@ -311,14 +311,14 @@ uint32_t VKSwapChain::AcquireNextSwapChainImage(uint64_t _timeout, VkSemaphore a
 
 	return imageIndex;
 }
-
+#include <cstdio>
 uint32_t VKSwapChain::AcquireNextSwapChainImage2(uint64_t _timeout, VkSemaphore acquireSemaphore, uint32_t currentFrameInFlight)
 {
 	uint32_t imageIndex;
 
-	//VkFence fence = device->GetFence(presentationFences[currentFrameInFlight]);
+	VkFence fence = device->GetFence(presentationFences[currentFrameInFlight]);
 
-	//vkWaitForFences(device->device, 1, &fence, VK_TRUE, UINT64_MAX);
+	vkWaitForFences(device->device, 1, &fence, VK_TRUE, UINT64_MAX);
 	
 	VkAcquireNextImageInfoKHR info{};
 	info.sType = VK_STRUCTURE_TYPE_ACQUIRE_NEXT_IMAGE_INFO_KHR;

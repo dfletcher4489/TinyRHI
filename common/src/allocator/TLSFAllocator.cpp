@@ -662,7 +662,7 @@ void ComputeBlockChecksum(BlockHeader* block) {
 
 static int ValidateCheckSum(BlockHeader* block)
 {
-#if _DEBUG
+#ifdef _DEBUG
 	BlockHeader temp{};
 	temp.prevPhysBlock = block->prevPhysBlock;
 	temp.size = block->size;

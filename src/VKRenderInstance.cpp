@@ -2728,10 +2728,14 @@ int CreateDriverInstance(
 	uint32_t instancePermanentSpecificMemory, uint32_t instanceCacheMemory, bool useDebugCallbacks, 
 	Logger* logger, Allocator* allocator)
 {
-	void* driverInstanceDataHead = allocator->Allocate(driverSpecificMemory + driverCacheSize);
-	void* instanceDataHead = allocator->Allocate(instancePermanentSpecificMemory + instanceCacheMemory);
+	size_t totalDriverMemorySize = driverSpecificMemory + driverCacheSize;
 
-	instance->mainInstance->SetInstanceDataAndSize(driverInstanceDataHead, driverSpecificMemory, driverCacheSize);
+	size_t totalInstanceClassMemorySize = instancePermanentSpecificMemory + instanceCacheMemory;
+
+	void* driverInstanceDataHead = allocator->Allocate(totalDriverMemorySize);
+	void* instanceDataHead = allocator->Allocate(totalInstanceClassMemorySize);
+
+	instance->mainInstance->SetInstanceDataAndSize(driverInstanceDataHead, totalDriverMemorySize, driverCacheSize);
 
 	VKInstanceDebugData vkDebugData{};
 
@@ -2753,7 +2757,7 @@ int CreateDriverInstance(
 	RenderingInstanceFeatures instanceFeaturesRequest{};
 
 	instanceFeaturesRequest.useSurface = true;
-	instanceFeaturesRequest.useSwapChainMaintenance = false;
+	instanceFeaturesRequest.useSwapChainMaintenance = true;
 	instanceFeaturesRequest.useValidation = (useDebugCallbacks);
 	instanceFeaturesRequest.useDebugExt = (useDebugCallbacks);
 	instanceFeaturesRequest.windowManagementType = windowType;

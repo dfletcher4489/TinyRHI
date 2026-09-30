@@ -300,8 +300,13 @@ void RenderInstance::ReturnBarrierAccumulator(RHIDevice* rhiDevice, uint32_t ret
 
 RenderInstance::~RenderInstance()
 {
-	DestroyDriverInstance(&mainRenderInstance);
+	//DestroyDriverInstance(&mainRenderInstance);
 };
+
+void RenderInstance::DestroyRenderInstance()
+{
+	DestroyDriverInstance(&mainRenderInstance);
+}
 
 void RenderInstance::DestroySwapChainAttachments()
 {

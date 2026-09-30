@@ -67,6 +67,8 @@ struct RenderInstance
 
 	~RenderInstance();
 
+	void DestroyRenderInstance();
+
 	void CreateRenderInstance(RenderInstanceCreateInfo *info, Allocator* instanceStorageAllocator, RingAllocator* instanceCacheAllocator);
 
 	void DestroySwapChainAttachments();

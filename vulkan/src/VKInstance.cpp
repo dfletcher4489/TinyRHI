@@ -1212,11 +1212,16 @@ void VKAPI_CALL VKAllocationCB::Free(
 	allocator->RealFree(memory);
 }
 
+#include <cstdio>
+
 void* VKAllocationCB::RealAlloc(size_t size,
 	size_t alignment,
 	VkSystemAllocationScope allocationScope)
 {
 	void* addr = nullptr;
+
+	printf("allocate %llu, %llu, %d\n", size, alignment, allocationScope);
+
 	if (allocationScope == VK_SYSTEM_ALLOCATION_SCOPE_COMMAND)
 	{
 		addr = RealAllocCache(size, alignment);
@@ -1226,6 +1231,13 @@ void* VKAllocationCB::RealAlloc(size_t size,
 		addr = TLSFAllocate(&tlsfMain, size, alignment);
 	}
 
+	if (!addr)
+	{
+		ValidatePhysicalChain(&tlsfMain);
+
+		while(1);
+	}
+
 	return addr;
 }
 
@@ -1233,6 +1245,11 @@ void* VKAllocationCB::RealRealloc(void* original, size_t size,
 	size_t alignment,
 	VkSystemAllocationScope allocationScope)
 {
+	if (allocationScope == VK_SYSTEM_ALLOCATION_SCOPE_COMMAND)
+	{
+		return RealAllocCache(size, alignment);
+	}
+
 	void* newaddr = TLSFRealloc(&tlsfMain, original, size);
 	return newaddr;
 }

@@ -165,7 +165,7 @@ int InitGraphicsRuntime()
 	lDeviceCreateInfo.deviceInstHandleSize = 16 * KiB;
 	lDeviceCreateInfo.deviceInstPermanentSize = 32 * KiB;
 	lDeviceCreateInfo.driverCacheSize = 2 * MiB;
-	lDeviceCreateInfo.driverPermanentSize = 2 * MiB;
+	lDeviceCreateInfo.driverPermanentSize = 3 * MiB;
 	lDeviceCreateInfo.maxFramesInFlight = 1;
 	lDeviceCreateInfo.maxConcurrentRecordings = 1;
 	lDeviceCreateInfo.maxAllocations = 10;
@@ -206,8 +206,6 @@ int InitGraphicsRuntime()
         GlobalRenderer::gRenderInstance.internalRendererLogger->ProcessMessage();
 		return -1;
 	}
-
-    
 
     AttachmentGraphLayoutIndex basicLayout = GlobalRenderer::gRenderInstance.CreateAttachmentGraph(STRING_VIEW_FROM_LITERAL("BasicLayout.adf"));
 
@@ -610,19 +608,27 @@ int main(int argc, const char** argv)
         {
             GlobalRenderer::gRenderInstance.DrawScene(mainLogicalDevice, mainCommandStreamIndex, swcImageIndex);
 
-            GlobalRenderer::gRenderInstance.SubmitFrame(mainPresentationSwapChain, swcImageIndex);
+            int presentRet = GlobalRenderer::gRenderInstance.SubmitFrame(mainPresentationSwapChain, swcImageIndex);
+
+            if (presentRet)
+            {
+                GlobalRenderer::gRenderInstance.DumpLogger();
+            }
 
             GlobalRenderer::gRenderInstance.EndFrame(mainLogicalDevice, mainCommandStreamIndex);
 
-           // printf("frameCount %llu imageIndex %d\n", frameCount++, swcImageIndex);
+           // printf("frameCount %llu imageIndex %d\n", frameCount++, presentRet);
         } 
         else
         {
+            GlobalRenderer::gRenderInstance.DumpLogger();
             printf("Something is happening!!!\n");
         }
     }
 
 end:
+    GlobalRenderer::gRenderInstance.DestroyRenderInstance();
+
     CloseAllFiles();
 
     CloseAllSyncObject();

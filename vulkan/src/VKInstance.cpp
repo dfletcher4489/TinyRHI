@@ -1178,7 +1178,6 @@ void VKInstance::SetInstanceDataAndSize(void* dataHead, size_t totalDataSize, si
 	TLSFInitialize(&allocator->tlsfMain, (void*)tempMemoryHead, totalDataSize - (sizeof(VKAllocationCB)+cacheSize));
 }
 
-
 void* VKAPI_CALL VKAllocationCB::Allocation(
 	void* userData,
 	size_t size,
@@ -1187,6 +1186,12 @@ void* VKAPI_CALL VKAllocationCB::Allocation(
 )
 {
 	VKAllocationCB* allocator = (VKAllocationCB*)userData;
+
+	if (allocationScope == VK_SYSTEM_ALLOCATION_SCOPE_COMMAND)
+	{
+		return allocator->RealAllocCache(size, alignment);
+	}
+
 	return allocator->RealAlloc(size, alignment, allocationScope);
 }
 
@@ -1200,6 +1205,12 @@ void* VKAPI_CALL VKAllocationCB::Reallocation(
 )
 {
 	VKAllocationCB* allocator = (VKAllocationCB*)userData;
+
+	if (allocationScope == VK_SYSTEM_ALLOCATION_SCOPE_COMMAND)
+	{
+		return allocator->RealAllocCache(size, alignment);
+	}
+
 	return allocator->RealRealloc(original, size, alignment, allocationScope);
 }
 
@@ -1212,32 +1223,14 @@ void VKAPI_CALL VKAllocationCB::Free(
 	allocator->RealFree(memory);
 }
 
-#include <cstdio>
-
 void* VKAllocationCB::RealAlloc(size_t size,
 	size_t alignment,
 	VkSystemAllocationScope allocationScope)
 {
-	void* addr = nullptr;
-
-	printf("allocate %llu, %llu, %d\n", size, alignment, allocationScope);
-
-	if (allocationScope == VK_SYSTEM_ALLOCATION_SCOPE_COMMAND)
-	{
-		addr = RealAllocCache(size, alignment);
-	}
-	else 
-	{
-		addr = TLSFAllocate(&tlsfMain, size, alignment);
-	}
-
-	if (!addr)
-	{
-		ValidatePhysicalChain(&tlsfMain);
-
-		while(1);
-	}
-
+	std::lock_guard<std::mutex> lockGuard(lock);
+	
+	void* addr = TLSFAllocate(&tlsfMain, size, alignment);
+	
 	return addr;
 }
 
@@ -1245,12 +1238,10 @@ void* VKAllocationCB::RealRealloc(void* original, size_t size,
 	size_t alignment,
 	VkSystemAllocationScope allocationScope)
 {
-	if (allocationScope == VK_SYSTEM_ALLOCATION_SCOPE_COMMAND)
-	{
-		return RealAllocCache(size, alignment);
-	}
+	std::lock_guard<std::mutex> lockGuard(lock);
 
 	void* newaddr = TLSFRealloc(&tlsfMain, original, size);
+	
 	return newaddr;
 }
 
@@ -1276,7 +1267,10 @@ void VKAllocationCB::RealFree(void* memory)
 	uintptr_t currMem = (uintptr_t)memory;
 
 	if (currMem >= memStart && currMem < (memStart + tlsfMain.totalMemPoolSize))
+	{
+		std::lock_guard<std::mutex> lockGuard(lock);
 		TLSFFree(&tlsfMain, memory);
+	}
 }
 
 int VKInstance::GetMinimumStorageBufferAlignment(EntryHandle gpuIndex)

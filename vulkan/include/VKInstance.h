@@ -5,6 +5,8 @@
 #include "VKTypes.h"
 #include "VKUtilities.h"
 
+#include <mutex>
+
 #include <vulkan/vulkan.h>
 
 #ifdef WIN32
@@ -92,8 +94,10 @@ struct VKAllocationCB
 
 	void* cacheMemRingBuffer;
 	TLSFMain tlsfMain;
+	std::mutex lock;
 	uint32_t cacheMemRingBufferWrite;
 	uint32_t cacheMemRingBufferSize;
+	
 
 	VkAllocationCallbacks operator()() const {
 		VkAllocationCallbacks res;

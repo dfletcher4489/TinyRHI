@@ -460,7 +460,18 @@ int OSPollFile(OSFileHandle* fileHandle, int millisecondTimeOut)
 
     struct pollfd fds{};
 
-    fds.fd = fileHandle->osDataHandle;
+    int fd = -1;
+
+    if (fileHandle->osDataHandle < maxFreeListEntry) 
+    {
+        fd = intFileHandles[fileHandle->osDataHandle];
+    }
+    else
+    {
+        fd = FILE_DESCRIPTOR_STD_IN;
+    }
+
+    fds.fd = fd;
     fds.events = POLLIN;
     fds.revents = 0;
 

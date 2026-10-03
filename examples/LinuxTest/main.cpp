@@ -291,7 +291,6 @@ void ScanSTDIN(void* argument)
 
             if (!strcmp(inputBuffer, "end"))
             {
-                printf("%s %d\n", inputBuffer, readSize);
                 done = true;
                 break;
             }
@@ -593,9 +592,11 @@ int main(int argc, const char** argv)
 
     OSWindowShow(&window);
 
-    while(!done && !info.shouldBeClosed)
+    while(!done)
     {
         int ret = OSWindowPollEvents(&window, &info);
+
+        if (info.shouldBeClosed) break;
 
         if (ret)
         {
@@ -625,6 +626,8 @@ int main(int argc, const char** argv)
             printf("Something is happening!!!\n");
         }
     }
+
+    done = true;
 
 end:
     GlobalRenderer::gRenderInstance.DestroyRenderInstance();

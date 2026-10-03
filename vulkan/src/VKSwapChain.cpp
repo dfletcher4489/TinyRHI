@@ -67,7 +67,6 @@ static VkExtent2D chooseSwapExtent(uint32_t width, uint32_t height) {
 	};
 
 	return actualExtent;
-
 }
 
 static PFN_vkReleaseSwapchainImagesEXT vRelease = nullptr;
@@ -106,10 +105,14 @@ void VKSwapChain::SetSwapChainProperties(VK::Utils::SwapChainSupportDetails& swa
 	imageCount = __imageCount;
 }
 
-
 int VKSwapChain::CreateSwapChain(uint32_t width, uint32_t height, EntryHandle graphicsTransferQueue, EntryHandle presentQueue)
 {
-	swapChainExtent = chooseSwapExtent(width, height);
+	VkSurfaceCapabilitiesKHR caps;
+
+	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device->gpu, surface, &caps);
+	width = VK_SWC_CLAMP(width, caps.minImageExtent.width, caps.maxImageExtent.width);
+	height = VK_SWC_CLAMP(height, caps.minImageExtent.height, caps.maxImageExtent.height);
+	swapChainExtent = { width, height };
 	
 	VkSwapchainCreateInfoKHR createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;

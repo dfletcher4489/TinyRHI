@@ -608,7 +608,6 @@ LRESULT CALLBACK winproc(HWND hwnd, UINT wm, WPARAM wp, LPARAM lp)
     }
     case WM_CREATE:
     {
-        
         break;
     }
     case WM_QUIT:

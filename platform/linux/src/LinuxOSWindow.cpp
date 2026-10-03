@@ -157,12 +157,13 @@ int OSWindowSeedEventBuffer(OSWindow* window, void* bufferMemory, size_t bufferS
     return 0;
 }
 
-#if defined(WINDOW_USE_WAYLAND)
+#if defined(WINDOW_USE_WAYLAND) || 1
 
 //#define USE_BUFFER
 #define WINDOW_HEADER_TEXT_MAX_LEN 32
 
 #include <wayland-client.h>
+#include <linux/input-event-codes.h>
 #include "xdg-shell-client-protocol.h"
 #include "xdg-decoration-client-protocol.h"
 
@@ -192,6 +193,10 @@ static struct wl_display *display = NULL;
 static struct wl_compositor *compositor = NULL;
 static struct xdg_wm_base* xdg_wm_base = NULL;
 static struct zxdg_decoration_manager_v1* decoration_manager = NULL;
+static struct wl_seat* seat = NULL;
+static struct wl_keyboard* keyboard = NULL;
+static struct wl_pointer* pointer = NULL;
+static int pointerActiveSurface = -1;
 
 #ifdef USE_BUFFER
 static struct wl_shm *shm = NULL;
@@ -271,6 +276,10 @@ RegistryGlobalHandler(
     {
         decoration_manager = (zxdg_decoration_manager_v1*)wl_registry_bind(registry, name, &zxdg_decoration_manager_v1_interface, 1);
     }
+    else if (strcmp(interface, wl_seat_interface.name) == 0)
+    {
+        seat = (wl_seat*)wl_registry_bind(registry, name, &wl_seat_interface, version < 5 ? version : 5);
+    }
 }
 
 static void RegistryGlobalRemoveHandler
@@ -311,7 +320,14 @@ static void XdgToplevelConfigure(void *data, struct xdg_toplevel *toplevel, int3
 
 static void XdgToplevelClose(void *data, struct xdg_toplevel *toplevel) 
 { 
+    OSWaylandData* wayLandData = (OSWaylandData*)data;
 
+    GenericWindowEventPacked* packed = GetWindowEventPacked(wayLandData->windowEventBuffer);
+    
+    packed->EventType = WINDOW_EVENT_TYPE_SHOULD_BE_CLOSED;
+    packed->EventPacked = 1;
+
+    CommitWindowEventPacked(wayLandData->windowEventBuffer);
 }
 
 static const struct xdg_toplevel_listener xdg_toplevel_listener = 
@@ -320,7 +336,247 @@ static const struct xdg_toplevel_listener xdg_toplevel_listener =
     .close = XdgToplevelClose,
 };
 
+static void KbKeymap(void *data, struct wl_keyboard *kb, uint32_t format, int fd, uint32_t size)
+{
+    /*
+    // format is WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1; mmap the fd and hand it to xkbcommon
+    char *map = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
+    xkb_keymap_unref(xkb_keymap);
+    xkb_keymap = xkb_keymap_new_from_string(xkb_ctx, map, XKB_KEYMAP_FORMAT_TEXT_V1, XKB_KEYMAP_COMPILE_NO_FLAGS);
+    munmap(map, size);
+    close(fd);
+    xkb_state_unref(xkb_state);
+    xkb_state = xkb_state_new(xkb_keymap);
+    */
+}
 
+static void KbEnter(void *d, struct wl_keyboard *kb, uint32_t serial, struct wl_surface *s, struct wl_array *keys) {}
+static void KbLeave(void *d, struct wl_keyboard *kb, uint32_t serial, struct wl_surface *s) {}
+
+static void KbKey(void *d, struct wl_keyboard *kb, uint32_t serial, uint32_t time, uint32_t key, uint32_t state)
+{
+    /*
+    xkb_keycode_t code = key + 8;   // Wayland sends evdev codes; xkb offsets by 8
+    xkb_keysym_t  sym  = xkb_state_key_get_one_sym(xkb_state, code);
+    bool pressed = (state == WL_KEYBOARD_KEY_STATE_PRESSED);
+    // push (sym / scancode, pressed) into your engine's input queue
+    */
+}
+
+static void KbModifiers(void *d, struct wl_keyboard *kb, uint32_t serial,
+                        uint32_t depressed, uint32_t latched, uint32_t locked, uint32_t group)
+{
+    //xkb_state_update_mask(xkb_state, depressed, latched, locked, 0, 0, group);
+}
+
+static void KbRepeatInfo(void *d, struct wl_keyboard *kb, int32_t rate, int32_t delay) {}
+
+static const struct wl_keyboard_listener keyboard_listener = {
+    KbKeymap, KbEnter, KbLeave, KbKey, KbModifiers, KbRepeatInfo
+};
+
+#include <stdio.h>
+static void PointerEnter(void *data,
+		      struct wl_pointer *wl_pointer,
+		      uint32_t serial,
+		      struct wl_surface *surface,
+		      wl_fixed_t surface_x,
+		      wl_fixed_t surface_y)
+{
+    OSWaylandData* wayLandData = NULL;
+    int i = 0;
+    for (i = 0; i < maxFreeListEntry; i++)
+    {
+        if (instancePointers[i].surface == surface)
+        {
+            wayLandData = &instancePointers[i];
+            break;
+        }
+    }
+
+    if (wayLandData == NULL)
+    {
+        return;
+    }
+
+    pointerActiveSurface = i;
+
+    int x = wl_fixed_to_int(surface_x);
+    int y = wl_fixed_to_int(surface_y);
+
+    GenericWindowEventPacked* packed = GetWindowEventPacked(wayLandData->windowEventBuffer);
+    packed->EventType = WINDOW_EVENT_TYPE_MOUSE_COORDINATES;
+    packed->EventPacked = PACK_WINDOW_COORDINATES_EVENT(x, y);
+    CommitWindowEventPacked(wayLandData->windowEventBuffer);
+
+    printf("surface pointer enter: surfaceId=%d, x=%d, y=%d, width=%d, height=%d\n", pointerActiveSurface, x, y, wayLandData->width, wayLandData->height);
+}
+
+static void PointerLeave(void *data,
+		      struct wl_pointer *wl_pointer,
+		      uint32_t serial,
+		      struct wl_surface *surface)
+{
+    OSWaylandData* wayLandData = NULL;
+    int i = 0;
+    for (i = 0; i < maxFreeListEntry; i++)
+    {
+        if (instancePointers[i].surface == surface)
+        {
+            wayLandData = &instancePointers[i];
+            break;
+        }
+    }
+
+    if (wayLandData == NULL)
+    {
+        return;
+    }
+
+    pointerActiveSurface = -1;
+
+    printf("surface pointer exit: surfaceId=%d\n", i);
+}
+
+static void PointerMotion(void *data,
+		       struct wl_pointer *wl_pointer,
+		       uint32_t time,
+		       wl_fixed_t surface_x,
+		       wl_fixed_t surface_y)
+{
+    OSWaylandData* wayLandData = &instancePointers[pointerActiveSurface];
+   
+    int x = wl_fixed_to_int(surface_x);
+    int y = wl_fixed_to_int(surface_y);
+
+    GenericWindowEventPacked* packed = GetWindowEventPacked(wayLandData->windowEventBuffer);
+    packed->EventType = WINDOW_EVENT_TYPE_MOUSE_COORDINATES;
+    packed->EventPacked = PACK_WINDOW_COORDINATES_EVENT(x, y);
+    CommitWindowEventPacked(wayLandData->windowEventBuffer);
+
+    printf("surface pointer move: surfaceId=%d, x=%d, y=%d, width=%d, height=%d\n", pointerActiveSurface, x, y, wayLandData->width, wayLandData->height);
+}
+
+static void PointerButton(void *data,
+		       struct wl_pointer *wl_pointer,
+		       uint32_t serial,
+		       uint32_t time,
+		       uint32_t button,
+		       uint32_t state)
+{
+    OSWaylandData* wayLandData = &instancePointers[pointerActiveSurface];
+
+    if (button == BTN_LEFT)
+    {
+        GenericWindowEventPacked* packed = GetWindowEventPacked(wayLandData->windowEventBuffer);
+        
+        packed->EventType = WINDOW_EVENT_TYPE_MOUSE_LEFT_BUTTON;
+
+        if (state == WL_POINTER_BUTTON_STATE_RELEASED)
+        {
+            packed->EventPacked = 0;
+        }
+        else if (state == WL_POINTER_BUTTON_STATE_PRESSED)
+        {
+            packed->EventPacked = 1;
+        }
+        
+        CommitWindowEventPacked(wayLandData->windowEventBuffer);
+    }
+
+    printf("surface pointer button: surfaceId=%d, button=%d, state=%d\n", pointerActiveSurface, button, state);
+}
+
+	
+static void PointerAxis(void *data,
+		     struct wl_pointer *wl_pointer,
+		     uint32_t time,
+		     uint32_t axis,
+		     wl_fixed_t value)
+{
+
+}
+	
+static void PointerFrame(void *data,
+		      struct wl_pointer *wl_pointer)
+{
+
+}
+	
+static void PointerAxisSource(void *data,
+			    struct wl_pointer *wl_pointer,
+			    uint32_t axis_source)
+{
+
+}
+
+static void PointerAxisStop(void *data,
+			  struct wl_pointer *wl_pointer,
+			  uint32_t time,
+			  uint32_t axis)
+{
+
+}
+
+static void PointerAxisDiscrete(void *data,
+			      struct wl_pointer *wl_pointer,
+			      uint32_t axis,
+			      int32_t discrete)
+{
+
+}
+
+static void PointerAxisValue120(void *data,
+			      struct wl_pointer *wl_pointer,
+			      uint32_t axis,
+			      int32_t value120)
+{
+
+}
+	
+static void PointerAxisRelativeDirection(void *data,
+					struct wl_pointer *wl_pointer,
+					uint32_t axis,
+					uint32_t direction)
+{
+
+}
+
+static const struct wl_pointer_listener pointer_listener =
+{
+    PointerEnter, PointerLeave, PointerMotion, 
+    PointerButton, PointerAxis, PointerFrame, 
+    PointerAxisSource, PointerAxisStop, PointerAxisDiscrete, 
+    PointerAxisValue120, PointerAxisRelativeDirection
+};
+
+static void SeatCapabilities(void *data, struct wl_seat *seat, uint32_t caps)
+{
+    if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !keyboard)
+    {
+        keyboard = wl_seat_get_keyboard(seat);
+        wl_keyboard_add_listener(keyboard, &keyboard_listener, NULL);
+    }
+    else if (!(caps & WL_SEAT_CAPABILITY_KEYBOARD) && keyboard)
+    {
+        wl_keyboard_release(keyboard);
+        keyboard = NULL;
+    }
+
+    if ((caps & WL_SEAT_CAPABILITY_POINTER) && !pointer)
+    {
+        pointer = wl_seat_get_pointer(seat);
+        wl_pointer_add_listener(pointer, &pointer_listener, NULL);
+    }
+    else if (!(caps & WL_SEAT_CAPABILITY_POINTER) && pointer)
+    {
+        wl_pointer_release(pointer);
+        pointer = NULL;
+    }
+}
+static void SeatName(void *data, struct wl_seat *seat, const char *name) {}
+
+static const struct wl_seat_listener seat_listener = { SeatCapabilities, SeatName };
 
 static int InitializeWayland()
 {
@@ -343,7 +599,7 @@ static int InitializeWayland()
 
     wl_display_roundtrip(display);
 
-    if (!compositor || !xdg_wm_base || !decoration_manager)
+    if (!compositor || !xdg_wm_base || !decoration_manager || !seat)
     {
         printf("Missing required globals\n");
         return OS_WINDOW_CREATE_FAILED;
@@ -358,6 +614,8 @@ static int InitializeWayland()
 #endif
 
     xdg_wm_base_add_listener(xdg_wm_base, &xdg_wm_base_listener, NULL);
+
+    wl_seat_add_listener(seat, &seat_listener, NULL);
 
     wl_registry_destroy(registry);
 
@@ -501,6 +759,8 @@ int OSWindowPollEvents(OSWindow* window, GenericWindowInfo* info)
     wl_display_dispatch_pending(display);
     wl_display_flush(display);
 
+    int count = PumpWindowEventsPacked(&window->eventBuffer, info);
+
     return ret;
 }
 
@@ -566,7 +826,7 @@ int OSWindowShow(OSWindow* window)
 
     xdg_surface_add_listener(xdg_surface, &xdg_surface_listener, data);
 
-    xdg_toplevel_add_listener(xdg_toplevel, &xdg_toplevel_listener, NULL);
+    xdg_toplevel_add_listener(xdg_toplevel, &xdg_toplevel_listener, data);
 
     xdg_toplevel_set_title(data->xdg_toplevel, data->windowHeader);
     
@@ -577,6 +837,7 @@ int OSWindowShow(OSWindow* window)
     {
         wl_display_dispatch(display);    
     }
+
 #ifdef USE_BUFFER
     if (data->buffer)
     {

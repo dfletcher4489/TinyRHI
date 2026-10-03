@@ -23,3 +23,9 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}
         FILES ${APP_SOURCES}
     )
 
+add_custom_command(
+TARGET ${PROJECT_NAME}    
+POST_BUILD
+COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/attachmentdescriptions/" "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}"
+COMMENT "Copied Attachment Descriptions"
+)

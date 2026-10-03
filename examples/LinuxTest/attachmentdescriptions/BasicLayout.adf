@@ -1,0 +1,6 @@
+<AttachmentResource imageType="swc" format="b8g8r8a8">
+</AttachmentResource>
+<Attachments>
+	<ColorAttachment resource="0" loadOp="clear" storeOp="store" srcLayout="undefined" dstLayout="present">
+	</ColorAttachment>
+</Attachments>

@@ -51,6 +51,7 @@ bld/
 *.spv
 
 platform/linux/include/xdg-*
+platform/linux/src/wayland_gen/
 
 *.*old
 

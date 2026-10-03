@@ -3956,7 +3956,7 @@ int ApplicationLoop::InitializeRuntime()
 
 	GlobalRenderer::gRenderInstance.CreateRenderInstance(&riCreateInfo, &RenderInstanceMemoryAllocator, &RenderInstanceTemporaryAllocator);
 
-	int rendererRetCode = GlobalRenderer::gRenderInstance.CreateHighLevelInstance(800 * KiB, 128 * KiB, 4 * KiB, 96 * KiB);
+	int rendererRetCode = GlobalRenderer::gRenderInstance.CreateHighLevelInstance(800 * KiB, 128 * KiB, 4 * KiB, 96 * KiB, true);
 
 	if (rendererRetCode)
 	{

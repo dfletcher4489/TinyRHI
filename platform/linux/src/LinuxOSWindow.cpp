@@ -163,10 +163,8 @@ int OSWindowSeedEventBuffer(OSWindow* window, void* bufferMemory, size_t bufferS
 #define WINDOW_HEADER_TEXT_MAX_LEN 32
 
 #include <wayland-client.h>
-#include <xdg-shell-client-protocol.h>
-#include <xdg-shell-protocol.c>
-#include <xdg-decoration-client-protocol.h>
-#include <xdg-decoration-client-protocol.c>
+#include "xdg-shell-client-protocol.h"
+#include "xdg-decoration-client-protocol.h"
 
 struct OSWaylandData
 {

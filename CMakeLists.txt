@@ -59,6 +59,44 @@ target_link_directories(${CORE_LIBRARY_NAME} PUBLIC ${GLOBAL_LIBRARY_PATHS})
 target_link_libraries(${CORE_LIBRARY_NAME} PUBLIC ${GLOBAL_LIBRARIES_USED})
 
 if (WINDOW_USE_WAYLAND)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(WAYLAND_CLIENT REQUIRED wayland-client)
+    pkg_get_variable(WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
+    find_program(WAYLAND_SCANNER wayland-scanner REQUIRED)
+
+    set(DEC_PROTO_XML ${WAYLAND_PROTOCOLS_DIR}/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml)
+    set(SHELL_PROTO_XML ${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml)
+    set(INC_GEN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/platform/linux/include)
+    set(SRC_GEN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/platform/linux/src/wayland_gen)
+    file(MAKE_DIRECTORY ${SRC_GEN_DIR})
+
+    add_custom_command(
+        OUTPUT ${SRC_GEN_DIR}/xdg-decoration-client-protocol.c
+                ${INC_GEN_DIR}/xdg-decoration-client-protocol.h
+        COMMAND ${WAYLAND_SCANNER} private-code ${DEC_PROTO_XML} ${SRC_GEN_DIR}/xdg-decoration-client-protocol.c
+        COMMAND ${WAYLAND_SCANNER} client-header ${DEC_PROTO_XML} ${INC_GEN_DIR}/xdg-decoration-client-protocol.h
+        DEPENDS ${DEC_PROTO_XML}
+        VERBATIM
+    )
+
+    add_custom_command(
+        OUTPUT ${SRC_GEN_DIR}/xdg-shell-client-protocol.c
+                ${INC_GEN_DIR}/xdg-shell-client-protocol.h
+        COMMAND ${WAYLAND_SCANNER} private-code ${SHELL_PROTO_XML} ${SRC_GEN_DIR}/xdg-shell-client-protocol.c
+        COMMAND ${WAYLAND_SCANNER} client-header ${SHELL_PROTO_XML} ${INC_GEN_DIR}/xdg-shell-client-protocol.h
+        DEPENDS ${SHELL_PROTO_XML}
+        VERBATIM
+    )
+
+    target_sources(${CORE_LIBRARY_NAME} PRIVATE
+        ${SRC_GEN_DIR}/xdg-decoration-client-protocol.c
+        ${INC_GEN_DIR}/xdg-decoration-client-protocol.h
+        ${SRC_GEN_DIR}/xdg-shell-client-protocol.c
+        ${INC_GEN_DIR}/xdg-shell-client-protocol.h
+    )
+
+    target_include_directories(${CORE_LIBRARY_NAME} PRIVATE ${GEN_DIR})
+
     target_compile_definitions(${CORE_LIBRARY_NAME} PUBLIC WINDOW_USE_WAYLAND)
     target_link_libraries(${CORE_LIBRARY_NAME} PUBLIC wayland-client)
 endif()

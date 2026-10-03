@@ -3,8 +3,8 @@
 #if defined(WINDOW_USE_WAYLAND)
 
 #include <wayland-client.h>
-#include <xdg-shell-client-protocol.h>
-#include <xdg-decoration-client-protocol.h>
+#include "xdg-shell-client-protocol.h"
+#include "xdg-decoration-client-protocol.h"
 
 struct OSWindowInternalData
 {

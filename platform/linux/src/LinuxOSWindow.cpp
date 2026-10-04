@@ -164,6 +164,8 @@ int OSWindowSeedEventBuffer(OSWindow* window, void* bufferMemory, size_t bufferS
 
 #include <wayland-client.h>
 #include <linux/input-event-codes.h>
+#include <sys/mman.h>
+#include <xkbcommon/xkbcommon.h>
 #include "xdg-shell-client-protocol.h"
 #include "xdg-decoration-client-protocol.h"
 
@@ -196,7 +198,11 @@ static struct zxdg_decoration_manager_v1* decoration_manager = NULL;
 static struct wl_seat* seat = NULL;
 static struct wl_keyboard* keyboard = NULL;
 static struct wl_pointer* pointer = NULL;
+static struct xkb_context* xkb_ctx = NULL;
+static xkb_keymap* keymap = NULL; 
+static xkb_state* keystate = NULL;
 static int pointerActiveSurface = -1;
+static int keyboardActiveSurface = -1;
 
 #ifdef USE_BUFFER
 static struct wl_shm *shm = NULL;
@@ -338,44 +344,96 @@ static const struct xdg_toplevel_listener xdg_toplevel_listener =
 
 static void KbKeymap(void *data, struct wl_keyboard *kb, uint32_t format, int fd, uint32_t size)
 {
-    /*
+    
     // format is WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1; mmap the fd and hand it to xkbcommon
-    char *map = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
-    xkb_keymap_unref(xkb_keymap);
-    xkb_keymap = xkb_keymap_new_from_string(xkb_ctx, map, XKB_KEYMAP_FORMAT_TEXT_V1, XKB_KEYMAP_COMPILE_NO_FLAGS);
+    char *map = (char*)mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
+
+    if (!xkb_ctx)
+    {
+        xkb_ctx = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+    }
+
+    if (keymap)
+    {
+        xkb_keymap_unref(keymap);
+    }
+
+    keymap = xkb_keymap_new_from_string(xkb_ctx, map, XKB_KEYMAP_FORMAT_TEXT_V1, XKB_KEYMAP_COMPILE_NO_FLAGS);
+
     munmap(map, size);
     close(fd);
-    xkb_state_unref(xkb_state);
-    xkb_state = xkb_state_new(xkb_keymap);
-    */
+
+    if (keystate)
+    {
+        xkb_state_unref(keystate);
+    }
+
+    keystate = xkb_state_new(keymap);
 }
 
-static void KbEnter(void *d, struct wl_keyboard *kb, uint32_t serial, struct wl_surface *s, struct wl_array *keys) {}
-static void KbLeave(void *d, struct wl_keyboard *kb, uint32_t serial, struct wl_surface *s) {}
+static void KbEnter(void *d, struct wl_keyboard *kb, uint32_t serial, struct wl_surface *surface, struct wl_array *keys) 
+{
+    int i = 0;
+    for (i = 0; i < maxFreeListEntry; i++)
+    {
+        if (instancePointers[i].surface == surface)
+        {
+            keyboardActiveSurface = i;
+            break;
+        }
+    }
+
+    if (i == maxFreeListEntry)
+    {
+        printf("Unregistered surface attempted to acquire keyboard\n");
+    }
+}
+
+static void KbLeave(void *d, struct wl_keyboard *kb, uint32_t serial, struct wl_surface *surface) 
+{
+    int i = 0;
+    for (i = 0; i < maxFreeListEntry; i++)
+    {
+        if (instancePointers[i].surface == surface)
+        {
+            keyboardActiveSurface = i;
+            break;
+        }
+    }
+
+    if (i == maxFreeListEntry)
+    {
+        printf("Unregistered surface lost keyboard\n");
+    }
+
+    keyboardActiveSurface = -1;
+}
 
 static void KbKey(void *d, struct wl_keyboard *kb, uint32_t serial, uint32_t time, uint32_t key, uint32_t state)
 {
-    /*
+    OSWaylandData* wayData = &instancePointers[keyboardActiveSurface];
     xkb_keycode_t code = key + 8;   // Wayland sends evdev codes; xkb offsets by 8
-    xkb_keysym_t  sym  = xkb_state_key_get_one_sym(xkb_state, code);
+    xkb_keysym_t  sym  = xkb_state_key_get_one_sym(keystate, code);
     bool pressed = (state == WL_KEYBOARD_KEY_STATE_PRESSED);
     // push (sym / scancode, pressed) into your engine's input queue
-    */
+
 }
 
 static void KbModifiers(void *d, struct wl_keyboard *kb, uint32_t serial,
                         uint32_t depressed, uint32_t latched, uint32_t locked, uint32_t group)
 {
-    //xkb_state_update_mask(xkb_state, depressed, latched, locked, 0, 0, group);
+    xkb_state_update_mask(keystate, depressed, latched, locked, 0, 0, group);
 }
 
-static void KbRepeatInfo(void *d, struct wl_keyboard *kb, int32_t rate, int32_t delay) {}
+static void KbRepeatInfo(void *d, struct wl_keyboard *kb, int32_t rate, int32_t delay) 
+{
+
+}
 
 static const struct wl_keyboard_listener keyboard_listener = {
     KbKeymap, KbEnter, KbLeave, KbKey, KbModifiers, KbRepeatInfo
 };
 
-#include <stdio.h>
 static void PointerEnter(void *data,
 		      struct wl_pointer *wl_pointer,
 		      uint32_t serial,
@@ -409,7 +467,7 @@ static void PointerEnter(void *data,
     packed->EventPacked = PACK_WINDOW_COORDINATES_EVENT(x, y);
     CommitWindowEventPacked(wayLandData->windowEventBuffer);
 
-    printf("surface pointer enter: surfaceId=%d, x=%d, y=%d, width=%d, height=%d\n", pointerActiveSurface, x, y, wayLandData->width, wayLandData->height);
+   // printf("surface pointer enter: surfaceId=%d, x=%d, y=%d, width=%d, height=%d\n", pointerActiveSurface, x, y, wayLandData->width, wayLandData->height);
 }
 
 static void PointerLeave(void *data,
@@ -435,7 +493,7 @@ static void PointerLeave(void *data,
 
     pointerActiveSurface = -1;
 
-    printf("surface pointer exit: surfaceId=%d\n", i);
+   // printf("surface pointer exit: surfaceId=%d\n", i);
 }
 
 static void PointerMotion(void *data,
@@ -454,7 +512,7 @@ static void PointerMotion(void *data,
     packed->EventPacked = PACK_WINDOW_COORDINATES_EVENT(x, y);
     CommitWindowEventPacked(wayLandData->windowEventBuffer);
 
-    printf("surface pointer move: surfaceId=%d, x=%d, y=%d, width=%d, height=%d\n", pointerActiveSurface, x, y, wayLandData->width, wayLandData->height);
+   // printf("surface pointer move: surfaceId=%d, x=%d, y=%d, width=%d, height=%d\n", pointerActiveSurface, x, y, wayLandData->width, wayLandData->height);
 }
 
 static void PointerButton(void *data,
@@ -484,7 +542,7 @@ static void PointerButton(void *data,
         CommitWindowEventPacked(wayLandData->windowEventBuffer);
     }
 
-    printf("surface pointer button: surfaceId=%d, button=%d, state=%d\n", pointerActiveSurface, button, state);
+  //  printf("surface pointer button: surfaceId=%d, button=%d, state=%d\n", pointerActiveSurface, button, state);
 }
 
 	
@@ -574,9 +632,16 @@ static void SeatCapabilities(void *data, struct wl_seat *seat, uint32_t caps)
         pointer = NULL;
     }
 }
-static void SeatName(void *data, struct wl_seat *seat, const char *name) {}
 
-static const struct wl_seat_listener seat_listener = { SeatCapabilities, SeatName };
+static void SeatName(void *data, struct wl_seat *seat, const char *name) 
+{
+
+}
+
+static const struct wl_seat_listener seat_listener = 
+{ 
+    SeatCapabilities, SeatName 
+};
 
 static int InitializeWayland()
 {
@@ -704,6 +769,7 @@ void CloseAllWindows()
 #ifdef USE_BUFFER
         wl_shm_destroy(shm);
 #endif
+        wl_seat_destroy(seat);
         wl_compositor_destroy(compositor);
         wl_display_disconnect(display);
         initialize = 0;

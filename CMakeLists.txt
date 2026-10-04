@@ -98,7 +98,7 @@ if (WINDOW_USE_WAYLAND)
     target_include_directories(${CORE_LIBRARY_NAME} PRIVATE ${GEN_DIR})
 
     target_compile_definitions(${CORE_LIBRARY_NAME} PUBLIC WINDOW_USE_WAYLAND)
-    target_link_libraries(${CORE_LIBRARY_NAME} PUBLIC wayland-client)
+    target_link_libraries(${CORE_LIBRARY_NAME} PUBLIC wayland-client xkbcommon)
 endif()
 
 if (WINDOW_USE_X11)

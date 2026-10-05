@@ -598,6 +598,10 @@ int main(int argc, const char** argv)
 
         if (info.shouldBeClosed) break;
 
+        if (info.actions[KeyCodes::KC_D].state == PRESSED) break;
+
+        //printf("x=%d y=%d\n", info.currentCursorX, info.currentCursorY);
+
         if (ret)
         {
             done = true;

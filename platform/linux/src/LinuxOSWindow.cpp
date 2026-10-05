@@ -166,6 +166,7 @@ int OSWindowSeedEventBuffer(OSWindow* window, void* bufferMemory, size_t bufferS
 #include <linux/input-event-codes.h>
 #include <sys/mman.h>
 #include <xkbcommon/xkbcommon.h>
+#include <xkbcommon/xkbcommon-keysyms.h>
 #include "xdg-shell-client-protocol.h"
 #include "xdg-decoration-client-protocol.h"
 
@@ -344,8 +345,6 @@ static const struct xdg_toplevel_listener xdg_toplevel_listener =
 
 static void KbKeymap(void *data, struct wl_keyboard *kb, uint32_t format, int fd, uint32_t size)
 {
-    
-    // format is WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1; mmap the fd and hand it to xkbcommon
     char *map = (char*)mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
 
     if (!xkb_ctx)
@@ -411,12 +410,232 @@ static void KbLeave(void *d, struct wl_keyboard *kb, uint32_t serial, struct wl_
 
 static void KbKey(void *d, struct wl_keyboard *kb, uint32_t serial, uint32_t time, uint32_t key, uint32_t state)
 {
+    if (keyboardActiveSurface < 0)
+    {
+        return;
+    }
+
     OSWaylandData* wayData = &instancePointers[keyboardActiveSurface];
     xkb_keycode_t code = key + 8;   // Wayland sends evdev codes; xkb offsets by 8
-    xkb_keysym_t  sym  = xkb_state_key_get_one_sym(keystate, code);
-    bool pressed = (state == WL_KEYBOARD_KEY_STATE_PRESSED);
-    // push (sym / scancode, pressed) into your engine's input queue
 
+    xkb_layout_index_t layout = xkb_state_key_get_layout(keystate, code);
+    const xkb_keysym_t *syms;
+    int keyCount = xkb_keymap_key_get_syms_by_level(keymap, code, layout, 0, &syms);
+    
+    bool pressed = (state == WL_KEYBOARD_KEY_STATE_PRESSED);
+    bool released = (state == WL_KEYBOARD_KEY_STATE_RELEASED);
+
+   // printf("keycode=%d, sym=%d, pressed=%d, release=%d active=%d\n", code, *syms, pressed, released, keyboardActiveSurface);
+
+    int keyCode = 0;
+    int keyAction = released ? RELEASED : PRESSED;
+
+    switch (syms[0])  
+    {
+    case XKB_KEY_0:
+        keyCode = KC_ZERO;
+        break;
+    case XKB_KEY_1:
+        keyCode = KC_ONE;
+        break;
+    case XKB_KEY_2:
+        keyCode = KC_TWO;
+        break;
+    case XKB_KEY_3:
+        keyCode = KC_THREE;
+        break;
+    case XKB_KEY_4:
+        keyCode = KC_FOUR;
+        break;
+    case XKB_KEY_5:
+        keyCode = KC_FIVE;
+        break;
+    case XKB_KEY_6:
+        keyCode = KC_SIX;
+        break;
+    case XKB_KEY_7:
+        keyCode = KC_SEVEN;
+        break;
+    case XKB_KEY_8:
+        keyCode = KC_EIGHT;
+        break;
+    case XKB_KEY_9:
+        keyCode = KC_NINE;
+        break;
+
+    case XKB_KEY_a:
+        keyCode = KC_A;
+        break;
+    case XKB_KEY_b:
+        keyCode = KC_B;
+        break;
+    case XKB_KEY_c:
+        keyCode = KC_C;
+        break;
+    case XKB_KEY_d:
+        keyCode = KC_D;
+        break;
+    case XKB_KEY_e:
+        keyCode = KC_E;
+        break;
+    case XKB_KEY_f:
+        keyCode = KC_F;
+        break;
+    case XKB_KEY_g:
+        keyCode = KC_G;
+        break;
+    case XKB_KEY_h:
+        keyCode = KC_H;
+        break;
+    case XKB_KEY_i:
+        keyCode = KC_I;
+        break;
+    case XKB_KEY_j:
+        keyCode = KC_J;
+        break;
+    case XKB_KEY_k:
+        keyCode = KC_K;
+        break;
+    case XKB_KEY_l:
+        keyCode = KC_L;
+        break;
+    case XKB_KEY_m:
+        keyCode = KC_M;
+        break;
+    case XKB_KEY_n:
+        keyCode = KC_N;
+        break;
+    case XKB_KEY_o:
+        keyCode = KC_O;
+        break;
+    case XKB_KEY_p:
+        keyCode = KC_P;
+        break;
+    case XKB_KEY_q:
+        keyCode = KC_Q;
+        break;
+    case XKB_KEY_r:
+        keyCode = KC_R;
+        break;
+    case XKB_KEY_s:
+        keyCode = KC_S;
+        break;
+    case XKB_KEY_t:
+        keyCode = KC_T;
+        break;
+    case XKB_KEY_u:
+        keyCode = KC_U;
+        break;
+    case XKB_KEY_v:
+        keyCode = KC_V;
+        break;
+    case XKB_KEY_w:
+        keyCode = KC_W;
+        break;
+    case XKB_KEY_x:
+        keyCode = KC_X;
+        break;
+    case XKB_KEY_y:
+        keyCode = KC_Y;
+        break;
+    case XKB_KEY_z:
+        keyCode = KC_Z;
+        break;
+
+    case XKB_KEY_F1:
+        keyCode = KC_F1;
+        break;
+    case XKB_KEY_F2:
+        keyCode = KC_F2;
+        break;
+    case XKB_KEY_F3:
+        keyCode = KC_F3;
+        break;
+    case XKB_KEY_F4:
+        keyCode = KC_F4;
+        break;
+    case XKB_KEY_F5:
+        keyCode = KC_F5;
+        break;
+    case XKB_KEY_F12:
+        keyCode = KC_F12;
+        break;
+
+    case XKB_KEY_Escape:
+        keyCode = KC_ESC;
+        break;
+    case XKB_KEY_Tab:
+        keyCode = KC_TAB;
+        break;
+    case XKB_KEY_ISO_Left_Tab:
+        keyCode = KC_TAB;
+        break; 
+    case XKB_KEY_Shift_L:
+        keyCode = KC_LSHIFT;
+        break;
+    case XKB_KEY_Shift_R:
+        keyCode = KC_LSHIFT;
+        break; 
+    case XKB_KEY_Control_L:
+        keyCode = KC_LCTRL;
+        break;
+    case XKB_KEY_Control_R:
+        keyCode = KC_LCTRL;
+        break; 
+    case XKB_KEY_Alt_L:
+        keyCode = KC_LALT;
+        break;
+    case XKB_KEY_Alt_R:
+        keyCode = KC_LALT;
+        break; 
+    case XKB_KEY_space:
+        keyCode = KC_SPACE;
+        break;
+    case XKB_KEY_Return:
+        keyCode = KC_ENTER;
+        break;
+    case XKB_KEY_BackSpace:
+        keyCode = KC_BACKSPACE;
+        break;
+
+    case XKB_KEY_Up:
+        keyCode = KC_UP;
+        break;
+    case XKB_KEY_Down:
+        keyCode = KC_DOWN;
+        break;
+    case XKB_KEY_Left:
+        keyCode = KC_LEFT;
+        break;
+    case XKB_KEY_Right:
+        keyCode = KC_RIGHT;
+        break;
+    case XKB_KEY_Insert:
+        keyCode = KC_INSERT;
+        break;
+    case XKB_KEY_Delete:
+        keyCode = KC_DELETE;
+        break;
+    case XKB_KEY_Home:
+        keyCode = KC_HOME;
+        break;
+    case XKB_KEY_End:
+        keyCode = KC_END;
+        break;
+    case XKB_KEY_Page_Up:
+        keyCode = KC_PAGEUP;
+        break;
+    case XKB_KEY_Page_Down:
+        keyCode = KC_PAGEDOWN;
+        break;
+    default:
+        break;
+    }
+
+    GenericWindowEventPacked* packed = GetWindowEventPacked(wayData->windowEventBuffer);
+    packed->EventType = WINDOW_EVENT_TYPE_KEY_ACTION;
+    packed->EventPacked = PACK_KEY_CODE_ACTION(keyCode, keyAction);
+    CommitWindowEventPacked(wayData->windowEventBuffer);
 }
 
 static void KbModifiers(void *d, struct wl_keyboard *kb, uint32_t serial,
@@ -764,14 +983,45 @@ void CloseAllWindows()
 
     if (initialize)
     {
+        if (xkb_ctx)
+        {
+            xkb_context_unref(xkb_ctx);
+        }
+
+        xkb_ctx = NULL;
+        
+        if (keymap)
+        {
+            xkb_keymap_unref(keymap);
+        }
+
+        keymap = NULL; 
+
+        if (keystate)
+        {
+            xkb_state_unref(keystate);
+        }
+
+        keystate = NULL;
+
+        pointerActiveSurface = -1;
+        keyboardActiveSurface = -1;
+
         zxdg_decoration_manager_v1_destroy(decoration_manager);
         xdg_wm_base_destroy(xdg_wm_base);
 #ifdef USE_BUFFER
         wl_shm_destroy(shm);
+        shm = NULL;
 #endif
         wl_seat_destroy(seat);
         wl_compositor_destroy(compositor);
         wl_display_disconnect(display);
+
+        decoration_manager = NULL;
+        xdg_wm_base = NULL;
+        seat = NULL;
+        compositor = NULL;
+        display = NULL;
         initialize = 0;
     }
 }

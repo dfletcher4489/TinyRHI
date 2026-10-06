@@ -2565,6 +2565,9 @@ int HandleAttachmentResource(char* fileData, int size, int currentLocation, Atta
 			case hash("b8g8r8a8"):
 				resource->format = ImageFormat::B8G8R8A8;
 				break;
+			case hash("r8g8b8a8"):
+				resource->format = ImageFormat::R8G8B8A8;
+				break;
 			case hash("d24s8"):
 				resource->format = ImageFormat::D24UNORMS8STENCIL;
 				break;

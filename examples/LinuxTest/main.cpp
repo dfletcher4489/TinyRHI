@@ -32,6 +32,8 @@ static BufferMemoryIndex mainDeviceBuffer{};
 static ShaderResourceManagerIndex mainDescriptorManagerIndex{};
 static GPUCommandStreamIndex mainCommandStreamIndex{};
 static AttachmentGraphInstanceIndex basicGraphInstance{};
+static GeneratedPipelineInstanceIndex pipelineHandle{};
+static PipelineHandleIndex basicPipeline{};
 
 static char RenderInstanceMemoryPool[64 * MiB];
 static char RenderInstanceTemporaryPool[64 * KiB];
@@ -179,7 +181,7 @@ int InitGraphicsRuntime()
 		return -1;
 	}
 
-    ImageFormat requestedColorFormats = ImageFormat::B8G8R8A8;
+    ImageFormat requestedColorFormats = ImageFormat::R8G8B8A8;
 
 	ImageFormat mainColorFormat = GlobalRenderer::gRenderInstance.FindSupportedBackBufferColorFormat(mainGPU, mainPresentationWindow, &requestedColorFormats, 1);
 
@@ -224,14 +226,10 @@ int InitGraphicsRuntime()
 	}
 
 	std::array<AttachmentClear, 1> clears {
-		CLEARCOLOR, {1.0, 0.0, 0.0, 0.0},
+		CLEARCOLOR, {0.0, 0.0, 1.0, 0.0},
 	};
 
-     
-
     rendererRetCode = GlobalRenderer::gRenderInstance.CreateSwapChainAttachment(basicGraphInstance, 0, mainPresentationSwapChain, clears.data(), nullptr, nullptr, {}, {});
-
-   
 
     if (rendererRetCode)
     {
@@ -249,7 +247,59 @@ int InitGraphicsRuntime()
 		return -1;
 	}
 
+    GenericRenderPipelineInfoIndex pdsHandle = GlobalRenderer::gRenderInstance.CreateGenericRenderPipelineDescription(STRING_VIEW_FROM_LITERAL("BasicGraphicsPipeline.pld"));
+
+    if (GenericRenderPipelineInfoIndex() == pdsHandle)
+    {
+        GlobalRenderer::gRenderInstance.internalRendererLogger->ProcessMessage();
+        return -1;
+    }
+
+	RenderShaderGraphIndex shaderGraphHandle = GlobalRenderer::gRenderInstance.CreateShaderGraphInstance(mainLogicalDevice, STRING_VIEW_FROM_LITERAL("BasicShaderLayout.sgr"));
+
+	if (RenderShaderGraphIndex() == shaderGraphHandle)
+	{
+        GlobalRenderer::gRenderInstance.internalRendererLogger->ProcessMessage();
+		return -1;
+	}
+
+    std::array frameGraphs = { basicGraphInstance };
+	std::array frameRenderPassSelection = { 0 };
+
+	pipelineHandle = GlobalRenderer::gRenderInstance.CreateGraphicRenderStateObject(shaderGraphHandle, pdsHandle, frameGraphs.data(), frameRenderPassSelection.data(), 1);
+
+	if (GeneratedPipelineInstanceIndex() == pipelineHandle)
+	{
+        GlobalRenderer::gRenderInstance.internalRendererLogger->ProcessMessage();
+		return -1;
+	}
+
+    GraphicsIntermediaryPipelineInfo basicGraphicsInfo = {
+		.vertexBufferHandle = -1,
+		.vertexCount = 4,
+		.pipelinename = pipelineHandle,
+		.descCount = 0,
+		.descriptorsetid = nullptr,
+		.indexBufferHandle = -1,
+		.indexCount = 0,
+		.instanceCount = 1,
+		.indexSize = 0,
+		.indirectAllocation = -1,
+		.indirectDrawCount = 0,
+		.indirectCountAllocation = -1
+	};
+
+	basicPipeline = GlobalRenderer::gRenderInstance.CreateGraphicsPipelineObject(&basicGraphicsInfo);
+
+	if (PipelineHandleIndex() == basicPipeline)
+	{
+        GlobalRenderer::gRenderInstance.internalRendererLogger->ProcessMessage();
+		return -1;
+    }
+	
     GlobalRenderer::gRenderInstance.AddAttachmentCommandQueue(mainCommandStreamIndex, basicGraphInstance);
+
+    GlobalRenderer::gRenderInstance.DumpLogger();
 
     graphicsInit = 1;
 
@@ -611,6 +661,8 @@ int main(int argc, const char** argv)
 
         if (swcImageIndex != (uint32_t)~0)
         {
+            GlobalRenderer::gRenderInstance.AddPipelineToRPGraphicsQueue(basicPipeline, basicGraphInstance, 0);
+
             GlobalRenderer::gRenderInstance.DrawScene(mainLogicalDevice, mainCommandStreamIndex, swcImageIndex);
 
             int presentRet = GlobalRenderer::gRenderInstance.SubmitFrame(mainPresentationSwapChain, swcImageIndex);
@@ -622,7 +674,9 @@ int main(int argc, const char** argv)
 
             GlobalRenderer::gRenderInstance.EndFrame(mainLogicalDevice, mainCommandStreamIndex);
 
-           // printf("frameCount %llu imageIndex %d\n", frameCount++, presentRet);
+            
+
+            //printf("frameCount %llu imageIndex %d\n", frameCount++, presentRet);
         } 
         else
         {

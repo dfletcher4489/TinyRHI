@@ -1,0 +1,4 @@
+<PipelineDescription sampLo="1" sampHi="1">
+	<PrimitiveType type="tristrips">
+	</PrimitiveType>
+</PipelineDescription>

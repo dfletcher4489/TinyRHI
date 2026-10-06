@@ -1,0 +1,9 @@
+<ShaderGraph>
+	<GLSLShader type="vert">
+		basic.vert
+	</GLSLShader>
+	<GLSLShader type="fragment">
+		basic.frag
+	</GLSLShader>
+</ShaderGraph>
+

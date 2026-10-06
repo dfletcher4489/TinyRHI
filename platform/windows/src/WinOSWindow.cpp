@@ -281,7 +281,7 @@ int OSCreateWindow(const char* name, int requestedDimensionX, int requestDimensi
         registerOnce = true;
     }
 
-    RECT wr = { 0, 0, 800, 600 };
+    RECT wr = { 0, 0, requestedDimensionX, requestDimensionY };
     DWORD style = WS_OVERLAPPEDWINDOW;
     DWORD exStyle = 0;
 
@@ -463,9 +463,9 @@ LRESULT CALLBACK winproc(HWND hwnd, UINT wm, WPARAM wp, LPARAM lp)
             SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)infoStruct->lpCreateParams);
         }
 
-        if (infoStruct->cx < 800 || infoStruct->cy < 600)
+       // if (infoStruct->cx < 800 || infoStruct->cy < 600)
         {
-            return FALSE;
+          //  return FALSE;
         }
 
         return TRUE;

@@ -1263,11 +1263,12 @@ RenderDeviceIndex RenderInstance::CreateLogicalDevice(LogicalDeviceCreateInfo* c
 		rhiDevice->container.presentQueue = rhiDevice->container.graphicsComputeTransfer;
 	}
 
-	EntryHandle* lprimaryCommandBuffers = majorDevice->CreateReusableCommandBuffers(rhiDevice->container.graphicsComputeTransfer, rhiDevice->container.maxFramesInFlight, true, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+	
 
 	for (int i = 0; i < rhiDevice->container.maxFramesInFlight; i++)
 	{
-		rhiDevice->container.currentCommandBufferIndex[i] = lprimaryCommandBuffers[i];
+		EntryHandle* lprimaryCommandBuffers = majorDevice->CreateReusableCommandBuffers(rhiDevice->container.graphicsComputeTransfer, 1, true, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+		rhiDevice->container.currentCommandBufferIndex[i] = lprimaryCommandBuffers[0];
 	}
 
 	if (createInfo->maxQueries)

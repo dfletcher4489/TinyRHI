@@ -1,4 +1,8 @@
 <PipelineDescription sampLo="1" sampHi="1">
 	<PrimitiveType type="tristrips">
 	</PrimitiveType>
+	<CullMode mode="none" winding="ccw">
+	</CullMode>
+	<BlendAttachment enable="false" srcColor="one" dstColor="zero" colorOp="add" srcAlpha="one" dstAlpha="zero" alphaOp="add">
+	</BlendAttachment>
 </PipelineDescription>

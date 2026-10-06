@@ -276,7 +276,7 @@ int InitGraphicsRuntime()
 
     GraphicsIntermediaryPipelineInfo basicGraphicsInfo = {
 		.vertexBufferHandle = -1,
-		.vertexCount = 4,
+		.vertexCount = 3,
 		.pipelinename = pipelineHandle,
 		.descCount = 0,
 		.descriptorsetid = nullptr,

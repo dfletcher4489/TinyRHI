@@ -1,5 +1,5 @@
 <PipelineDescription sampLo="1" sampHi="1">
-	<PrimitiveType type="tristrips">
+	<PrimitiveType type="trilists">
 	</PrimitiveType>
 	<CullMode mode="none" winding="ccw">
 	</CullMode>

@@ -1458,7 +1458,7 @@ int VKDevice::CreateLogicalDevice(
 
 	tempDriverHead += driverPerCache;
 
-	TLSFInitialize(&deviceDriverAllocator->tlsfMain, (void*)tempDriverHead, (driverPerSize));
+	TLSFInitialize(&deviceDriverAllocator->tlsfMain, (void*)tempDriverHead, driverPerSize);
 
 	deviceCacheAlloc.size = perCacheSize;
 	deviceCacheAlloc.memHead = tempDeviceHead;
@@ -2291,6 +2291,9 @@ void VKDevice::DestroyDevice()
 	vkDestroyDevice(device, nullptr);
 
 	assert((permanentDeviceAlloc->fliBitmap & (permanentDeviceAlloc->fliBitmap - 1)) == 0);
+
+	ValidatePhysicalChain(&deviceDriverAllocator->tlsfMain);
+
 	assert((deviceDriverAllocator->tlsfMain.fliBitmap & (deviceDriverAllocator->tlsfMain.fliBitmap - 1)) == 0);
 }
 

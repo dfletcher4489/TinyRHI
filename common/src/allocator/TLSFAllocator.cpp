@@ -352,7 +352,7 @@ void* TLSFRealloc(TLSFMain* tlsf_struct, void* memaddress, unsigned int requeste
 void* TLSFAllocate(TLSFMain* tlsf_struct, unsigned int size, unsigned int alignment)
 {
 	unsigned int fli = 0, sli = 0, fli2 = 0, sli2 = 0;
-	BlockHeader* found, * remaining, *nextPhysBlock;
+	BlockHeader* found, *remaining, *nextPhysBlock;
 
 	unsigned int alignmentBlockStride = (MAX(alignment, sizeof(BlockHeader)) - sizeof(BlockHeader)) >> MIN_TLSF_BLOCK_SIZE_MSB;
 
@@ -679,6 +679,10 @@ void ValidatePhysicalChain(TLSFMain* tlsf)
 	BlockHeader* prev = nullptr;
 	unsigned int totalSize = 0;
 	int blockCount = 0;
+	int freeBlocks = 0;
+	int freeBlockSize = 0;
+	int usedBlocks = 0;
+	int usedBlockSize = 0;
 
 	while (current)
 	{
@@ -695,6 +699,18 @@ void ValidatePhysicalChain(TLSFMain* tlsf)
 			printf("COALESCE FAILURE at block %d\n", blockCount);
 		}
 
+		if (isFree)
+		{
+			freeBlocks++;
+			freeBlockSize += size;
+		}
+		else
+		{
+			usedBlocks++;
+			usedBlockSize += size;
+			printf("%llx\n", current);
+		}
+
 		totalSize += size;
 		blockCount++;
 		prev = current;
@@ -705,4 +721,6 @@ void ValidatePhysicalChain(TLSFMain* tlsf)
 	}
 
 	printf("Total blocks: %d, Total size: %u\n", blockCount, totalSize);
+	printf("Total Free blocks: %d, Total Free size: %u\n", freeBlocks, freeBlockSize);
+	printf("Total Used blocks: %d, Total Used size: %u\n", usedBlocks, usedBlockSize);
 }

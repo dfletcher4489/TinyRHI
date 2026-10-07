@@ -1,6 +1,15 @@
 #version 450
 
+layout(location = 0) in vec4 position;
+
 layout(location = 0) out vec4 color;
+
+layout(set = 0, binding = 0) uniform GlobalContext 
+{
+    mat4 view;
+    mat4 proj;
+} gs;
+
 
 void main()
 {
@@ -10,13 +19,16 @@ void main()
         vec2(1.0, 1.0)
     );
 
-    vec4 colors[3] = vec4[](
+    vec4 colors[6] = vec4[](
         vec4(1.0, 0.0, 0.0, 1.0),
         vec4(0.0, 1.0, 0.0, 1.0),
-        vec4(0.0, 0.0, 1.0, 1.0)
+        vec4(0.0, 0.0, 1.0, 1.0),
+        vec4(1.0, 1.0, 0.0, 1.0),
+        vec4(0.0, 1.0, 1.0, 1.0),
+        vec4(1.0, 0.0, 1.0, 1.0)
     );
 
-    gl_Position = vec4(positions[gl_VertexIndex], 0.0, 1.0);
+    gl_Position = gs.proj * gs.view * position;
 
-    color = colors[gl_VertexIndex];
+    color = colors[gl_VertexIndex / 4];
 }

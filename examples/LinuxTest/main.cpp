@@ -173,8 +173,8 @@ int InitGraphicsRuntime()
     lDeviceCreateInfo.deviceInstCacheSize = 96 * KiB;
     lDeviceCreateInfo.deviceInstHandleSize = 16 * KiB;
     lDeviceCreateInfo.deviceInstPermanentSize = 32 * KiB;
-    lDeviceCreateInfo.driverCacheSize = 5 * MiB;
-    lDeviceCreateInfo.driverPermanentSize = 5 * MiB;
+    lDeviceCreateInfo.driverCacheSize = 1 * MiB;
+    lDeviceCreateInfo.driverPermanentSize = 2 * MiB;
     lDeviceCreateInfo.maxFramesInFlight = MAX_FRAMES_IN_FLIGHT;
     lDeviceCreateInfo.maxConcurrentRecordings = 1;
     lDeviceCreateInfo.maxAllocations = 10;

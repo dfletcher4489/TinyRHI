@@ -2291,9 +2291,7 @@ void VKDevice::DestroyDevice()
 	vkDestroyDevice(device, nullptr);
 
 	assert((permanentDeviceAlloc->fliBitmap & (permanentDeviceAlloc->fliBitmap - 1)) == 0);
-
 	ValidatePhysicalChain(&deviceDriverAllocator->tlsfMain);
-
 	assert((deviceDriverAllocator->tlsfMain.fliBitmap & (deviceDriverAllocator->tlsfMain.fliBitmap - 1)) == 0);
 }
 

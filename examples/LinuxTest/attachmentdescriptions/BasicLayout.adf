@@ -5,6 +5,6 @@
 <Attachments>
 	<ColorAttachment resource="0" loadOp="clear" storeOp="store" srcLayout="undefined" dstLayout="present">
 	</ColorAttachment>
-	<DepthStencilAttachment resource="1" loadOp="clear" storeOp="discard" srcLayout="undefined" dstLayout="dsv">
-	</DepthStencilAttachment>
+	<DepthAttachment resource="1" loadOp="clear" storeOp="discard" srcLayout="undefined" dstLayout="dsv">
+	</DepthAttachment>
 </Attachments>

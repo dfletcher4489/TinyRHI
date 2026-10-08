@@ -463,11 +463,6 @@ LRESULT CALLBACK winproc(HWND hwnd, UINT wm, WPARAM wp, LPARAM lp)
             SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)infoStruct->lpCreateParams);
         }
 
-       // if (infoStruct->cx < 800 || infoStruct->cy < 600)
-        {
-          //  return FALSE;
-        }
-
         return TRUE;
     }
 
@@ -670,7 +665,23 @@ int OSWindowShow(OSWindow* window)
 
     HWND hWndMain = windowPtrs[windowIndex];
 
-    ShowWindow(hWndMain, 1);
+    ShowWindow(hWndMain, SW_NORMAL);
+
+    return OS_WINDOW_SUCCESS;
+}
+
+int OSWindowHide(OSWindow* window)
+{
+    int windowIndex = window->internalOSHandle;
+
+    if (windowIndex < 0 || windowIndex >= maxFreeListEntry)
+    {
+        return OS_WINDOW_HANDLE_OUT_OF_BOUNDS;
+    }
+
+    HWND hWndMain = windowPtrs[windowIndex];
+
+    ShowWindow(hWndMain, SW_HIDE);
 
     return OS_WINDOW_SUCCESS;
 }

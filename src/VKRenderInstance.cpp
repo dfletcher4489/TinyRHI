@@ -2300,7 +2300,7 @@ int CreateDriverGraphicsPipeline(RHIDevice* device,
 
 	pipelineBuilder->CreateViewportState(1, 1);
 
-	pipelineBuilder->CreateRasterizer(API::ConvertCullMode(info->stateInfo->cullMode), API::ConvertTriangleWinding(info->stateInfo->windingOrder), info->stateInfo->lineWidth);
+	pipelineBuilder->CreateRasterizer(API::ConvertCullMode(info->stateInfo->cullMode), API::ConvertTriangleWinding(info->stateInfo->windingOrder), info->stateInfo->lineWidth == 0.0f ? 1.0 : info->stateInfo->lineWidth);
 
 	for (int i = 0; i < info->stateInfo->blendAttachmentCount; i++)
 	{

@@ -119,7 +119,7 @@ int InitGraphicsRuntime()
     request.requireGeometryShader = false;
     request.requireTextureCompressionBC = false;
     request.requireTessellationShader = false;
-    request.requireSamplerAnisotropy = false;
+    request.requireSamplerAnisotropy = true;
     request.requireMultiDrawIndirect = false;
     request.requireWideLines = false;
     request.requireTimelineSemaphores = false;
@@ -129,11 +129,17 @@ int InitGraphicsRuntime()
     deviceFeatures.useSPVDebugInfo = false;
     deviceFeatures.useSPVDrawParameters = false;
     deviceFeatures.useSwapChain = true;
-    deviceFeatures.useSwapChainMaintenance = false;
+    deviceFeatures.useSwapChainMaintenance = true;
 
     GlobalRenderer::gRenderInstance.CreateRenderInstance(&riCreateInfo, &RenderInstanceMemoryAllocator, &RenderInstanceTemporaryAllocator);
 
-    int rendererRetCode = GlobalRenderer::gRenderInstance.CreateHighLevelInstance(3 * MiB, 4 * MiB, 4 * KiB, 96 * KiB, false);
+    bool usevalidation = false;
+
+#ifdef WIN32
+    usevalidation = true;
+#endif
+
+    int rendererRetCode = GlobalRenderer::gRenderInstance.CreateHighLevelInstance(3 * MiB, 4 * MiB, 4 * KiB, 96 * KiB, usevalidation);
 
     if (rendererRetCode)
     {
@@ -615,7 +621,7 @@ void ScanSTDIN(void* argument)
             }
             else if (!strcmp(inputBuffer, "hide"))
             {
-               // OSWindowHide(&window);
+                OSWindowHide(&window);
             }
             else
             {

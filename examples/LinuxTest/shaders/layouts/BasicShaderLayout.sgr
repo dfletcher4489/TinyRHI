@@ -8,6 +8,10 @@
 	<ShaderResourceSet>
 		<ShaderResourceItem type="uniform" used="v">
 		</ShaderResourceItem>
+		<ShaderResourceItem type="image2D" used="f" count="1">
+		</ShaderResourceItem>
+		<ShaderResourceItem type="sampler" used="f" count="1">
+		</ShaderResourceItem>
 	</ShaderResourceSet>
 </ShaderGraph>
 

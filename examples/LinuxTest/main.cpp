@@ -9,6 +9,7 @@
 #include "allocator/AppAllocator.h"
 #include "Camera.h"
 #include "RenderInstance.h"
+#include "imageutils/TextureIO.h"
 #include "WindowManager.h"
 
 #if defined(_WIN32)
@@ -60,6 +61,9 @@ static size_t mainDSVSize = 10 * MiB;
 static ImageMemoryIndex mainDSVIndex{};
 static DeviceSlabAllocator mainDSVAllocator(mainDSVSize, STRING_VIEW_FROM_LITERAL("Main DSV Allocator"), &mainAppLogger);
 
+static char bmpFileData[258 * KiB];
+static char imageData[258 * KiB];
+
 int InitGraphicsRuntime()
 {
     mainAppLogger.InitLogger(LoggerMessageMemory, sizeof(LoggerMessageMemory));
@@ -67,7 +71,7 @@ int InitGraphicsRuntime()
     RenderInstanceCreateInfo riCreateInfo{};
     riCreateInfo.maxAttachmentGraphTemplates = 1;
     riCreateInfo.maxAttachmentGraphInstances = 1;
-    riCreateInfo.maxImagePoolsCount = 1;
+    riCreateInfo.maxImagePoolsCount = 2;
     riCreateInfo.maxBufferPoolsCount = 2;
     riCreateInfo.maxRenderTargets = 1;
     riCreateInfo.maxShaderGraphs = 1;
@@ -368,12 +372,148 @@ int InitGraphicsRuntime()
 		Vector4f(1.0, -1.0, -1.0, 1.0)
 	};
 
+    Vector2f texturesCoordinate[24] = {
+		Vector2f(1.0, 0.0),
+		Vector2f(0.0, 0.0),
+		Vector2f(1.0, 1.0),
+		Vector2f(0.0, 1.0),
+		Vector2f(1.0, 0.0),
+		Vector2f(0.0, 0.0),
+		Vector2f(1.0, 1.0),
+		Vector2f(0.0, 1.0),
+		Vector2f(1.0, 0.0),
+		Vector2f(0.0, 0.0),
+		Vector2f(1.0, 1.0),
+		Vector2f(0.0, 1.0),
+		Vector2f(1.0, 0.0),
+		Vector2f(0.0, 0.0),
+		Vector2f(1.0, 1.0),
+		Vector2f(0.0, 1.0),
+		Vector2f(1.0, 0.0),
+		Vector2f(0.0, 0.0),
+		Vector2f(1.0, 1.0),
+		Vector2f(0.0, 1.0),
+		Vector2f(1.0, 0.0),
+		Vector2f(0.0, 0.0),
+		Vector2f(1.0, 1.0),
+		Vector2f(0.0, 1.0),
+	};
+
+    struct Vertex
+    {
+        Vector4f pos;
+        Vector4f texCoords;
+    };
+
+    Vertex vertices[24];
+
+    for (int i = 0; i<24; i++)
+    {
+        vertices[i].pos = BoxVerts[i];
+        vertices[i].texCoords = Vector4f(texturesCoordinate[i].x, texturesCoordinate[i].y, 0.0, 0.0);
+    }
+
+	int totalBlobSize = 0;
+
+	TextureIndex twoDimageIndex{};
+
+    StringView textureName = STRING_VIEW_FROM_LITERAL("texture.bmp");
+	TextureDetails stubDetails{};
+	OSFileHandle outHandle{};
+
+	int nRet = OSOpenFile(textureName.stringData, textureName.charCount, READ, &outHandle);
+
+	if (nRet)
+	{
+		mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Cannot open 2d image file"));
+        mainAppLogger.ProcessMessage();
+		return -1;
+	}
+
+	int size = outHandle.fileLength;
+	
+	int64_t nRead = OSReadFile(&outHandle, size, bmpFileData);
+	OSCloseFile(&outHandle);
+	if (nRead < 0)
+	{
+		mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Cannot read 2d image file"));
+        mainAppLogger.ProcessMessage();
+		return -1;
+	}
+	
+	int filePointer = ReadBMPDetails(bmpFileData, &stubDetails);
+	stubDetails.data = imageData;
+	stubDetails.currPointer = stubDetails.data;
+	totalBlobSize += stubDetails.dataSize;
+	ReadBMPData(bmpFileData, filePointer, &stubDetails);
+
+    stubDetails.miplevels = 1;
+    stubDetails.arrayLayers = 1;
+
+    ImageMemoryIndex texturePoolHandle = 
+			GlobalRenderer::gRenderInstance.CreateImagePool(mainLogicalDevice,
+			512 * KiB,
+			ImageFormat::B8G8R8A8, 1024, 1024, 
+				ImageUsageFlagBits::TRANSFER_SRC | ImageUsageFlagBits::TRANSFER_DEST
+				| ImageUsageFlagBits::SAMPLED,
+				MemoryTypeBits::DEVICE_MEMORY_TYPE
+		);
+
+	if (ImageMemoryIndex() == texturePoolHandle)
+	{
+		return -1;
+	}
+
+    DeviceSlabAllocator imageAllocator(512 * KiB, STRING_VIEW_FROM_LITERAL("Image Allocator"), &mainAppLogger);
+	
+    size_t actualMemorySize = 0, actualMemoryAlignment = 0, actualMemoryAddress = 0;
+
+	GlobalRenderer::gRenderInstance.GetGPURequestedImageSizeAndAlignment(mainLogicalDevice,
+		stubDetails.width, stubDetails.height, stubDetails.miplevels, stubDetails.arrayLayers, stubDetails.type, ImageUsageFlagBits::SAMPLED | ImageUsageFlagBits::TRANSFER_DEST, &actualMemorySize, &actualMemoryAlignment
+	);
+
+	actualMemoryAddress = imageAllocator.Allocate(actualMemorySize, actualMemoryAlignment);
+
+	twoDimageIndex = GlobalRenderer::gRenderInstance.CreateImageHandle(mainLogicalDevice,
+			actualMemoryAddress,
+			stubDetails.width,
+			stubDetails.height,
+			stubDetails.miplevels,
+			stubDetails.arrayLayers,
+			stubDetails.type,
+			ImageType::IMAGE_2D,
+			ImageUsageFlagBits::SAMPLED | ImageUsageFlagBits::TRANSFER_DEST,
+			texturePoolHandle
+		);
+
+	int viewIndex = GlobalRenderer::gRenderInstance.CreateImageView(twoDimageIndex, 0, IMAGE_VIEW_ALL_MIPS, 0, IMAGE_VIEW_ALL_LAYERS, COLOR_IMAGE_ASPECT, ImageLayout::SHADERREADABLE);
+	
+    GlobalRenderer::gRenderInstance.UpdateImageMemory(
+		stubDetails.data,
+		twoDimageIndex,
+		totalBlobSize,
+		stubDetails.width,
+		stubDetails.height,
+		stubDetails.miplevels,
+		0,
+		stubDetails.arrayLayers,
+		0,
+		COLOR_IMAGE_ASPECT
+	);
+
+    SamplerIndex mainLinearSampler = GlobalRenderer::gRenderInstance.CreateSampler(mainLogicalDevice, 
+		0, 7, 
+		SamplerFilterMode::FILTER_LINEAR, SamplerFilterMode::FILTER_LINEAR, 
+		SamplerAddressMode::ADDRESS_REPEAT, SamplerMipmapMode::MIPMAP_MODE_LINEAR,
+		CompareOp::LESS
+	);
+
     AllocationInstanceIndex globalBufferLocation = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(Matrix4f)*2, 1, alignof(Matrix4f), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::UNIFORM_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
 
-	AllocationInstanceIndex vertexAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(BoxVerts), 1, 64, AllocationType::STATIC, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::NO_BUFFER_ALIGNMENT,  -1, &mainDeviceAllocator);
+	AllocationInstanceIndex vertexAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(vertices), 1, 64, AllocationType::STATIC, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::NO_BUFFER_ALIGNMENT,  -1, &mainDeviceAllocator);
 	AllocationInstanceIndex indexAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(BoxIndices), 1, 64, AllocationType::STATIC, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, -1, &mainDeviceAllocator);
 
-	GlobalRenderer::gRenderInstance.UpdateDriverMemory(BoxVerts, vertexAlloc, sizeof(BoxVerts), 0, TransferType::CACHED);
+	GlobalRenderer::gRenderInstance.UpdateDriverMemory(vertices, vertexAlloc, sizeof(vertices), 0, TransferType::CACHED);
 	GlobalRenderer::gRenderInstance.UpdateDriverMemory(BoxIndices, indexAlloc, sizeof(BoxIndices), 0, TransferType::CACHED);
 
 	ShaderResourceSetBuilder boxDesc = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandle, 0, MAX_FRAMES_IN_FLIGHT);
@@ -381,6 +521,8 @@ int InitGraphicsRuntime()
     ShaderResourceSetContext genericboxRSontext{ &mainAppLogger, false };
 
 	boxDesc.BindBufferToShaderResource(&genericboxRSontext, &globalBufferLocation, 0, 1, 0);
+    boxDesc.BindImageResourceToShaderResource(&genericboxRSontext, &twoDimageIndex, &viewIndex, 1, 0, 1);
+    boxDesc.BindSamplerResourceToShaderResource(&genericboxRSontext, &mainLinearSampler, 1, 0, 2);
 
     if (genericboxRSontext.contextFailed)
 	{
@@ -789,11 +931,6 @@ int main(int argc, const char** argv)
 
             int presentRet = GlobalRenderer::gRenderInstance.SubmitFrame(mainPresentationSwapChain, swcImageIndex);
 
-            if (presentRet)
-            {
-                
-            }
-
             GlobalRenderer::gRenderInstance.EndFrame(mainLogicalDevice, mainCommandStreamIndex);
         } 
         else
@@ -802,6 +939,9 @@ int main(int argc, const char** argv)
             printf("Something is happening!!!\n");
         }
     }
+
+    GlobalRenderer::gRenderInstance.DumpLogger();
+
 end:
     done = true;
 

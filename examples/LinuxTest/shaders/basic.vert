@@ -1,8 +1,9 @@
 #version 450
 
 layout(location = 0) in vec4 position;
+layout(location = 1) in vec4 inTexCoords;
 
-layout(location = 0) out vec4 color;
+layout(location = 0) out vec2 outTexCoords;
 
 layout(set = 0, binding = 0) uniform GlobalContext 
 {
@@ -30,5 +31,5 @@ void main()
 
     gl_Position = gs.proj * gs.view * position;
 
-    color = colors[gl_VertexIndex / 4];
+    outTexCoords = inTexCoords.xy;
 }

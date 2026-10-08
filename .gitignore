@@ -43,7 +43,6 @@ bld/
 *.jpg
 *.png
 *.webp
-*.bmp
 *.msi
 *.zip
 3rdparty/

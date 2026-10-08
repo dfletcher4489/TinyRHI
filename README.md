@@ -31,7 +31,7 @@ Attachment graphs express render pass dependencies and resource lifetimes. Pipel
 | DX12 backend | In progress |
 | Backend unification | In progress |
 | Windows platform code | Working |
-| Linux platform code | In progress |
+| Linux platform code | Working |
 
 ---
 
@@ -81,6 +81,9 @@ This project is an editor for SMB archives used to store data for the game Oddwo
 | GPU skinning | Planned |
 
 ---
+
+### Linux Test
+Basic Cube Demo, fixed camera angle, mostly to test platform independence and Vulkan API management. Works on both Linux and Windows. Assets are bundled with example.
 
 #### Technical Notes
 
@@ -143,11 +146,11 @@ Finish app level architecture
   - Add a GetLastError support.
   - possibly switch over to NTL stuff instead of WinAPI (longer term).
   - expand block header allocations details    
-- Create OS linux layer with what is already done in agnostic interface
+- Create OS linux layer with what is already done in agnostic interface (done)
 - Make robust the shader translation layer and have compute shader execute in uniform way (minimize divergence among wave invocations).
-- Fix light shaders to minimize divergence and branchiness. 
-- Try to finish any unimplemented paths in the shaders (uncompressed data loading(x), light assignment and culling, etc.)
-- Finish build system and manage the Vulkan dependency properly(done)
+- Fix light shaders to minimize divergence and branchiness (done). 
+- Try to finish any unimplemented paths in the shaders (uncompressed data loading (done), light assignment and culling (done), etc.)
+- Finish build system and manage the Vulkan dependency properly (done)
 
 ## Longer term to-do list
 

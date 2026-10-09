@@ -58,7 +58,7 @@ static int graphicsInit = 0;
 static int windowWidth = 800;
 static int windowHeight = 600;
 
-static size_t mainDSVSize = 12 * MiB;
+static size_t mainDSVSize = 128 * MiB;
 static ImageMemoryIndex mainDSVIndex{};
 static DeviceSlabAllocator mainDSVAllocator(mainDSVSize, STRING_VIEW_FROM_LITERAL("Main DSV Allocator"), &mainAppLogger);
 

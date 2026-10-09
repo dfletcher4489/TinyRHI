@@ -194,7 +194,7 @@ struct DeviceSlabAllocator
 	Logger* logger{};
 
 	DeviceSlabAllocator(int _size, StringView _allocatorName, Logger* _logger) :
-		dataSize(_size), dataAllocator(0)
+		dataSize(_size), dataAllocator(0), logger(_logger)
 	{
 
 	}

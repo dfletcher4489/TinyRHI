@@ -157,7 +157,7 @@ int OSWindowSeedEventBuffer(OSWindow* window, void* bufferMemory, size_t bufferS
     return 0;
 }
 
-#if defined(WINDOW_USE_WAYLAND) || 1
+#if defined(WINDOW_USE_WAYLAND)
 
 //#define USE_BUFFER
 #define WINDOW_HEADER_TEXT_MAX_LEN 32
@@ -277,7 +277,7 @@ RegistryGlobalHandler(
 #endif
     else if (strcmp(interface, xdg_wm_base_interface.name) == 0) 
     {
-        xdg_wm_base = (struct xdg_wm_base*)wl_registry_bind(registry, name, &xdg_wm_base_interface, 1);
+        xdg_wm_base = (struct xdg_wm_base*)wl_registry_bind(registry, name, &xdg_wm_base_interface, version);
     }
     else if (strcmp(interface, zxdg_decoration_manager_v1_interface.name) == 0) 
     {
@@ -324,7 +324,7 @@ static void XdgToplevelConfigure(void *data, struct xdg_toplevel *toplevel, int3
 {
     OSWaylandData* wayLandData = (OSWaylandData*)data;
 
-    printf("width=%d, height=%d\n", width, height);
+    //printf("width=%d, height=%d\n", width, height);
 
     if (wayLandData->surfaceConfigured == 1)
     {
@@ -338,7 +338,6 @@ static void XdgToplevelConfigure(void *data, struct xdg_toplevel *toplevel, int3
 
         for (const uint32_t* s = begin; s < end; ++s)
         {
-            printf("%d\n", *s);
             switch (*s)
             {
                 case XDG_TOPLEVEL_STATE_ACTIVATED: activated = 1; break;
@@ -350,24 +349,21 @@ static void XdgToplevelConfigure(void *data, struct xdg_toplevel *toplevel, int3
             }
         }
 
-        if (resizing || minimized || maximized)
-        {
-            printf("resized width=%d, height=%d\n", width, height);
+        //printf("act=%d, min=%d, max=%d, resize=%d, full=0\n", activated, minimized, maximized, resizing);
 
-            GenericWindowEventPacked* packed = GetWindowEventPacked(wayLandData->windowEventBuffer);
+        GenericWindowEventPacked* packed = GetWindowEventPacked(wayLandData->windowEventBuffer);
     
-            packed->EventType = WINDOW_EVENT_TYPE_WINDOW_SIZE;
-            packed->EventPacked = PACK_WINDOW_SIZE_EVENT(width, height, minimized, maximized);
+        packed->EventType = WINDOW_EVENT_TYPE_WINDOW_SIZE;
+        packed->EventPacked = PACK_WINDOW_SIZE_EVENT(width, height, minimized, maximized);
 
+        CommitWindowEventPacked(wayLandData->windowEventBuffer);
+
+        if (resizing || maximized)
+        {
+            packed = GetWindowEventPacked(wayLandData->windowEventBuffer);
+            packed->EventType = WINDOW_EVENT_TYPE_RESIZE_REQUESTED;
+            packed->EventPacked = 1;
             CommitWindowEventPacked(wayLandData->windowEventBuffer);
-
-            if (!minimized)
-            {
-                packed = GetWindowEventPacked(wayLandData->windowEventBuffer);
-                packed->EventType = WINDOW_EVENT_TYPE_RESIZE_REQUESTED;
-                packed->EventPacked = 1;
-                CommitWindowEventPacked(wayLandData->windowEventBuffer);
-            }
         }
     }
 }
@@ -1119,7 +1115,21 @@ int OSWindowPollEvents(OSWindow* window, GenericWindowInfo* info)
 {
     int ret = OS_WINDOW_SUCCESS;
 
-    wl_display_dispatch_pending(display);
+    while (wl_display_prepare_read(display) != 0)
+        wl_display_dispatch_pending(display);
+
+    wl_display_flush(display);
+
+    struct pollfd pfd = { wl_display_get_fd(display), POLLIN, 0 };
+    int pr = poll(&pfd, 1, 0);
+
+    if (pr > 0 && (pfd.revents & POLLIN))
+        wl_display_read_events(display);     
+    else
+        wl_display_cancel_read(display);     
+
+
+    wl_display_dispatch_pending(display);     
     wl_display_flush(display);
 
     int count = PumpWindowEventsPacked(&window->eventBuffer, info);

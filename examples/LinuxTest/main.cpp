@@ -921,15 +921,11 @@ int main(int argc, const char** argv)
 
         if (info.shouldBeClosed) break;
 
-        if (info.actions[KeyCodes::KC_D].state == PRESSED) break;
-
-        if (info.minimized) continue;
+        if (info.minimized) continue; 
 
         if (info.HandleResizeRequested())
         {
             uint32_t width = info.width, height = info.height;
-
-            printf("%d %d\n", width, height);
 
             int swcret = GlobalRenderer::gRenderInstance.RecreateSwapChain(mainPresentationSwapChain, width, height);
             
@@ -964,13 +960,15 @@ int main(int argc, const char** argv)
         } 
         else
         {
-            
-            printf("Something is happening!!!\n");
+            mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Failed to acquire swap chain image, ending rendering"));
+
+            done = true;
         }
     }
 
     GlobalRenderer::gRenderInstance.DumpLogger();
 
+    mainAppLogger.ProcessMessage();
 end:
     done = true;
 

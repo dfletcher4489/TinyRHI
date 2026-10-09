@@ -44,6 +44,7 @@ static AttachmentGraphInstanceIndex basicGraphInstance{};
 static GeneratedPipelineInstanceIndex pipelineHandle{};
 static PipelineHandleIndex basicPipeline{};
 static Camera mainCamera{};
+static AllocationInstanceIndex globalBufferLocation{};
 
 static char RenderInstanceMemoryPool[64 * MiB];
 static char RenderInstanceTemporaryPool[64 * KiB];
@@ -57,7 +58,7 @@ static int graphicsInit = 0;
 static int windowWidth = 800;
 static int windowHeight = 600;
 
-static size_t mainDSVSize = 10 * MiB;
+static size_t mainDSVSize = 12 * MiB;
 static ImageMemoryIndex mainDSVIndex{};
 static DeviceSlabAllocator mainDSVAllocator(mainDSVSize, STRING_VIEW_FROM_LITERAL("Main DSV Allocator"), &mainAppLogger);
 
@@ -514,7 +515,7 @@ int InitGraphicsRuntime()
 		CompareOp::LESS
 	);
 
-    AllocationInstanceIndex globalBufferLocation = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(Matrix4f)*2, 1, alignof(Matrix4f), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::UNIFORM_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
+    globalBufferLocation = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(Matrix4f)*2, 1, alignof(Matrix4f), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::UNIFORM_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
 
 	AllocationInstanceIndex vertexAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(vertices), 1, 64, AllocationType::STATIC, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::NO_BUFFER_ALIGNMENT,  -1, &mainDeviceAllocator);
 	AllocationInstanceIndex indexAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(BoxIndices), 1, 64, AllocationType::STATIC, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, -1, &mainDeviceAllocator);
@@ -895,9 +896,9 @@ int main(int argc, const char** argv)
 
     OSCreateThread(&handle, nullptr, ScanSTDIN, OS_THREAD_NONE);
 
-    closeWindow = OSCreateWindow("Multi Platform Test", windowWidth, windowHeight, &window);
-
     OSWindowSeedEventBuffer(&window, MainWindowEventBuffer, sizeof(MainWindowEventBuffer));
+
+    closeWindow = OSCreateWindow("Multi Platform Test", windowWidth, windowHeight, &window);
 
     if (closeWindow)
     {
@@ -922,9 +923,31 @@ int main(int argc, const char** argv)
 
         if (info.actions[KeyCodes::KC_D].state == PRESSED) break;
 
-        if (ret)
+        if (info.minimized) continue;
+
+        if (info.HandleResizeRequested())
         {
-            done = true;
+            uint32_t width = info.width, height = info.height;
+
+            printf("%d %d\n", width, height);
+
+            int swcret = GlobalRenderer::gRenderInstance.RecreateSwapChain(mainPresentationSwapChain, width, height);
+            
+            mainCamera.CreateProjectionMatrix(GlobalRenderer::gRenderInstance.GetSwapChainWidth(mainPresentationSwapChain) / (float)GlobalRenderer::gRenderInstance.GetSwapChainHeight(mainPresentationSwapChain), 0.1f, 10000.0f, DegToRad(45.0f));
+            mainCamera.UpdateCamera();
+
+            GlobalRenderer::gRenderInstance.UpdateDriverMemory(&mainCamera.View, globalBufferLocation, sizeof(Matrix4f)*2, 0, TransferType::MEMORY);
+
+            mainDSVAllocator.dataAllocator = 0;
+
+            int rendererRetCode = GlobalRenderer::gRenderInstance.CreateSwapChainAttachment(basicGraphInstance, 0, mainPresentationSwapChain, nullptr, nullptr, &mainDSVAllocator, {}, mainDSVIndex);
+
+            if (rendererRetCode)
+            {
+                break;
+            }
+
+            continue;
         }
 
         uint32_t swcImageIndex = GlobalRenderer::gRenderInstance.BeginFrame(mainPresentationSwapChain);

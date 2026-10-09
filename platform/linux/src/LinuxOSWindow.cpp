@@ -322,7 +322,54 @@ static const struct xdg_surface_listener xdg_surface_listener =
 
 static void XdgToplevelConfigure(void *data, struct xdg_toplevel *toplevel, int32_t width, int32_t height, struct wl_array *states) 
 {
+    OSWaylandData* wayLandData = (OSWaylandData*)data;
 
+    printf("width=%d, height=%d\n", width, height);
+
+    if (wayLandData->surfaceConfigured == 1)
+    {
+        int minimized = 0;
+        int activated = 0;
+        int resizing = 0;
+        int maximized = 0;
+
+        const uint32_t* begin = static_cast<const uint32_t*>(states->data);
+        const uint32_t* end   = begin + (states->size / sizeof(uint32_t));
+
+        for (const uint32_t* s = begin; s < end; ++s)
+        {
+            printf("%d\n", *s);
+            switch (*s)
+            {
+                case XDG_TOPLEVEL_STATE_ACTIVATED: activated = 1; break;
+                case XDG_TOPLEVEL_STATE_SUSPENDED: minimized = 1; break;
+                case XDG_TOPLEVEL_STATE_RESIZING: resizing = 1; break;
+                case XDG_TOPLEVEL_STATE_MAXIMIZED: maximized = 1; break;
+                case XDG_TOPLEVEL_STATE_FULLSCREEN: break;
+                default: break;
+            }
+        }
+
+        if (resizing || minimized || maximized)
+        {
+            printf("resized width=%d, height=%d\n", width, height);
+
+            GenericWindowEventPacked* packed = GetWindowEventPacked(wayLandData->windowEventBuffer);
+    
+            packed->EventType = WINDOW_EVENT_TYPE_WINDOW_SIZE;
+            packed->EventPacked = PACK_WINDOW_SIZE_EVENT(width, height, minimized, maximized);
+
+            CommitWindowEventPacked(wayLandData->windowEventBuffer);
+
+            if (!minimized)
+            {
+                packed = GetWindowEventPacked(wayLandData->windowEventBuffer);
+                packed->EventType = WINDOW_EVENT_TYPE_RESIZE_REQUESTED;
+                packed->EventPacked = 1;
+                CommitWindowEventPacked(wayLandData->windowEventBuffer);
+            }
+        }
+    }
 }
 
 static void XdgToplevelClose(void *data, struct xdg_toplevel *toplevel) 

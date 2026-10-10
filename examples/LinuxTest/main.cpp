@@ -1,20 +1,23 @@
 #include "OSFile.h"
+#include "OSMemory.h"
+#include "OSTime.h"
 #include "OSThread.h"
 #include "OSWindow.h"
-#include "OSMemory.h"
-#include "StringUtils.h"
-#include <stdio.h>
-#include <string.h>
-
-#include "allocator/AppAllocator.h"
-#include "Camera.h"
-#include "RenderInstance.h"
-#include "imageutils/TextureIO.h"
-#include "WindowManager.h"
 
 #if defined(_WIN32)
 #include "WinOSFile.h"
 #endif
+
+#include "allocator/AppAllocator.h"
+#include "Camera.h"
+#include "math/VertexTypes.h"
+#include "RenderInstance.h"
+#include "StringUtils.h"
+#include "imageutils/TextureIO.h"
+#include "WindowManager.h"
+
+#include <stdio.h>
+#include <string.h>
 
 static volatile bool done = false;
 static char MainWindowEventBuffer[512];
@@ -64,6 +67,8 @@ static DeviceSlabAllocator mainDSVAllocator(mainDSVSize, STRING_VIEW_FROM_LITERA
 
 static char bmpFileData[258 * KiB];
 static char imageData[258 * KiB];
+
+static Matrix4f world;
 
 int InitGraphicsRuntime()
 {
@@ -509,13 +514,13 @@ int InitGraphicsRuntime()
 	);
 
     SamplerIndex mainLinearSampler = GlobalRenderer::gRenderInstance.CreateSampler(mainLogicalDevice, 
-		0, 7, 
+		0, 0, 
 		SamplerFilterMode::FILTER_LINEAR, SamplerFilterMode::FILTER_LINEAR, 
-		SamplerAddressMode::ADDRESS_REPEAT, SamplerMipmapMode::MIPMAP_MODE_LINEAR,
+		SamplerAddressMode::ADDRESS_CLAMP_TO_EDGE, SamplerMipmapMode::MIPMAP_MODE_LINEAR,
 		CompareOp::LESS
 	);
 
-    globalBufferLocation = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(Matrix4f)*2, 1, alignof(Matrix4f), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::UNIFORM_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
+    globalBufferLocation = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(Matrix4f)*3, 1, alignof(Matrix4f), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::UNIFORM_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
 
 	AllocationInstanceIndex vertexAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(vertices), 1, 64, AllocationType::STATIC, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::NO_BUFFER_ALIGNMENT,  -1, &mainDeviceAllocator);
 	AllocationInstanceIndex indexAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(BoxIndices), 1, 64, AllocationType::STATIC, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, -1, &mainDeviceAllocator);
@@ -886,6 +891,8 @@ int main(int argc, const char** argv)
         5
     );
 
+    OSTimeInitialize();
+
     OSThreadHandle handle{};
 
     GenericWindowInfo info{};
@@ -945,6 +952,10 @@ int main(int argc, const char** argv)
 
             continue;
         }
+
+        world = CreateRotationMatrixMat4(Vector3f(0.0, 1.0, 0.0), OSGetCurrentTimeSeconds());
+
+        GlobalRenderer::gRenderInstance.UpdateDriverMemory(&world, globalBufferLocation, sizeof(Matrix4f), sizeof(Matrix4f) * 2, TransferType::MEMORY);
 
         uint32_t swcImageIndex = GlobalRenderer::gRenderInstance.BeginFrame(mainPresentationSwapChain);
 

@@ -435,9 +435,9 @@ int InitGraphicsRuntime()
 
 	int nRet = OSOpenFile(textureName.stringData, textureName.charCount, READ, &outHandle);
 
-	if (nRet)
+	if (nRet || outHandle.fileLength > sizeof(bmpFileData))
 	{
-		mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Cannot open 2d image file"));
+		mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Cannot open 2d image file or image file too big for file pool"));
         mainAppLogger.ProcessMessage();
 		return -1;
 	}
@@ -454,6 +454,14 @@ int InitGraphicsRuntime()
 	}
 	
 	int filePointer = ReadBMPDetails(bmpFileData, &stubDetails);
+
+    if (stubDetails.dataSize > sizeof(imageData))
+    {
+        mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Cannot read 2d image file -- pixel data bigger than data pool"));
+        mainAppLogger.ProcessMessage();
+        return -1;
+    }
+
 	stubDetails.data = imageData;
 	stubDetails.currPointer = stubDetails.data;
 	totalBlobSize += stubDetails.dataSize;
@@ -897,25 +905,29 @@ int main(int argc, const char** argv)
 
     GenericWindowInfo info{};
 
-    int closeWindow = 0;
+    int initReturnCode = 0;
 
     uint64_t frameCount = 0;
+
+    double startTime = OSGetCurrentTimeSeconds();
 
     OSCreateThread(&handle, nullptr, ScanSTDIN, OS_THREAD_NONE);
 
     OSWindowSeedEventBuffer(&window, MainWindowEventBuffer, sizeof(MainWindowEventBuffer));
 
-    closeWindow = OSCreateWindow("Multi Platform Test", windowWidth, windowHeight, &window);
+    initReturnCode = OSCreateWindow("Multi Platform Test", windowWidth, windowHeight, &window);
 
-    if (closeWindow)
+    if (initReturnCode)
     {
+        retCode = -1;
         goto end;
     }
 
-    closeWindow = InitGraphicsRuntime();
+    initReturnCode = InitGraphicsRuntime();
 
-    if (closeWindow)
+    if (initReturnCode)
     {
+        retCode = -2;
         GlobalRenderer::gRenderInstance.DumpLogger();
         goto end;
     }
@@ -935,6 +947,11 @@ int main(int argc, const char** argv)
             uint32_t width = info.width, height = info.height;
 
             int swcret = GlobalRenderer::gRenderInstance.RecreateSwapChain(mainPresentationSwapChain, width, height);
+
+            if (!swcret)
+            {
+                break;
+            }
             
             mainCamera.CreateProjectionMatrix(GlobalRenderer::gRenderInstance.GetSwapChainWidth(mainPresentationSwapChain) / (float)GlobalRenderer::gRenderInstance.GetSwapChainHeight(mainPresentationSwapChain), 0.1f, 10000.0f, DegToRad(45.0f));
             mainCamera.UpdateCamera();
@@ -953,7 +970,7 @@ int main(int argc, const char** argv)
             continue;
         }
 
-        world = CreateRotationMatrixMat4(Vector3f(0.0, 1.0, 0.0), OSGetCurrentTimeSeconds());
+        world = CreateRotationMatrixMat4(Vector3f(0.0, 1.0, 0.0), fmodf(OSGetCurrentTimeSeconds()-startTime, 2 * PI));
 
         GlobalRenderer::gRenderInstance.UpdateDriverMemory(&world, globalBufferLocation, sizeof(Matrix4f), sizeof(Matrix4f) * 2, TransferType::MEMORY);
 

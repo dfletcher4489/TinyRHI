@@ -82,8 +82,6 @@ vec4 DoLights(vec3 normal, vec3 worldPos, vec4 color, MeshRenderable currentRend
 
     if (lightCount == 0) return color;
 
-    vec4 cumColor = vec4(0.0, 0.0, 0.0, 1.0);
-
     vec3 camPos = gs.world[3].xyz;
 
     vec3 DiffuseColor = vec3(0.0);
@@ -116,13 +114,13 @@ vec4 DoLights(vec3 normal, vec3 worldPos, vec4 color, MeshRenderable currentRend
         {
             vec3 lightingDir = normalize(-lightDirection); 
 
-            vec3 lightReflect = normalize(reflect(lightingDir, normal));
+            vec3 H = normalize(lightingDir + viewPosToWorldPos);
 
             float diffuse = max(dot(normal, lightingDir), 0.0);
 
-            float specFactor = max(dot(viewPosToWorldPos, lightReflect), 0.0);
+            float specFactor = max(dot(normal, H), 0.0);
 
-            specFactor = pow(specFactor, shininess);
+            specFactor = (diffuse > 0.0) ? pow(specFactor, shininess) : 0.0;
 
             DiffuseColor += lightColor * diffuse * diffuseIntensity;
 
@@ -135,7 +133,7 @@ vec4 DoLights(vec3 normal, vec3 worldPos, vec4 color, MeshRenderable currentRend
             ShadowMapViewProj sViewProj = sm.viewProjs[currentLightIndex];
             ShadowMapView sViewRange = sv.views[currentLightIndex];
 
-            vec4 smTransCoords = sViewProj.shadowMapProj * sViewProj.shadowMapView * worldPosition;
+            vec4 smTransCoords = sViewProj.shadowMapProj * sViewProj.shadowMapView * vec4(worldPos, 1.0);
 
             vec3 projCoords = smTransCoords.xyz / smTransCoords.w;
 
@@ -156,63 +154,65 @@ vec4 DoLights(vec3 normal, vec3 worldPos, vec4 color, MeshRenderable currentRend
             {
                 shadowColor = 1.0;
             } 
-            else if ((projCoords.z > 1.0))
+            else if (projCoords.z > 1.0)
             {
                 shadowColor = 0.0;
             }
         }
         else if (lType == LIGHT_TYPE_POINT)
         {
-            vec3 lightDir = normalize(light.pos.xyz - worldPos);
+            vec3 lightDir = light.pos.xyz - worldPos;
 
-            float diffuse = max(dot(normal.xyz, lightDir), 0.0);
+            float distance = length(lightDir);
 
-            float distance = length(light.pos.xyz - worldPos);
+            lightDir = normalize(lightDir);
+
+            float diffuse = max(dot(normal, lightDir), 0.0);
+
+            vec3 H = normalize(lightDir + viewPosToWorldPos);
 
             float attenuation = (1.0/(.01 + (.25 * distance) + (.67 * distance * distance)));
 
-            vec3 lightReflect = normalize(reflect(lightDir, normal));
+            float specFactor = max(dot(normal, H), 0.0);
 
-            float specFactor = max(dot(viewPosToWorldPos, lightReflect), 0.0);
-
-            specFactor = pow(specFactor, shininess);
-
-            DiffuseColor += lightColor * diffuse * diffuseIntensity * attenuation;
+            specFactor = (diffuse > 0.0) ? pow(specFactor, shininess) : 0.0;
 
             AmbientColor += light.ancillary.xyz * attenuation;
 
-            SpecularColor += lightColor * specularBase * specFactor * specularIntensity;
+            DiffuseColor += lightColor * diffuse * diffuseIntensity * attenuation;
+
+            SpecularColor += lightColor * specularBase * specFactor * specularIntensity * attenuation;
 
         }
         else if (lType == LIGHT_TYPE_SPOT)
         {
+            vec3 lightingDir = normalize(-lightDirection);
+
             vec3 lightLook =  light.pos.xyz - worldPos;
 
-            float distance = length(lightLook);
+            float distance = max(length(lightLook), 0.001);
 
             lightLook /= distance;
 
-            vec3 lightingDir = normalize(-lightDirection);
+            vec3 H = normalize(lightLook + viewPosToWorldPos);
 
-            float diffuse = max(dot(normal.xyz, lightingDir), 0.0);
+            float diffuse = max(dot(normal.xyz, lightLook), 0.0);
 
             float cosTheta = dot(lightLook, lightingDir);
 
             float spotFactor = smoothstep(cos(light.ancillary.y), cos(light.ancillary.x), cosTheta);
 
-            vec3 lightReflect = normalize(reflect(lightingDir, normal));
+            float specFactor = max(dot(H, normal), 0.0);
 
-            float specFactor = max(dot(viewPosToWorldPos, lightReflect), 0.0);
+            specFactor = (diffuse > 0.0) ? pow(specFactor, shininess) : 0.0;
 
-            specFactor = pow(specFactor, shininess);
-
-            DiffuseColor += lightColor * diffuse * diffuseIntensity * spotFactor * (1.0/(distance*distance));
+            DiffuseColor += lightColor * diffuse * diffuseIntensity * spotFactor * (1.0/max(distance*distance, 0.01));
 
             SpecularColor += lightColor * specularBase * specFactor * specularIntensity * spotFactor * (1.0/(distance*distance));
         }
     }
 
-    return vec4(color.xyz *   (AmbientColor + (1.0 - shadowColor) * (DiffuseColor + SpecularColor)), color.w);
+    return vec4(((1.0 - shadowColor) * (color.xyz * DiffuseColor + AmbientColor)) + SpecularColor, color.w);
 }
 
 struct PixelColorData

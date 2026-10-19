@@ -447,7 +447,7 @@ static BufferMemoryIndex mainDeviceBuffer{};
 static ShaderResourceManagerIndex mainDescriptorManagerIndex{};
 static GPUCommandStreamIndex mainCommandStreamIndex{};
 
-static size_t mainHostSize = 128 * MiB;
+static size_t mainHostSize = 64 * MiB;
 static size_t mainDeviceSize = 64 * MiB;
 
 static DeviceSlabAllocator mainHostAllocator(mainHostSize, STRING_VIEW_FROM_LITERAL("Main GPU Host Driver Buffer"), &mainAppLogger);
@@ -605,7 +605,7 @@ static uint32_t swcImageIndex = 0;
 static ImageMemoryIndex mainRTVIndex;
 static ImageMemoryIndex mainDSVIndex;
 
-size_t mainRTVSize = 800 * MiB, mainDSVSize = 1024 * MiB;
+size_t mainRTVSize = 800 * MiB, mainDSVSize = 800 * MiB;
 
 static DeviceSlabAllocator mainRTVSlab(mainRTVSize, STRING_VIEW_FROM_LITERAL("Main RTV Slab Allocator"), &mainAppLogger);
 static DeviceSlabAllocator mainDSVSlab(mainDSVSize, STRING_VIEW_FROM_LITERAL("Main DSV Slab Allocator"), &mainAppLogger);
@@ -633,7 +633,7 @@ static std::queue<int> wordCounts;
 
 static Camera c;
 
-static char RenderInstanceMemoryPool[256 * MiB];
+static char RenderInstanceMemoryPool[128 * MiB];
 static char RenderInstanceTemporaryPool[64 * KiB];
 static char AppInstanceTempMemory[64 * KiB];
 static char GlobalInputScratchMemory[128 * MiB];
@@ -712,7 +712,7 @@ static std::atomic_bool arenasUsed[MAX_SMB_ARENAS];
 
 static char vertexAndIndicesMemory[16 * MiB];
 static char geometryObjectSpecificMemory[4 * KiB];
-static char mainTextureCacheMemory[256 * MiB];
+static char mainTextureCacheMemory[128 * MiB];
 static char mainOSDataManagement[32 * KiB];
 
 static SlabAllocator osAllocator(mainOSDataManagement, sizeof(mainOSDataManagement), STRING_VIEW_FROM_LITERAL("OS Data Allocator"), &mainAppLogger);
@@ -1331,7 +1331,7 @@ void ApplicationLoop::Execute()
 
 					for (int jointPipeline = 0; jointPipeline < jointMeshPipelinesCount; jointPipeline++)
 					{
-						GlobalRenderer::gRenderInstance.AddPipelineToRPGraphicsQueue(jointMeshPipelines[jointPipeline], currentFrameGraphIndex, 2);
+					//	GlobalRenderer::gRenderInstance.AddPipelineToRPGraphicsQueue(jointMeshPipelines[jointPipeline], currentFrameGraphIndex, 2);
 					}
 
 					GlobalRenderer::gRenderInstance.AddPipelineToRPGraphicsQueue(globalUIGlobalIDPipeline, currentFrameGraphIndex, 1);
@@ -1361,7 +1361,7 @@ void ApplicationLoop::Execute()
 
 			}	
 
-			std::array<int, 125> arr{}, arr2{};
+			//std::array<int, 125> arr{}, arr2{};
 
 			//GlobalRenderer::gRenderInstance.ReadData(lightPartition.gridCountsAlloc, arr.data(), sizeof(arr), 0);
 			//GlobalRenderer::gRenderInstance.ReadData(lightPartition.gridCountsAlloc, arr2.data(), sizeof(arr), 0);
@@ -1694,7 +1694,7 @@ void CreateCornerWall(float width, float height, float xDiv, float yDiv)
 	rendInst.UpdateDriverMemory(poses, globalVertexBuffer, vertexCount * compressedSize, vertexAlloc, TransferType::CACHED);
 	rendInst.UpdateDriverMemory(indices, globalIndexBuffer, indexCount * 2, indexAlloc, TransferType::CACHED);
 
-	CreateMaterial(materialHandleIndex, VERTEXNORMAL, -1, 0, Vector4f(1.0, 0.0, 0.0, 1.0), Vector4f(.25, .25, .25, 1.0), 3.0, Vector4f(.04, .06, 0.08, 1.0));
+	CreateMaterial(materialHandleIndex, VERTEXNORMAL, -1, 0, Vector4f(1.0, 0.0, 0.0, 1.0), Vector4f(.025, .025, .025, 1.0), 1.0, Vector4f(.04, .06, 0.08, 1.0));
 
 	CreateMaterialRange(materialRangeIndex, 1, &materialHandleIndex);
 
@@ -1995,11 +1995,11 @@ void CreateCrateObject()
 		compVerts[i].tangent = tangents[i];
 	}
 
-	int compressedSize = sizeof(MyVertex), vertexFlags = POSITION | COLOR | NORMAL | TEXTURE0 | TEXTURE1 | TEXTURE2 | TANGENT;
+	int compressedSize = GetCompressedSize(inputDescription, 7), vertexFlags = COMPRESSED | POSITION | COLOR | NORMAL | TEXTURE0 | TEXTURE1 | TEXTURE2 | TANGENT;
 
-	//void* compressedVertexData = AppInstanceTempAllocator.Allocate(compressedSize * 24, 16);
+	void* compressedVertexData = AppInstanceTempAllocator.Allocate(compressedSize * 24, 16);
 
-	//int totalDataSize = CompressMeshFromVertexStream(inputDescription, 7, sizeof(MyVertex), 24, BOX, compVerts, compressedVertexData, &compressedSize, &vertexFlags);
+	int totalDataSize = CompressMeshFromVertexStream(inputDescription, 7, sizeof(MyVertex), 24, BOX, compVerts, compressedVertexData, &compressedSize, &vertexFlags);
 
 	auto& rendInst = GlobalRenderer::gRenderInstance;
 
@@ -2088,9 +2088,9 @@ void CreateCrateObject()
 
 	std::array textureHandles = { albedoMapped, normalMapped, skymapped };
 
-	CreateMaterial(materialHandleIndex, ALBEDOMAPPED | TANGENTNORMALMAPPED, albedoMapped, 2, Vector4f(1.0, 1.0, 1.0, 1.0), Vector4f(.25, .25, .25, 1.0), 3.0, Vector4f(.04, .06, 0.08, 1.0));
+	CreateMaterial(materialHandleIndex, ALBEDOMAPPED | TANGENTNORMALMAPPED, albedoMapped, 2, Vector4f(1.0, 1.0, 1.0, 1.0), Vector4f(.025, .025, .025, 1.0), 3.0, Vector4f(.04, .06, 0.08, 1.0));
 
-	CreateMaterial(materialHandleIndex + 1, ALBEDOMAPPED, skymapped, 1, Vector4f(1.0, 1.0, 1.0, 1.0), Vector4f(.80, .80, .80, 1.0), 256.0, Vector4f(.04, .06, 0.08, 1.0));
+	CreateMaterial(materialHandleIndex + 1, ALBEDOMAPPED, skymapped, 1, Vector4f(1.0, 1.0, 1.0, 1.0), Vector4f(.180, .180, .180, 1.0), 256.0, Vector4f(.04, .06, 0.08, 1.0));
 
 	std::array<int, 2> materialIDs = { materialHandleIndex, materialHandleIndex + 1 };
 
@@ -2120,7 +2120,7 @@ void CreateCrateObject()
 
 	CreateRenderable(cpuMeshRenderable, gpuMeshRenderable, Identity4f(), gpuGeomRenderable, materialRangeIndex, materialRangeCount, blendRangesIndex, meshGPUIndex, 1);
 	
-	rendInst.UpdateDriverMemory(compVerts, globalVertexBuffer, compressedSize * 24,  vertexAlloc, TransferType::CACHED);
+	rendInst.UpdateDriverMemory(compressedVertexData, globalVertexBuffer, compressedSize * 24,  vertexAlloc, TransferType::CACHED);
 	rendInst.UpdateDriverMemory(BoxIndices, globalIndexBuffer,  sizeof(BoxIndices),  indexAlloc, TransferType::CACHED);
 
 	mainAppLogger.AddLogMessage(LOGINFO, STRING_VIEW_FROM_LITERAL("Created Crate Object"));
@@ -2295,7 +2295,7 @@ void SMBGeometricalObject(SMBGeoChunk* geoDef, SMBFile* file, int textureBase, i
 			textureStart, 
 			textureCount, 
 			Vector4f(1.0, 1.0, 1.0, 1.0), 
-			Vector4f(.1, .1, .1, 1.0), 1.5, 
+			Vector4f(.01, .01, .01, 1.0), 1.5, 
 			Vector4f(0.0, 0.0, 0.0, 1.0)
 		);
 

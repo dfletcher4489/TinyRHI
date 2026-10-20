@@ -418,7 +418,7 @@ struct VKDevice
 		VkFilter minFilter, VkFilter magFilter, 
 		VkSamplerAddressMode addressModeU, VkSamplerAddressMode addressModeV, 
 		VkSamplerAddressMode addressModeW, VkCompareOp compareOp, 
-		VkSamplerMipmapMode samplerMode, float minLod, float maxLod
+		VkSamplerMipmapMode samplerMode, float minLod, float maxLod, uint32_t useAnisotropy
 	);
 
 	EntryHandle* CreateSemaphores(uint32_t count);

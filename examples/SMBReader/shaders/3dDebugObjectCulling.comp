@@ -21,8 +21,8 @@ layout(set = 0, binding = 2) uniform usamplerBuffer globalDebugTypes;
 layout(set = 0, binding = 3) uniform CameraData {
      mat4 view;
      mat4 proj;
-     Frustum f;
      mat4 world;
+     Frustum f;
 } cData;
 
 layout(set = 0, binding = 4) readonly buffer DDSBuffer 
@@ -36,28 +36,15 @@ layout(set = 0, binding = 5) writeonly buffer commandCounts
     uint invisibleCount;
 } cCounts;
 
-Frustum transformFrustrum;
-
-void CalculateFrustrum()
-{
-    transformFrustrum.nearplane = TransformPlane(cData.world, cData.f.nearplane);
-    transformFrustrum.farplane = TransformPlane(cData.world, cData.f.farplane);
-    transformFrustrum.topplane = TransformPlane(cData.world, cData.f.topplane);
-    transformFrustrum.bottomplane = TransformPlane(cData.world, cData.f.bottomplane);
-    transformFrustrum.rightplane = TransformPlane(cData.world, cData.f.rightplane);
-    transformFrustrum.leftplane = TransformPlane(cData.world, cData.f.leftplane);
-}
-
 bool CheckAllPlanesAgainstAABB(uint index)
 {
-    CalculateFrustrum();
     DebugDrawStruct mainStruct = ddsbuffer.objects[index];
 
     vec4 minBox = ((mainStruct.center - mainStruct.halfExtents) * mainStruct.scale);
 
     vec4 maxBox = ((mainStruct.center + mainStruct.halfExtents) * mainStruct.scale);
     
-     Frustum testFrustrum = transformFrustrum; //cData.f
+    Frustum testFrustrum = cData.f; 
 
     vec4 transAABBMin =   minBox;
     vec4 transAABBMax =   maxBox;
@@ -79,7 +66,6 @@ bool CheckAllPlanesAgainstAABB(uint index)
         return false;
     }
     
-    
     check = CheckAABB(AABBMin, AABBMax, testFrustrum.topplane.planeEquation);
 
     if (!check)
@@ -93,7 +79,6 @@ bool CheckAllPlanesAgainstAABB(uint index)
     {
         return false;
     }
-    
     
     check = CheckAABB(AABBMin, AABBMax, testFrustrum.rightplane.planeEquation);
 
@@ -114,8 +99,6 @@ bool CheckAllPlanesAgainstAABB(uint index)
 
 bool CheckAllPlanesAgainstSphere(uint index)
 {
-    CalculateFrustrum();
-
     DebugDrawStruct mainStruct = ddsbuffer.objects[index];
 
     vec4 sphere = mainStruct.center;
@@ -124,7 +107,7 @@ bool CheckAllPlanesAgainstSphere(uint index)
 
     vec3 transPosition = sphere.xyz;
 
-    Frustum testFrustrum = transformFrustrum; //cData.f
+    Frustum testFrustrum = cData.f;
 
     float dist = DistanceFromPlane(testFrustrum.nearplane.planeEquation, transPosition);
 
@@ -155,7 +138,6 @@ bool CheckAllPlanesAgainstSphere(uint index)
         return false;
     }
     
-    
     dist = DistanceFromPlane(testFrustrum.rightplane.planeEquation, transPosition);
 
     if (dist < -r)
@@ -171,7 +153,6 @@ bool CheckAllPlanesAgainstSphere(uint index)
     }
 
     return true;
-    
 }
 
 bool CheckDebugDrawAgainstFrustrum(uint debugType, uint index)

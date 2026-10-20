@@ -28,16 +28,17 @@ layout(set = 0, binding = 0) uniform GlobalContext
     mat4 world;
 } gs;
 
-layout(set = 1, binding = 3) uniform texture2D Textures[];
+layout(set = 1, binding = 4) uniform texture2D Textures[];
 layout(set = 1, binding = 0) uniform sampler samplerLinear;
+layout(set = 1, binding = 3) uniform samplerShadow shadowSampler;
 layout(set = 1, binding = 1) readonly buffer ShadowMap 
 {
     ShadowMapViewProj viewProjs[];
 } sm;
 
-layout(set = 1, binding = 2) uniform shadowViews
+layout(set = 1, binding = 2) readonly buffer shadowViews
 {
-    ShadowMapView views[128];
+    ShadowMapView views[];
 } sv;
 
 layout(set = 2, binding = 3) readonly buffer GLBuffer 
@@ -133,7 +134,7 @@ vec4 DoLights(vec3 normal, vec3 worldPos, vec4 color, MeshRenderable currentRend
             ShadowMapViewProj sViewProj = sm.viewProjs[currentLightIndex];
             ShadowMapView sViewRange = sv.views[currentLightIndex];
 
-            vec4 smTransCoords = sViewProj.shadowMapProj * sViewProj.shadowMapView * vec4(worldPos, 1.0);
+            vec4 smTransCoords = sViewProj.shadowMapViewProj * worldPosition;
 
             vec3 projCoords = smTransCoords.xyz / smTransCoords.w;
 
@@ -144,20 +145,16 @@ vec4 DoLights(vec3 normal, vec3 worldPos, vec4 color, MeshRenderable currentRend
 
             projCoordsPair  = (sViewScale * projCoordsPair) + sViewOff;
 
-            float closestDepth = texture(sampler2D(Textures[shadowMapIndex], samplerLinear), projCoordsPair).r;
+            float bias = max(0.05 * (1.0 - dot(normal, lightingDir)), 0.005);
 
             float currentDepth = projCoords.z;
 
-            float bias = max(0.05 * (1.0 - dot(normal, lightingDir)), 0.005);  
+            float sampledDepth = texture(
+                sampler2D(Textures[shadowMapIndex], samplerLinear),
+                projCoordsPair
+            ).r;
 
-            if ((currentDepth-bias) >= closestDepth)
-            {
-                shadowColor = 1.0;
-            } 
-            else if (projCoords.z > 1.0)
-            {
-                shadowColor = 0.0;
-            }
+            shadowColor = (currentDepth - bias >= sampledDepth) ? 1.0 : 0.0; 
         }
         else if (lType == LIGHT_TYPE_POINT)
         {
@@ -200,7 +197,7 @@ vec4 DoLights(vec3 normal, vec3 worldPos, vec4 color, MeshRenderable currentRend
 
             float cosTheta = dot(lightLook, lightingDir);
 
-            float spotFactor = smoothstep(cos(light.ancillary.y), cos(light.ancillary.x), cosTheta);
+            float spotFactor = smoothstep(light.ancillary.y, light.ancillary.x, cosTheta);
 
             float specFactor = max(dot(H, normal), 0.0);
 
@@ -256,8 +253,8 @@ float GetPixelBlendWeight(BlendDetails details, uint textureIndex)
     return ret;
 }
 
-void main() {
-
+void main() 
+{
     MeshRenderable currentRenderable = rends.renderables[renderableIndex];
 
     GeometryRenderable lGeomRenderable = geomRends.geomRenderables[currentRenderable.geomInstIndex];
@@ -272,11 +269,10 @@ void main() {
 
     bool lightAffected = false;
 
-    mat3 normalMatrix = AdjointMatrix(lGeomRenderable.transform * currentRenderable.transform);
+    mat3 normalMatrix = mat3(currentRenderable.adjointMatrix);
 
     for (uint i = 0; i<currentRenderable.materialCount; i++)
     {
-
         uint materialIndex = uint(texelFetch(globalMaterialIndices, int(materialStart + i)).r);
 
         uint blendIndex = uint(texelFetch(globalBlendIndices, int(blendStart + i)).r);

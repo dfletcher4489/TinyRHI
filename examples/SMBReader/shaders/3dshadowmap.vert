@@ -46,9 +46,9 @@ layout(set = 0, binding = 6) readonly buffer ShadowMap
     ShadowMapViewProj viewProjs[];
 } sm;
 
-layout(set = 0, binding = 7) uniform shadowViews
+layout(set = 0, binding = 7) readonly buffer shadowViews
 {
-    ShadowMapView views[128];
+    ShadowMapView views[];
 } sv;
 
 void main() 
@@ -59,7 +59,7 @@ void main()
 
     uint shadowViewProjOffset = uint(texelFetch(globalSMPerRendIndices, int(shadowMapBase) + gl_InstanceIndex).r);
 
-    ShadowMapViewProj viewProj = sm.viewProjs[shadowViewProjOffset];
+    ShadowMapViewProj sViewProj = sm.viewProjs[shadowViewProjOffset];
 
     ShadowMapView viewSize = sv.views[shadowViewProjOffset];
 
@@ -122,7 +122,8 @@ void main()
 
         if ((comp & POSITION) == POSITION)
         {
-            mat4 MVP = viewProj.shadowMapProj * viewProj.shadowMapView * meshWorld;
+            mat4 MVP = sViewProj.shadowMapViewProj * meshWorld;
+        
             vec4 intPos = vec4(pack6decomp(offset, lGeomDetails.minMaxBox), 1.0f);
             
             vec4 outPos = (MVP * intPos);
@@ -176,7 +177,8 @@ void main()
 
         if ((comp & POSITION) == POSITION)
         {
-            mat4 MVP = viewProj.shadowMapProj * viewProj.shadowMapView * meshWorld;
+            mat4 MVP = sViewProj.shadowMapViewProj * meshWorld;
+
             vec4 intPos = ReconstructVEC4(offset);
 
             vec4 outPos = (MVP * intPos);

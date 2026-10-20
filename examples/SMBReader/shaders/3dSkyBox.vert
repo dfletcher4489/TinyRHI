@@ -16,8 +16,8 @@ layout(set = 0, binding = 0) uniform GlobalContext
 {
     mat4 view;
     mat4 proj;
-    Frustum f;
     mat4 world;
+	Frustum f;
 } gs;
 
 void main()

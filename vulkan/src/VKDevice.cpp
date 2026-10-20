@@ -1809,7 +1809,7 @@ EntryHandle VKDevice::CreateSampler(
 	VkFilter minFilter, VkFilter magFilter,
 	VkSamplerAddressMode addressModeU, VkSamplerAddressMode addressModeV,
 	VkSamplerAddressMode addressModeW, VkCompareOp compareOp, 
-	VkSamplerMipmapMode samplerMode, float minLod, float maxLod
+	VkSamplerMipmapMode samplerMode, float minLod, float maxLod, uint32_t useAnisotropy
 )
 {
 	VkSampler sampler = VK_NULL_HANDLE;
@@ -1828,15 +1828,15 @@ EntryHandle VKDevice::CreateSampler(
 	samplerInfo.addressModeV = addressModeV;
 	samplerInfo.addressModeW = addressModeW;
 
-	samplerInfo.anisotropyEnable = VK_TRUE;
+	samplerInfo.anisotropyEnable = useAnisotropy ? VK_TRUE : VK_FALSE;
 	samplerInfo.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
 
 	samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
 
 	samplerInfo.unnormalizedCoordinates = VK_FALSE;
 
-	samplerInfo.compareEnable = VK_FALSE;
-	samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+	samplerInfo.compareEnable = compareOp == VK_COMPARE_OP_MAX_ENUM ? VK_FALSE : VK_TRUE;
+	samplerInfo.compareOp = compareOp;
 
 	samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
 	samplerInfo.mipLodBias = samplerMode;

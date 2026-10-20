@@ -19,8 +19,8 @@ layout(set = 0, binding = 0) uniform GlobalContext
 {
     mat4 view;
     mat4 proj;
-    Frustum f;
     mat4 world;
+    Frustum f;
 } gs;
 
 layout(set = 2, binding = 0) readonly buffer PMBuffer 
@@ -74,7 +74,7 @@ void main()
 
     uint offset = (stride * gl_VertexIndex) + modelData.vertexByteOffset;
 
-    mat3 normalMatrix = AdjointMatrix(worldMatrix);
+    mat3 normalMatrix = mat3(currentRenderable.adjointMatrix);
 
     if ((comp&COMPRESSED)==COMPRESSED)
     {

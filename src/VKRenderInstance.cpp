@@ -91,14 +91,13 @@ namespace API
 
 	VkCompareOp ConvertCompareOpToVulkanCompareOp(CompareOp testApp)
 	{
-		VkCompareOp ret = VK_COMPARE_OP_ALWAYS;
+		VkCompareOp ret = VK_COMPARE_OP_MAX_ENUM;
 
 		switch (testApp)
 		{
 		case CompareOp::NEVER:
 			ret = VK_COMPARE_OP_NEVER;
 			break;
-
 		case CompareOp::LESS:
 			ret = VK_COMPARE_OP_LESS;
 			break;
@@ -2220,7 +2219,8 @@ EntryHandle CreateDriverSampler(RHIDevice* device, DriverSamplerCreationInfo* in
 		API::ConvertCompareOpToVulkanCompareOp(info->compareOp),
 		API::ConvertSamplerMipmapModeToVulkanSamplerMipmapMode(info->mipmapMode),
 		static_cast<float>(info->baseLod),
-		static_cast<float>(info->maxLod)
+		static_cast<float>(info->maxLod),
+		info->useAnistropy
 	);
 }
 

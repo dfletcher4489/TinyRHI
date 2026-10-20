@@ -209,7 +209,7 @@ Vector4f Multiply(Matrix4f m, Vector4f v)
 		(m.rows.x.x * v.x + m.rows.y.x * v.y + m.rows.z.x * v.z + m.rows.w.x * v.w), 
 		(m.rows.x.y * v.x + m.rows.y.y * v.y + m.rows.z.y * v.z + m.rows.w.y * v.w),  
 		(m.rows.x.z * v.x + m.rows.y.z * v.y + m.rows.z.z * v.z + m.rows.w.z * v.w),  
-		(m.rows.x.w * v.x + m.rows.y.w * v.y + m.rows.z.w * v.w + m.rows.w.w * v.w) 
+		(m.rows.x.w * v.x + m.rows.y.w * v.y + m.rows.z.w * v.z + m.rows.w.w * v.w) 
 	};
 }
 

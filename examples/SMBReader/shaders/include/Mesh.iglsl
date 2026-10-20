@@ -76,6 +76,7 @@ struct MeshRenderable
 	uint materialCount;
     uint pad2;
 	mat4 transform;
+	mat4 adjointMatrix;
 };
 
 struct MeshDetails

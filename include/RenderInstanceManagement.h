@@ -1016,6 +1016,7 @@ struct DriverSamplerCreationInfo
 	SamplerAddressMode addressMode;
 	SamplerMipmapMode mipmapMode;
 	CompareOp compareOp;
+	uint32_t useAnistropy;
 };
 
 struct GraphicsPipelineCreationInfo

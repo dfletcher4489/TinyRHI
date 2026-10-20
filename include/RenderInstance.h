@@ -170,7 +170,7 @@ struct RenderInstance
 		RenderDeviceIndex deviceSelection, uint32_t baseLod, uint32_t maxLod, 
 		SamplerFilterMode minFilter, SamplerFilterMode magFilter, 
 		SamplerAddressMode addressMode, SamplerMipmapMode mipmapMode, 
-		CompareOp compareOp
+		CompareOp compareOp, bool useAnisotropy
 	);
 
 	ImageFormat FindSupportedBackBufferColorFormat(RenderPhysicalDeviceIndex physicalDeviceIndex, WindowIndex surfaceLevel, ImageFormat* requestedFormats, uint32_t requestSize);

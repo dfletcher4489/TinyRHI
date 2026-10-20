@@ -13,7 +13,8 @@ enum CompareOp
 	GREATER = 4,
 	NOTEQUAL = 5,
 	GREATEREQUAL = 6,
-	ALLPASS = 7
+	ALLPASS = 7,
+	NONE = 8
 };
 
 enum ImageFormat

@@ -2763,7 +2763,10 @@ ImageFormat RenderInstance::FindSupportedDepthFormat(RenderDeviceIndex deviceSel
 	return ImageFormat::IMAGE_UNKNOWN;
 }
 
-SamplerIndex RenderInstance::CreateSampler(RenderDeviceIndex deviceSelection, uint32_t baseLod, uint32_t maxLod, SamplerFilterMode minFilter, SamplerFilterMode magFilter, SamplerAddressMode addressMode, SamplerMipmapMode mipmapMode, CompareOp compareOp)
+SamplerIndex RenderInstance::CreateSampler(RenderDeviceIndex deviceSelection, 
+	uint32_t baseLod, uint32_t maxLod, SamplerFilterMode minFilter, 
+	SamplerFilterMode magFilter, SamplerAddressMode addressMode, 
+	SamplerMipmapMode mipmapMode, CompareOp compareOp, bool useAnisotropy)
 {
 	RHIDevice* rhiDevice = GetDeviceHandle(deviceSelection);
 
@@ -2783,6 +2786,7 @@ SamplerIndex RenderInstance::CreateSampler(RenderDeviceIndex deviceSelection, ui
 	info.addressMode = addressMode;
 	info.compareOp = compareOp;
 	info.mipmapMode = mipmapMode;
+	info.useAnistropy = useAnisotropy;
 
 	EntryHandle samplerHandle = CreateDriverSampler(rhiDevice, &info);
 

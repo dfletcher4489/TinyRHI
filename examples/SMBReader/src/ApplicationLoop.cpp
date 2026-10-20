@@ -189,6 +189,7 @@ struct GPUMeshRenderable
 	uint32_t materialCount;
 	uint32_t pad2;
 	Matrix4f transform;
+	Matrix4f adjointMatrix;
 };
 
 struct GPUMeshDetails
@@ -599,6 +600,7 @@ static CircularMessageQueueMPSC RenderableAllocQueue{ RenderableAllocQueueMemory
 
 static SamplerIndex mainLinearSampler = -1;
 static SamplerIndex mainNearestSampler = -1;
+static SamplerIndex mainShadowMapSampler = -1;
 
 static uint32_t swcImageIndex = 0;
 
@@ -1131,6 +1133,13 @@ void ApplicationLoop::Execute()
 
 		GlobalRenderer::gRenderInstance.UpdateShaderResourceArray(globalTexturesDescriptor, 0, ShaderResourceType::SAMPLERSTATE, &samplerUpdate);
 
+		samplerUpdate.updateType = DeviceHandleArrayUpdateType::SAMPLER_UPDATE;
+		samplerUpdate.resourceCount = 1;
+		samplerUpdate.resourceDstBegin = 0;
+		samplerUpdate.resourceHandles = &mainShadowMapSampler;
+
+		GlobalRenderer::gRenderInstance.UpdateShaderResourceArray(globalTexturesDescriptor, 3, ShaderResourceType::SAMPLERSTATE, &samplerUpdate);
+
 		bool checkCursor = false;
 
 		OSWindowShow(&mainWindow.windowData);
@@ -1482,7 +1491,59 @@ void UpdateCameraMatrix()
 {
 	c.UpdateCamera();
 
-	GlobalRenderer::gRenderInstance.UpdateDriverMemory(&c.View, globalBufferLocation, (sizeof(Matrix4f) * 3) + sizeof(Frustum), 0, TransferType::MEMORY);
+	GlobalRenderer::gRenderInstance.UpdateDriverMemory(&c.View, globalBufferLocation, (sizeof(Matrix4f) * 3), 0, TransferType::MEMORY);
+
+	Frustum updatedFrustum = c.camFrustum;
+
+	Vector4f tNormalUnPacked = Vector4f(updatedFrustum.planes[0].planeEquation.x, updatedFrustum.planes[0].planeEquation.y, updatedFrustum.planes[0].planeEquation.z, 0.0);
+
+	Vector4f tNormal4 = Normalize(c.World * tNormalUnPacked);
+
+	Vector4f tPip = c.World * updatedFrustum.planes[0].pointInPlane;
+
+	updatedFrustum.planes[0].ComputePlane(tPip, tNormal4);
+
+	tNormalUnPacked = Vector4f(updatedFrustum.planes[1].planeEquation.x, updatedFrustum.planes[1].planeEquation.y, updatedFrustum.planes[1].planeEquation.z, 0.0);
+
+	tNormal4 = Normalize(c.World * tNormalUnPacked);
+
+	tPip = c.World * updatedFrustum.planes[1].pointInPlane;
+
+	updatedFrustum.planes[1].ComputePlane(tPip, tNormal4);
+
+	tNormalUnPacked = Vector4f(updatedFrustum.planes[2].planeEquation.x, updatedFrustum.planes[2].planeEquation.y, updatedFrustum.planes[2].planeEquation.z, 0.0);
+
+	tNormal4 = Normalize(c.World * tNormalUnPacked);
+
+	tPip = c.World * updatedFrustum.planes[2].pointInPlane;
+
+	updatedFrustum.planes[2].ComputePlane(tPip, tNormal4);
+
+	tNormalUnPacked = Vector4f(updatedFrustum.planes[3].planeEquation.x, updatedFrustum.planes[3].planeEquation.y, updatedFrustum.planes[3].planeEquation.z, 0.0);
+
+	tNormal4 = Normalize(c.World * tNormalUnPacked);
+
+	tPip = c.World * updatedFrustum.planes[3].pointInPlane;
+
+	updatedFrustum.planes[3].ComputePlane(tPip, tNormal4);
+
+	tNormalUnPacked = Vector4f(updatedFrustum.planes[4].planeEquation.x, updatedFrustum.planes[4].planeEquation.y, updatedFrustum.planes[4].planeEquation.z, 0.0);
+
+	tNormal4 = Normalize(c.World * tNormalUnPacked);
+
+	tPip = c.World * updatedFrustum.planes[4].pointInPlane;
+
+	updatedFrustum.planes[4].ComputePlane(tPip, tNormal4);
+
+	tNormalUnPacked = Vector4f(updatedFrustum.planes[5].planeEquation.x, updatedFrustum.planes[5].planeEquation.y, updatedFrustum.planes[5].planeEquation.z, 0.0);
+
+	tNormal4 = Normalize(c.World * tNormalUnPacked);
+
+	tPip = c.World * updatedFrustum.planes[5].pointInPlane;
+
+	updatedFrustum.planes[5].ComputePlane(tPip, tNormal4);
+
+	GlobalRenderer::gRenderInstance.UpdateDriverMemory(&updatedFrustum, globalBufferLocation, sizeof(Frustum), (sizeof(Matrix4f) * 3), TransferType::CACHED);
 }
 
 ImageMemoryIndex GetPoolIndexByFormat(ImageFormat format, DeviceSlabAllocator** allocator)
@@ -2692,7 +2753,7 @@ void ProcessSMBFile(SMBFile *file, int arenaIndex)
 			update.resourceDstBegin = globalTextureStartIndex;
 			update.resourceHandles = texViews;
 
-			GlobalRenderer::gRenderInstance.UpdateShaderResourceArray(globalTexturesDescriptor, 3, ShaderResourceType::IMAGE2D, &update);
+			GlobalRenderer::gRenderInstance.UpdateShaderResourceArray(globalTexturesDescriptor, 4, ShaderResourceType::IMAGE2D, &update);
 		}
 
 		SMBGeometricalObject(geoDef, file, globalTextureStartIndex, arenaIndex);
@@ -2867,7 +2928,7 @@ int CreateGenericMeshCommandBuffers(int count)
 
 	int viewIndex = GlobalRenderer::gRenderInstance.CreateAttachmentImageView(MSAAShadowMapping, 1, 0, 1, 0, 1, DEPTH_IMAGE_ASPECT, ImageLayout::SHADERREADABLE);
 
-	GlobalRenderer::gRenderInstance.UploadFrameAttachmentResource(MSAAShadowMapping, 1, viewIndex, globalTexturesDescriptor, 3, shadowMapIndex);
+	GlobalRenderer::gRenderInstance.UploadFrameAttachmentResource(MSAAShadowMapping, 1, viewIndex, globalTexturesDescriptor, 4, shadowMapIndex);
 
 	indirectDrawBuilder.UploadConstant(&genericMeshRSContext, &shadowMapIndex, 0);
 	indirectDrawBuilder.UploadConstant(&genericMeshRSContext, &GlobalRenderer::gRenderInstance.GetDeviceHandle(mainLogicalDevice)->container.currentFrame, 1);
@@ -3515,7 +3576,7 @@ int CreateShadowMapManager(int maxShadowMapAssignment, int maxObjCount, int shad
 	
 
 	mainShadowMapManager.shadowMapViewProjAllocSize = maxObjCount;
-	mainShadowMapManager.shadowMapViewProjAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(Matrix4f) * 2, mainShadowMapManager.shadowMapViewProjAllocSize, 64, AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
+	mainShadowMapManager.shadowMapViewProjAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(Matrix4f), mainShadowMapManager.shadowMapViewProjAllocSize, alignof(Matrix4f), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
 	mainShadowMapManager.shadowMapAtlasViewsAllocSize = maxObjCount;
 	mainShadowMapManager.shadowMapAtlasViewsAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(ShadowMapView), mainShadowMapManager.shadowMapAtlasViewsAllocSize, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::UNIFORM_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
 
@@ -3530,7 +3591,7 @@ int CreateShadowMapManager(int maxShadowMapAssignment, int maxObjCount, int shad
 	shadowAtlasViews.allocationIndices = &mainShadowMapManager.shadowMapAtlasViewsAlloc;
 
 	GlobalRenderer::gRenderInstance.UpdateBufferResourceArray(globalTexturesDescriptor, 1, ShaderResourceType::STORAGE_BUFFER, &shadowViewProjUp);
-	GlobalRenderer::gRenderInstance.UpdateBufferResourceArray(globalTexturesDescriptor, 2, ShaderResourceType::UNIFORM_BUFFER, &shadowAtlasViews);
+	GlobalRenderer::gRenderInstance.UpdateBufferResourceArray(globalTexturesDescriptor, 2, ShaderResourceType::STORAGE_BUFFER, &shadowAtlasViews);
 
 	ShaderResourceSetBuilder shadowClippingDescriptorB1 = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[SHADOWMAPCULL], 0, MAX_FRAMES_IN_FLIGHT);
 	ShaderResourceSetBuilder shadowClippingDescriptorB2 = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[SHADOWMAPCULL], 1, MAX_FRAMES_IN_FLIGHT);
@@ -3702,7 +3763,7 @@ void RecreateFrameGraphAttachments(uint32_t width, uint32_t height)
 		int viewIndexObjectID = GlobalRenderer::gRenderInstance.CreateAttachmentImageView(MSAAShadowMapping, 4, 0, 1, 0, 1, COLOR_IMAGE_ASPECT, ImageLayout::SHADERREADABLE);
 
 		GlobalRenderer::gRenderInstance.UploadFrameAttachmentResource(MSAAShadowMapping, 4, viewIndexObjectID, globalUIIDResourceHandle, 2, 0);
-		GlobalRenderer::gRenderInstance.UploadFrameAttachmentResource(MSAAShadowMapping, 1, viewIndex, globalTexturesDescriptor, 3, shadowMapIndex);
+		GlobalRenderer::gRenderInstance.UploadFrameAttachmentResource(MSAAShadowMapping, 1, viewIndex, globalTexturesDescriptor, 4, shadowMapIndex);
 		GlobalRenderer::gRenderInstance.UploadFrameAttachmentResource(MSAAShadowMapping, 1, viewIndex, smdpd.fullScreenDescriptorSet, 0, 0);
 	}
 }
@@ -4197,14 +4258,21 @@ int ApplicationLoop::InitializeRuntime()
 		0, 7, 
 		SamplerFilterMode::FILTER_LINEAR, SamplerFilterMode::FILTER_LINEAR, 
 		SamplerAddressMode::ADDRESS_REPEAT, SamplerMipmapMode::MIPMAP_MODE_LINEAR,
-		CompareOp::LESS
+		CompareOp::NONE, true
 	);
 
 	mainNearestSampler = GlobalRenderer::gRenderInstance.CreateSampler(mainLogicalDevice, 
 		0, 7, 
 		SamplerFilterMode::FILTER_NEAREST, SamplerFilterMode::FILTER_NEAREST, 
 		SamplerAddressMode::ADDRESS_REPEAT, SamplerMipmapMode::MIPMAP_MODE_NEAREST,
-		CompareOp::LESS
+		CompareOp::NONE, true
+	);
+
+	mainShadowMapSampler = GlobalRenderer::gRenderInstance.CreateSampler(mainLogicalDevice,
+		0, 0,
+		SamplerFilterMode::FILTER_LINEAR, SamplerFilterMode::FILTER_LINEAR,
+		SamplerAddressMode::ADDRESS_CLAMP_TO_EDGE, SamplerMipmapMode::MIPMAP_MODE_NEAREST,
+		CompareOp::LESSEQUAL, false
 	);
 
 	std::array frameGraphs = { MSAAShadowMapping, BasicShadow };
@@ -4311,7 +4379,7 @@ int ApplicationLoop::InitializeRuntime()
 
 	globalBufferDescriptorB.BindBufferToShaderResource(&globalDescriptorBuilder, &globalBufferLocation, 0, 1, 0);
 
-	globalTexturesDescriptorB.SetVariableArrayCount(&globalDescriptorBuilder, 3, 512);
+	globalTexturesDescriptorB.SetVariableArrayCount(&globalDescriptorBuilder, 4, 512);
 
 	if (globalDescriptorBuilder.contextFailed)
 	{
@@ -5228,7 +5296,7 @@ int Read2DImage(StringView* name, int mipCounts, TextureIOType ioType)
 		update.resourceDstBegin = textureStart;
 		update.resourceHandles = &arrayUpdateStruct;
 
-		GlobalRenderer::gRenderInstance.UpdateShaderResourceArray(globalTexturesDescriptor, 3, ShaderResourceType::IMAGE2D, &update);
+		GlobalRenderer::gRenderInstance.UpdateShaderResourceArray(globalTexturesDescriptor, 4, ShaderResourceType::IMAGE2D, &update);
 	}
 	else
 	{
@@ -5248,6 +5316,12 @@ int AddLight(GPULightSource& lightDesc, LightType type)
 	}
 
 	int lightLocation = globalLightCount++;
+
+	if (type == LightType::SPOT)
+	{
+		lightDesc.ancillary.x = cosf(lightDesc.ancillary.x);
+		lightDesc.ancillary.y = cosf(lightDesc.ancillary.y);
+	}
 
 	GlobalRenderer::gRenderInstance.UpdateDriverMemory(&lightDesc, globalLightBuffer, sizeof(GPULightSource), sizeof(GPULightSource) * lightLocation, TransferType::CACHED);
 
@@ -5276,7 +5350,9 @@ int AddLight(GPULightSource& lightDesc, LightType type)
 			.proj = CreateOrthographicMatrix(-10.0, 10.0f, -10.0f, 10.0f, 1.0f, 100.0f)
 		};
 
-		GlobalRenderer::gRenderInstance.UpdateDriverMemory(&Upload, mainShadowMapManager.shadowMapViewProjAlloc, sizeof(Upload), sizeof(Upload) * lightLocation, TransferType::CACHED);
+		Matrix4f viewProj = Upload.proj * Upload.view;
+
+		GlobalRenderer::gRenderInstance.UpdateDriverMemory(&viewProj, mainShadowMapManager.shadowMapViewProjAlloc, sizeof(viewProj), sizeof(viewProj) * lightLocation, TransferType::CACHED);
 
 		ShadowMapView view{};
 
@@ -5286,7 +5362,7 @@ int AddLight(GPULightSource& lightDesc, LightType type)
 		view.xOff = (float)(mainShadowMapManager.avgShadowWidth) * (mainShadowMapManager.zoneAlloc % shadowXScale);
 		view.xOff /= (float)mainShadowMapManager.atlasWidth;
 
-		view.yOff = (float)(mainShadowMapManager.avgShadowHeight) * (mainShadowMapManager.zoneAlloc++ / shadowYScale);
+		view.yOff = (float)(mainShadowMapManager.avgShadowHeight) * (mainShadowMapManager.zoneAlloc++ / shadowXScale);
 		view.yOff /= (float)mainShadowMapManager.atlasHeight;
 		view.xScale = 1.0f / (float)shadowXScale;
 		view.yScale = 1.0f / (float)shadowYScale;

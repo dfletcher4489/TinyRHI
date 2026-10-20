@@ -26,7 +26,6 @@ struct Frustum
     float nearDistance;
 };
 
-
 Plane ComputePlane(vec3 normal, vec4 pip)
 {
     float d = -dot(pip.xyz, normal);

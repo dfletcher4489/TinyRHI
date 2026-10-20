@@ -39,8 +39,7 @@ struct LightSource
 
 struct ShadowMapViewProj
 {
-    mat4 shadowMapView;
-    mat4 shadowMapProj;
+    mat4 shadowMapViewProj;
 };
 
 struct ShadowMapView

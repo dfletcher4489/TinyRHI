@@ -33,8 +33,8 @@ layout(set = 0, binding = 2) uniform CameraData
 {
      mat4 view;
      mat4 proj;
-     Frustum f;
      mat4 world;
+     Frustum f;
 } cData;
 
 layout(set = 0, binding = 3, r32ui) uniform uimageBuffer globalRenderableIndices;
@@ -60,18 +60,6 @@ layout(set = 0, binding = 7) readonly buffer GeomInstBuffer
     GeometryRenderable geomRenderables[];
 } geomRends;
 
-Frustum CalculateFrustrum()
-{
-    Frustum transformFrustrum;
-    transformFrustrum.nearplane = TransformPlane(cData.world, cData.f.nearplane);
-    transformFrustrum.farplane = TransformPlane(cData.world, cData.f.farplane);
-    transformFrustrum.topplane = TransformPlane(cData.world, cData.f.topplane);
-    transformFrustrum.bottomplane = TransformPlane(cData.world, cData.f.bottomplane);
-    transformFrustrum.rightplane = TransformPlane(cData.world, cData.f.rightplane);
-    transformFrustrum.leftplane = TransformPlane(cData.world, cData.f.leftplane);
-    return transformFrustrum;
-}
-
 bool CheckAllPlanesAgainstAABB(AABB inputAABB, mat4 worldMatrix)
 {
     AABB outAABBTransform = TransformAABBArvo(worldMatrix, inputAABB);
@@ -82,7 +70,7 @@ bool CheckAllPlanesAgainstAABB(AABB inputAABB, mat4 worldMatrix)
     vec4 AABBMin = min(transAABBMin, transAABBMax);
     vec4 AABBMax = max(transAABBMin, transAABBMax);
 
-    Frustum testFrustrum = CalculateFrustrum();
+    Frustum testFrustrum = cData.f;
 
     bool check = CheckAABB(AABBMin, AABBMax, testFrustrum.nearplane.planeEquation);
 
@@ -132,56 +120,55 @@ bool CheckAllPlanesAgainstAABB(AABB inputAABB, mat4 worldMatrix)
 
 bool CheckAllPlanesAgainstSphere(mat4 worldMatrix, vec4 inSphere)
 {
-    float r = inSphere.w;
+   float r = inSphere.w;
 
-    vec3 transPosition =  vec3(worldMatrix * vec4(inSphere.xyz, 1.0));
+   vec3 transPosition =  vec3(worldMatrix * vec4(inSphere.xyz, 1.0));
 
-    Frustum testFrustrum = CalculateFrustrum();
+   Frustum testFrustrum = cData.f;
 
    float dist = DistanceFromPlane(testFrustrum.nearplane.planeEquation, transPosition);
 
-    if (dist < -r)
-    {
-        return false;
-    }
+   if (dist < -r)
+   {
+       return false;
+   }
 
-    dist = DistanceFromPlane(testFrustrum.farplane.planeEquation, transPosition);
+   dist = DistanceFromPlane(testFrustrum.farplane.planeEquation, transPosition);
 
-    if (dist < -r)
-    {
-        return false;
-    }
+   if (dist < -r)
+   {
+       return false;
+   }
+   
+   dist = DistanceFromPlane(testFrustrum.topplane.planeEquation, transPosition);
+
+   if (dist < -r)
+   {
+       return false;
+   }
+   
+   dist = DistanceFromPlane(testFrustrum.bottomplane.planeEquation, transPosition);
+
+   if (dist < -r)
+   {
+       return false;
+   }
     
-    dist = DistanceFromPlane(testFrustrum.topplane.planeEquation, transPosition);
+   dist = DistanceFromPlane(testFrustrum.rightplane.planeEquation, transPosition);
 
-    if (dist < -r)
-    {
-        return false;
-    }
-    
-    dist = DistanceFromPlane(testFrustrum.bottomplane.planeEquation, transPosition);
+   if (dist < -r)
+   {
+       return false;
+   }
+   
+   dist = DistanceFromPlane(testFrustrum.leftplane.planeEquation, transPosition);
 
-    if (dist < -r)
-    {
-        return false;
-    }
-     
-    dist = DistanceFromPlane(testFrustrum.rightplane.planeEquation, transPosition);
+   if (dist < -r)
+   {
+       return false;
+   }
 
-    if (dist < -r)
-    {
-        return false;
-    }
-    
-    dist = DistanceFromPlane(testFrustrum.leftplane.planeEquation, transPosition);
-
-    if (dist < -r)
-    {
-        return false;
-    }
-
-    return true;
-    
+   return true; 
 }
 
 layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
@@ -217,6 +204,10 @@ void main()
         cmdBuffer.commands[maxCount-(1+invisibleIndex)].instanceCount = 0;
         return;
     } 
+
+    mat3 normalMatrix = AdjointMatrix(lGeomRenderable.transform * currentRenderable.transform);
+
+    rends.renderables[index].adjointMatrix = mat4(normalMatrix);
 
     uint visibleIndex = atomicAdd(cCounts.visibleCount, 1u);
    

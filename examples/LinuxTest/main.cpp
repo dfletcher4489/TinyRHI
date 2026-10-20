@@ -525,7 +525,7 @@ int InitGraphicsRuntime()
 		0, 0, 
 		SamplerFilterMode::FILTER_LINEAR, SamplerFilterMode::FILTER_LINEAR, 
 		SamplerAddressMode::ADDRESS_CLAMP_TO_EDGE, SamplerMipmapMode::MIPMAP_MODE_LINEAR,
-		CompareOp::LESS
+		CompareOp::NONE, true
 	);
 
     globalBufferLocation = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(Matrix4f)*3, 1, alignof(Matrix4f), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::UNIFORM_BUFFER_ALIGNMENT, -1, &mainHostAllocator);

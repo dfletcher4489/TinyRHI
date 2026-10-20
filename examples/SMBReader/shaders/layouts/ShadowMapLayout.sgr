@@ -17,7 +17,7 @@
 		</ShaderResourceItem>
 		<ShaderResourceItem type="storage" used="v" rw="read">
 		</ShaderResourceItem>
-		<ShaderResourceItem type="uniform" used="v" rw="read">
+		<ShaderResourceItem type="storage" used="v" rw="read">
 		</ShaderResourceItem>
 		<ShaderResourceItem type="storage" used="v" rw="read">
 		</ShaderResourceItem>

@@ -52,29 +52,31 @@ void main() {
    
     uint renderableIndex = uint(texelFetch(globalRenderableIndices, gl_DrawID).r);
 
-    MeshRenderable currentRenderable = rends.renderables[renderableIndex];
+    uint geomInstIndex = rends.renderables[renderableIndex].geomInstIndex;
+    
+    uint meshIndex = rends.renderables[renderableIndex].meshIndex;
 
-    GeometryRenderable lGeomRenderable = geomRends.geomRenderables[currentRenderable.geomInstIndex];
+    GeometryDetails lGeomDetails = geomDetails.details[geomRends.geomRenderables[geomInstIndex].geomDescIndex];
 
-    GeometryDetails lGeomDetails = geomDetails.details[lGeomRenderable.geomDescIndex];
+    MeshDetails modelData = perModelBuffer.objects[meshIndex];
 
-    MeshDetails modelData = perModelBuffer.objects[currentRenderable.meshIndex];
+    uint comp = perModelBuffer.objects[meshIndex].vertexComponents;
 
-    uint comp = modelData.vertexComponents;
+    uint stride = perModelBuffer.objects[meshIndex].vertexStride;
 
-    uint stride = modelData.vertexStride;
+    uint vertexByteOffset = perModelBuffer.objects[meshIndex].vertexByteOffset;
 
-    uint offset = (stride * uint(gl_VertexIndex/2)) + modelData.vertexByteOffset;
+    uint offset = (stride * uint(gl_VertexIndex/2)) +  vertexByteOffset;
     
     vec3 normal = vec3(0.0);
 
     color = vec4(1.0, 1.0, 0.0, 1.0);
 
-    mat4 meshWorld = lGeomRenderable.transform * currentRenderable.transform;
+    mat4 meshWorld = geomRends.geomRenderables[geomInstIndex].transform * rends.renderables[renderableIndex].transform;
 
     if ((comp&COMPRESSED)==COMPRESSED)
     {
-         if ((comp&BONES2)==BONES2)
+        if ((comp&BONES2)==BONES2)
         {
             offset += 4;
         }

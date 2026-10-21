@@ -56,30 +56,28 @@ void main()
 {
     uint renderableIndex = uint(texelFetch(globalRenderableIndices, gl_DrawID).r);
 
-    MeshRenderable currentRenderable = rends.renderables[renderableIndex];
+    uint geomInstIndex = rends.renderables[renderableIndex].geomInstIndex;
+    
+    uint meshIndex = rends.renderables[renderableIndex].meshIndex;
 
-    MeshDetails modelData = perModelBuffer.objects[currentRenderable.meshIndex];
+    GeometryDetails lGeomDetails = geomDetails.details[geomRends.geomRenderables[geomInstIndex].geomDescIndex];
 
-    GeometryRenderable lGeomRenderable = geomRends.geomRenderables[currentRenderable.geomInstIndex];
+    uint comp = perModelBuffer.objects[meshIndex].vertexComponents;
 
-    GeometryDetails lGeomDetails = geomDetails.details[lGeomRenderable.geomDescIndex];
+    uint stride = perModelBuffer.objects[meshIndex].vertexStride;
 
-    uint comp = modelData.vertexComponents;
-
-    uint stride = modelData.vertexStride;
-
-    uint offset = (stride * gl_VertexIndex) + modelData.vertexByteOffset;
+    uint offset = (stride * gl_VertexIndex) + perModelBuffer.objects[meshIndex].vertexByteOffset;
 
     outColor = outline.color;
 
-    mat4 meshWorld = lGeomRenderable.transform * currentRenderable.transform;
+    mat4 meshWorld = geomRends.geomRenderables[geomInstIndex].transform * rends.renderables[renderableIndex].transform;
     meshWorld[0] *= outline.uniScale;
     meshWorld[1] *= outline.uniScale;
     meshWorld[2] *= outline.uniScale;
 
     if ((comp&COMPRESSED)==COMPRESSED)
     {
-          if ((comp&BONES2)==BONES2)
+        if ((comp&BONES2)==BONES2)
         {
             offset += 4;
         }

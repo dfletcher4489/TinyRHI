@@ -77,12 +77,8 @@ layout(set = 2, binding = 11) readonly buffer GeomInstBuffer
     GeometryRenderable geomRenderables[];
 } geomRends;
 
-vec4 DoLights(vec3 normal, vec3 worldPos, vec4 color, MeshRenderable currentRenderable, vec3 specularBase, float shininess)
+vec4 DoLights(vec3 normal, vec3 worldPos, vec4 color, uint lightCount, uint lightIndices[4], vec3 specularBase, float shininess)
 {
-    uint lightCount = currentRenderable.lightCount;
-
-    if (lightCount == 0) return color;
-
     vec3 camPos = gs.world[3].xyz;
 
     vec3 DiffuseColor = vec3(0.0);
@@ -97,7 +93,7 @@ vec4 DoLights(vec3 normal, vec3 worldPos, vec4 color, MeshRenderable currentRend
 
     for (uint i = 0; i<lightCount; i++)
     {
-        uint currentLightIndex = currentRenderable.lightIndices[i];
+        uint currentLightIndex = lightIndices[i];
 
         LightSource light = lightBuffer.objects[currentLightIndex];
 
@@ -257,11 +253,15 @@ void main()
 {
     MeshRenderable currentRenderable = rends.renderables[renderableIndex];
 
-    GeometryRenderable lGeomRenderable = geomRends.geomRenderables[currentRenderable.geomInstIndex];
+    uint materialStart = rends.renderables[renderableIndex].materialStart;
 
-    uint materialStart = currentRenderable.materialStart;
+    uint blendStart = rends.renderables[renderableIndex].blendLayersStart;
 
-    uint blendStart = currentRenderable.blendLayersStart;
+    uint materialCount = rends.renderables[renderableIndex].materialCount;
+
+    uint lightCount = rends.renderables[renderableIndex].lightCount;
+
+    mat3 normalMatrix = mat3(rends.renderables[renderableIndex].adjointMatrix);
 
     uint textureIndex = 0;
 
@@ -269,9 +269,7 @@ void main()
 
     bool lightAffected = false;
 
-    mat3 normalMatrix = mat3(currentRenderable.adjointMatrix);
-
-    for (uint i = 0; i<currentRenderable.materialCount; i++)
+    for (uint i = 0; i<materialCount; i++)
     {
         uint materialIndex = uint(texelFetch(globalMaterialIndices, int(materialStart + i)).r);
 
@@ -335,9 +333,14 @@ void main()
 
     vec4 albedoColor = vec4(accumulatedColorData.diffuse, 1.0);
 
-    if (lightAffected)
+    if (lightAffected && lightCount > 0)
     {
-        albedoColor = DoLights(normalize(accumulatedColorData.normal), worldPosition.xyz, albedoColor, currentRenderable, accumulatedColorData.specular, accumulatedColorData.shininess);
+        albedoColor = DoLights(
+            normalize(accumulatedColorData.normal), 
+            worldPosition.xyz, albedoColor, 
+            lightCount, rends.renderables[renderableIndex].lightIndices, 
+            accumulatedColorData.specular, accumulatedColorData.shininess
+        );
     }
 
     outColor = vertColor * (albedoColor + vec4(accumulatedColorData.emissive, 0.0));

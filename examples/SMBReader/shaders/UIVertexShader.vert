@@ -29,10 +29,6 @@ void main()
 
     uint renderableIndex =  uint(texelFetch(uiIndirectionHandles, int(uiIndirectionHandle)).r);
 
-    UIContainer container = conts.renderables[renderableIndex];
-
-    UIRetainedContainer retainedContainer = retainedConts.renderables[renderableIndex];
-
     vec2 poses[4] = vec2[](
         vec2(0.0, 0.0),
         vec2(1.0, 0.0),
@@ -40,9 +36,9 @@ void main()
         vec2(1.0, 1.0)
     );
 
-    vec2 start = retainedContainer.anchorPoint;
+    vec2 start = retainedConts.renderables[renderableIndex].anchorPoint;
 
-    vec2 end = retainedContainer.absoluteSize;
+    vec2 end = retainedConts.renderables[renderableIndex].absoluteSize;
 
     vec2 mixer = poses[gl_VertexIndex];
 
@@ -50,15 +46,15 @@ void main()
 
     gl_Position = vec4(pos, 0.0, 1.0);
 
-    backGroundColor = container.color;
+    backGroundColor = conts.renderables[renderableIndex].color;
 
     rectSize = end;
 
     adjustedLocalPos = (mixer - 0.5) * 2.0 * end;
 
-    uiDetails = container.bitfields.x;
+    uiDetails = conts.renderables[renderableIndex].bitfields.x;
 
-    uiAncillaryData = container.packedData;
+    uiAncillaryData = conts.renderables[renderableIndex].packedData;
 
-    uiRetainedData = retainedContainer.retainedDrawData;
+    uiRetainedData = retainedConts.renderables[renderableIndex].retainedDrawData;
 }

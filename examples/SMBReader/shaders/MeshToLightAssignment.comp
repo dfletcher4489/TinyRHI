@@ -58,13 +58,15 @@ void main()
 
         uint index = texelFetch(globalMeshAllocations, int(meshOffsets+lIndex)).r;
 
-        GeometryRenderable lGeomRenderable = geomRends.geomRenderables[rends.renderables[index].geomInstIndex];
+        uint geomInstIndex = rends.renderables[index].geomInstIndex;
+    
+        uint meshIndex = rends.renderables[index].meshIndex;
 
-        GeometryDetails lGeomDetails = geomDetails.details[lGeomRenderable.geomDescIndex];
+        GeometryDetails lGeomDetails = geomDetails.details[geomRends.geomRenderables[geomInstIndex].geomDescIndex];
 
         vec4 sphere = perModelBuffer.objects[rends.renderables[index].meshIndex].sphere;
 
-        mat4 worldM = lGeomRenderable.transform * rends.renderables[index].transform;
+        mat4 worldM = geomRends.geomRenderables[geomInstIndex].transform * rends.renderables[index].transform;
 
         float r = sphere.w;
 
@@ -82,7 +84,7 @@ void main()
            {
                for (uint light = 0; light<dc; light++)
                {
-                   uint lightIndex = texelFetch(globalLightAllocations, int(lightOffsets+light)).r;
+                  uint lightIndex = texelFetch(globalLightAllocations, int(lightOffsets+light)).r;
 
                   uint objLightIndex = lightMeshCount;
 
@@ -97,7 +99,7 @@ void main()
             {
                 for (uint light = 0; light<poc; light++)
                 {
-                    uint lightIndex = texelFetch(globalLightAllocations, int(lightOffsets+dc+light)).r;
+                   uint lightIndex = texelFetch(globalLightAllocations, int(lightOffsets+dc+light)).r;
 
                    vec4 posLoad = lightBuffer.objects[lightIndex].pos;
 
@@ -160,7 +162,7 @@ void main()
           
               lightMeshCount -= diff;
         
-             atomicAdd(rends.renderables[index].lightCount, -diff);
+              atomicAdd(rends.renderables[index].lightCount, -diff);
            }
         
            if (old < 4)

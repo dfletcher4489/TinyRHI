@@ -76,15 +76,11 @@ void main()
         {
             uint currentRenderableGeom = rends.renderables[i].geomInstIndex;
 
-            GeometryRenderable lGeomRenderable = geomRends.geomRenderables[currentRenderableGeom];
+            GeometryDetails lGeomDetails = geomDetails.details[geomRends.geomRenderables[currentRenderableGeom].geomDescIndex];
 
-            GeometryDetails lGeomDetails = geomDetails.details[lGeomRenderable.geomDescIndex];
+            mat4 worldM = geomRends.geomRenderables[currentRenderableGeom].transform * rends.renderables[i].transform;
 
-            mat4 worldM = lGeomRenderable.transform * rends.renderables[i].transform;
-
-            AABB objBox = lGeomDetails.minMaxBox;
-
-            AABB outObjTransform = TransformAABBArvo(worldM, objBox);
+            AABB outObjTransform = TransformAABBArvo(worldM, lGeomDetails.minMaxBox);
 
             bool intersect = AABBIntersect(gridAABB, outObjTransform);
 

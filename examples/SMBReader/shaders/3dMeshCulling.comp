@@ -184,17 +184,15 @@ void main()
         return;
     }
 
-    MeshRenderable currentRenderable = rends.renderables[index];
+    uint geomRenderableIndex = rends.renderables[index].geomInstIndex;
 
-    GeometryRenderable lGeomRenderable = geomRends.geomRenderables[currentRenderable.geomInstIndex];
+    uint meshDetailsIndex = rends.renderables[index].meshIndex;
 
-    GeometryDetails lGeomDetails = geomDetails.details[lGeomRenderable.geomDescIndex];
+    GeometryDetails lGeomDetails = geomDetails.details[geomRends.geomRenderables[geomRenderableIndex].geomDescIndex];
 
-    MeshDetails lModelData = perModelBuffer.objects[currentRenderable.meshIndex];
+    mat4 worldM = geomRends.geomRenderables[geomRenderableIndex].transform * rends.renderables[index].transform;
 
-    mat4 worldM = lGeomRenderable.transform * currentRenderable.transform;
-
-    vec4 sphere = lModelData.sphere;
+    vec4 sphere = perModelBuffer.objects[meshDetailsIndex].sphere;
 
     bool visible = CheckAllPlanesAgainstAABB(lGeomDetails.minMaxBox, worldM);
 
@@ -205,17 +203,15 @@ void main()
         return;
     } 
 
-    mat3 normalMatrix = AdjointMatrix(lGeomRenderable.transform * currentRenderable.transform);
-
-    rends.renderables[index].adjointMatrix = mat4(normalMatrix);
+    rends.renderables[index].adjointMatrix = mat4(AdjointMatrix(worldM));
 
     uint visibleIndex = atomicAdd(cCounts.visibleCount, 1u);
    
     imageStore(globalRenderableIndices, int(visibleIndex), uvec4(index, 0, 0, 0));
 
-    cmdBuffer.commands[visibleIndex].instanceCount = currentRenderable.instanceCount;
-    cmdBuffer.commands[visibleIndex].firstIndex = lModelData.firstIndex;
-    cmdBuffer.commands[visibleIndex].indexCount = lModelData.indexCount;
+    cmdBuffer.commands[visibleIndex].instanceCount = rends.renderables[index].instanceCount;
+    cmdBuffer.commands[visibleIndex].firstIndex = perModelBuffer.objects[meshDetailsIndex].firstIndex;
+    cmdBuffer.commands[visibleIndex].indexCount = perModelBuffer.objects[meshDetailsIndex].indexCount;
     cmdBuffer.commands[visibleIndex].firstInstance = 0;
     cmdBuffer.commands[visibleIndex].vertexOffset = 0;
    

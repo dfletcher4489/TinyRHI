@@ -63,25 +63,23 @@ void main()
 
     ShadowMapView viewSize = sv.views[shadowViewProjOffset];
 
-    MeshRenderable currentRenderable = rends.renderables[renderableIndex];
+    uint geomInstIndex = rends.renderables[renderableIndex].geomInstIndex;
+    
+    uint meshIndex = rends.renderables[renderableIndex].meshIndex;
 
-    GeometryRenderable lGeomRenderable = geomRends.geomRenderables[currentRenderable.geomInstIndex];
+    GeometryDetails lGeomDetails = geomDetails.details[geomRends.geomRenderables[geomInstIndex].geomDescIndex];
 
-    GeometryDetails lGeomDetails = geomDetails.details[lGeomRenderable.geomDescIndex];
+    uint comp = perModelBuffer.objects[meshIndex].vertexComponents;
 
-    MeshDetails modelData = perModelBuffer.objects[currentRenderable.meshIndex];
+    uint stride = perModelBuffer.objects[meshIndex].vertexStride;
 
-    uint comp = modelData.vertexComponents;
-
-    uint stride = modelData.vertexStride;
-
-    uint offset = (stride * gl_VertexIndex) + modelData.vertexByteOffset;
+    uint offset = (stride * gl_VertexIndex) + perModelBuffer.objects[meshIndex].vertexByteOffset;
 
     vec2 viewBase = 2.0 * vec2(viewSize.xOff, viewSize.yOff) - 1.0;
 
     vec4 scale = vec4(2.0 * viewSize.xScale, 2.0 * viewSize.yScale, 1.0, 1.0);
 
-    mat4 meshWorld = lGeomRenderable.transform * currentRenderable.transform;
+    mat4 meshWorld = geomRends.geomRenderables[geomInstIndex].transform * rends.renderables[renderableIndex].transform;
 
     if ((comp&COMPRESSED)==COMPRESSED)
     {

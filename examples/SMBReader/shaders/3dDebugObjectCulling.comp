@@ -46,8 +46,8 @@ bool CheckAllPlanesAgainstAABB(uint index)
     
     Frustum testFrustrum = cData.f; 
 
-    vec4 transAABBMin =   minBox;
-    vec4 transAABBMax =   maxBox;
+    vec4 transAABBMin = minBox;
+    vec4 transAABBMax = maxBox;
 
     vec4 AABBMin = min(transAABBMin, transAABBMax);
     vec4 AABBMax = max(transAABBMin, transAABBMax);
@@ -99,11 +99,9 @@ bool CheckAllPlanesAgainstAABB(uint index)
 
 bool CheckAllPlanesAgainstSphere(uint index)
 {
-    DebugDrawStruct mainStruct = ddsbuffer.objects[index];
-
-    vec4 sphere = mainStruct.center;
+    vec4 sphere = ddsbuffer.objects[index].center;
     
-    float r = mainStruct.halfExtents.x;
+    float r = ddsbuffer.objects[index].halfExtents.x;
 
     vec3 transPosition = sphere.xyz;
 

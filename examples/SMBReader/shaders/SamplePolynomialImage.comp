@@ -31,10 +31,9 @@ float levelDetermination(float base, float applied, int level)
 	return base - applied;
 }
 
-void main() {
-    
+void main() 
+{    
     vec3 color = vec3(0.);
-
 
     ivec2 size = imageSize(outputImage);
     

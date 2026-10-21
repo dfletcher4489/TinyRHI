@@ -56,25 +56,24 @@ void main()
 {
     renderableIndex = uint(texelFetch(globalRenderableIndices, gl_DrawID).r);
 
-    MeshRenderable currentRenderable = rends.renderables[renderableIndex];
-
-    MeshDetails modelData = perModelBuffer.objects[currentRenderable.meshIndex];
-
-    GeometryRenderable lGeomRenderable = geomRends.geomRenderables[currentRenderable.geomInstIndex];
-
-    GeometryDetails lGeomDetails = geomDetails.details[lGeomRenderable.geomDescIndex];
+    uint geomInstIndex = rends.renderables[renderableIndex].geomInstIndex;
     
-    mat4 worldMatrix = lGeomRenderable.transform * currentRenderable.transform; 
+    uint meshIndex = rends.renderables[renderableIndex].meshIndex;
 
-    uint comp = modelData.vertexComponents;
+    GeometryDetails lGeomDetails = geomDetails.details[geomRends.geomRenderables[geomInstIndex].geomDescIndex];
+
+    mat3 normalMatrix = mat3(rends.renderables[renderableIndex].adjointMatrix);
+    
+    mat4 worldMatrix = geomRends.geomRenderables[geomInstIndex].transform * rends.renderables[renderableIndex].transform; 
+
+    uint comp = perModelBuffer.objects[meshIndex].vertexComponents;
+ 
+    uint stride = perModelBuffer.objects[meshIndex].vertexStride;
+
+    uint offset = (stride * gl_VertexIndex) + perModelBuffer.objects[meshIndex].vertexByteOffset;
+
     normal = vec3(0.0);
     outColor = vec4(1.0);
-
-    uint stride = modelData.vertexStride;
-
-    uint offset = (stride * gl_VertexIndex) + modelData.vertexByteOffset;
-
-    mat3 normalMatrix = mat3(currentRenderable.adjointMatrix);
 
     if ((comp&COMPRESSED)==COMPRESSED)
     {
@@ -101,22 +100,17 @@ void main()
             offset += 4;
         }
 
-
         if ((comp&NORMAL)==NORMAL)
         {
             normal = normalMatrix * convertnormal(offset);
-
             offset += 4;
         }
 
         if ((comp&TANGENT)==TANGENT)
         {
             vec4 tangentLocal = DecompressTangent(offset);
-
             vec3 tangentCopy = normalMatrix * tangentLocal.xyz;
-            
             tangent = vec4(tangentCopy, tangentLocal.w);
-
             offset += 4;
         }
 
@@ -162,18 +156,14 @@ void main()
         if ((comp&NORMAL) == NORMAL)
         {
             normal = normalMatrix * ReconstructVEC3(offset);
-
             offset += 12;
         }
 
         if ((comp&TANGENT) == TANGENT)
         {
             vec4 tangentLocal = ReconstructVEC4(offset);
-
-            vec3 tangentCopy = normalMatrix * tangentLocal.xyz;
-            
+            vec3 tangentCopy = normalMatrix * tangentLocal.xyz;    
             tangent = vec4(tangentCopy, tangentLocal.w);
-
             offset += 16;
         }
 

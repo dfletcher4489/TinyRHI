@@ -1235,6 +1235,35 @@ void ApplicationLoop::Execute()
 				updateShadowMap--;
 			}
 
+			if (cameraMove || debugIndirectDrawData.commandBufferCount != mainDebugDrawRenderableCount || updateMainDebugCommand)
+			{
+				if (!updateMainDebugCommand || cameraMove)
+				{
+					GlobalRenderer::gRenderInstance.InsertTransferCommand(debugIndirectDrawData.commandBufferCountAlloc, 8, 0, 0);
+					updateMainDebugCommand = framesInFlight;
+				}
+
+				if (debugIndirectDrawData.commandBufferCount != mainDebugDrawRenderableCount)
+				{
+					if (updateMainDebugCommand == framesInFlight)
+					{
+						GlobalRenderer::gRenderInstance.InsertTransferCommand(debugTypesCounts, 8, 0, 0);
+					}
+
+					GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, debugClassificationHandle);
+				}
+
+				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, debugIndirectDrawData.indirectCullPipeline);
+				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, debugSphereHandle);
+
+				updateMainDebugCommand--;
+
+				if (!updateMainDebugCommand)
+				{
+					mainDebugDrawRenderableCount = debugIndirectDrawData.commandBufferCount;
+				}
+			}
+
 			if (cameraMove || mainDrawRenderableCount != mainIndirectDrawData.commandBufferCount || updateMainDrawCommand)
 			{
 
@@ -1266,35 +1295,6 @@ void ApplicationLoop::Execute()
 				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, mainIndirectDrawData.indirectCullPipeline);
 			}
 
-			if (cameraMove || debugIndirectDrawData.commandBufferCount != mainDebugDrawRenderableCount || updateMainDebugCommand)
-			{
-				if (!updateMainDebugCommand || cameraMove)
-				{
-					GlobalRenderer::gRenderInstance.InsertTransferCommand(debugIndirectDrawData.commandBufferCountAlloc, 8, 0, 0);
-					updateMainDebugCommand = framesInFlight;
-				}
-
-				if (debugIndirectDrawData.commandBufferCount != mainDebugDrawRenderableCount)
-				{
-					if (updateMainDebugCommand == framesInFlight)
-					{
-						GlobalRenderer::gRenderInstance.InsertTransferCommand(debugTypesCounts, 8, 0, 0);
-					}
-					
-					GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, debugClassificationHandle);
-				}
-			
-				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, debugIndirectDrawData.indirectCullPipeline);
-				//GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, debugSphereHandle);
-
-				updateMainDebugCommand--;
-
-				if (!updateMainDebugCommand)
-				{
-					mainDebugDrawRenderableCount = debugIndirectDrawData.commandBufferCount;
-				}
-			}
-
 			if (localUICount != globalUICount || updateUI > 0)
 			{
 				if (!updateUI)
@@ -1302,13 +1302,13 @@ void ApplicationLoop::Execute()
 
 				if (updateUI == framesInFlight)
 					GlobalRenderer::gRenderInstance.InsertTransferCommand(globalUIElementsIndirectCountBuffer, sizeof(uint32_t), 0, 0);
-				
+
 				if (localUICount != globalUICount)
 				{
 					if (updateUI == framesInFlight)
 					{
-						GlobalRenderer::gRenderInstance.InsertTransferCommand(globalDepthCounts , (DEPTH_MAX+1)*sizeof(uint32_t), 0, 0);
-						GlobalRenderer::gRenderInstance.InsertTransferCommand(globalDepthOffsets , (DEPTH_MAX+1)*sizeof(uint32_t), 0, 0);
+						GlobalRenderer::gRenderInstance.InsertTransferCommand(globalDepthCounts, (DEPTH_MAX + 1) * sizeof(uint32_t), 0, 0);
+						GlobalRenderer::gRenderInstance.InsertTransferCommand(globalDepthOffsets, (DEPTH_MAX + 1) * sizeof(uint32_t), 0, 0);
 						GlobalRenderer::gRenderInstance.InsertTransferCommand(globalUITextElementsCount, sizeof(uint32_t), 0, 0);
 					}
 
@@ -1325,8 +1325,8 @@ void ApplicationLoop::Execute()
 					for (int i = 0; i < globalUIMaxDepth; i++)
 						GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, globalContainerSizeCalculationPipeline[i]);
 
-					for (int i = 0; i<2; i++)
-						GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, globalContainerPositionCalculationPipeline[i+1]);
+					for (int i = 0; i < 2; i++)
+						GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, globalContainerPositionCalculationPipeline[i + 1]);
 
 					GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, globalUITextGenerationPipeline);
 
@@ -1337,7 +1337,7 @@ void ApplicationLoop::Execute()
 				}
 
 				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, globalUICullPipelineIndex);
-				
+
 				updateUI--;
 			}
 
@@ -1396,11 +1396,11 @@ void ApplicationLoop::Execute()
 
 			}	
 
-		//	std::array<int, 140> arr{}, arr2{};
+			std::array<int, 400> arr{}, arr2{};
 
-			//GlobalRenderer::gRenderInstance.ReadData(debugIndirectDrawData.indirectGlobalIDsAlloc, arr.data(), sizeof(arr), 0);
+			//GlobalRenderer::gRenderInstance.ReadData(debugTypesCounts, arr.data(), sizeof(arr), 0);
 			//GlobalRenderer::gRenderInstance.ReadData(debugSphereIndices, arr.data(), sizeof(arr), 0);
-			//GlobalRenderer::gRenderInstance.ReadData(debugBoxIndices, arr.data(), sizeof(arr), 0);
+		//	GlobalRenderer::gRenderInstance.ReadData(debugBoxIndices, arr.data(), sizeof(arr), 0);
 			//GlobalRenderer::gRenderInstance.ReadData(lightPartition.gridCountsAlloc, arr2.data(), sizeof(arr), 0);
 			//GlobalRenderer::gRenderInstance.ReadData(lightPartition.worldSpaceDivisionAlloc, arr2.data(), sizeof(arr), 0);
 			
@@ -2817,8 +2817,9 @@ int CreateDebugCommandBuffers(int count)
 	std::array upload = { debugBoxIndices, debugSphereIndices };
 
 	indirectClassBuilder.BindBufferView(&debugRSContext, &globalDebugTypesAlloc, 0, 1, 0);
-	indirectClassBuilder.BindBufferView(&debugRSContext, upload.data(), 0, 2, 1);
-	indirectClassBuilder.BindBufferToShaderResource(&debugRSContext, &debugTypesCounts, 0, 1, 2);
+	indirectClassBuilder.BindBufferView(&debugRSContext, upload.data(), 0, 1, 1);
+	indirectClassBuilder.BindBufferView(&debugRSContext, upload.data()+1, 0, 1, 2);
+	indirectClassBuilder.BindBufferToShaderResource(&debugRSContext, &debugTypesCounts, 0, 1, 3);
 
 	indirectClassBuilder.UploadConstant(&debugRSContext, &debugIndirectDrawData.commandBufferCount, 0);
 
@@ -2909,7 +2910,7 @@ int CreateDebugCommandBuffers(int count)
 
 	indirectCullBuilder2.BindBufferView(&debugRSContext, &debugIndirectDrawData.indirectGlobalIDsAlloc, 0, 1, 1);
 
-	indirectCullBuilder2.BindBufferView(&debugRSContext, upload.data(), 0, 1, 2);
+	indirectCullBuilder2.BindBufferView(&debugRSContext, upload.data()+1, 0, 1, 2);
 
 	indirectCullBuilder2.BindBufferToShaderResource(&debugRSContext, &globalBufferLocation, 0, 1, 3);
 

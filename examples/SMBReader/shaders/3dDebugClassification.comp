@@ -10,9 +10,10 @@ layout(push_constant) uniform GlobalContext {
 } gs;
 
 layout(set = 0, binding = 0) uniform usamplerBuffer globalDebugTypes;
-layout(set = 0, binding = 1, r32ui) uniform uimageBuffer globalDebugTypeIndices[2];
+layout(set = 0, binding = 1, r32ui) uniform uimageBuffer globalDebugTypeIndicesBox;
+layout(set = 0, binding = 2, r32ui) uniform uimageBuffer globalDebugTypeIndicesSphere;
 
-layout(set = 0, binding = 2) buffer typeCounts 
+layout(set = 0, binding = 3) buffer typeCounts 
 {
     uint boxCount;
     uint sphereCount;
@@ -55,5 +56,14 @@ void main()
 
     barrier();
 
-    imageStore(globalDebugTypeIndices[debugType], int(debugTypesCount[debugType] + debugIndex), uvec4(index, 0, 0, 0));
+    if (debugType == 0)
+    {
+        imageStore(globalDebugTypeIndicesBox, int(debugTypesCount[debugType] + debugIndex), uvec4(index, 0, 0, 0));
+    }
+    else
+    {
+        imageStore(globalDebugTypeIndicesSphere, int(debugTypesCount[debugType] + debugIndex), uvec4(index, 0, 0, 0));
+    }
+
+    
 }

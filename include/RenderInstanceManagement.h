@@ -484,6 +484,7 @@ struct TransferCommandsPool
 		{
 			*(*popprev) = linkRet;
 			linkCount--;
+			regionLinks[link] = -1;
 			TransferCommand* region = &transferRegions[link];
 			region->allocationIndex = -1;
 			region->size = 0;
@@ -732,7 +733,7 @@ struct ResourceStatus
 	ImageLayout* currentLayout;
 };
 
-#define MAX_QUEUE_ENTRIES 63
+#define MAX_QUEUE_ENTRIES 127
 
 struct ComputeQueue
 {

@@ -9,9 +9,11 @@
 		</ShaderResourceItem>
 		<ShaderResourceItem type="bufferView" used="c" rw="read">
 		</ShaderResourceItem>
-		<ShaderResourceItem type="bufferView" used="c" rw="write" count="2">
+		<ShaderResourceItem type="bufferView" used="c" rw="write">
 		</ShaderResourceItem>
-		<ShaderResourceItem type="storage" used="c" rw="readwrite">
+		<ShaderResourceItem type="bufferView" used="c" rw="write">
+		</ShaderResourceItem>
+		<ShaderResourceItem type="storage" used="c" rw="write">
 		</ShaderResourceItem>
 	</ShaderResourceSet>
 </ShaderGraph>

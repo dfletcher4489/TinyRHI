@@ -2006,11 +2006,19 @@ void RenderInstance::InvokeTransferCommands(CommandRecorder* recorder)
 	{
 		link = transferCommandPool.PopLink(&region, link, &linkprev);
 
+		if (link == -1) break;
+
 		size_t rsize = 0, intOffset = 0;
 
 		int resourceIndex = 0;
 
 		RenderAllocation* alloc = allocations.Get(region.allocationIndex);
+
+		if (!alloc) {
+			continue;
+		}
+
+		memCount--;
 
 		GetAllocationDetails(alloc, &rsize, &intOffset, &resourceIndex, recorder->device->container.currentFrame);
 

@@ -37,6 +37,7 @@ void main()
     if (gl_LocalInvocationID.x == 0)
     {
         groupVisibleCount = 0;
+        offsetIntoDrawList = 0;
     }
     barrier();
 

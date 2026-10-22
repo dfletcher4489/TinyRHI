@@ -6,7 +6,6 @@
 #include "include/Mesh.iglsl"
 
 layout(push_constant) uniform GlobalContext {
-    uint indirectDrawCount;
     uint debugType;
 } gs;
 
@@ -42,7 +41,6 @@ layout(set = 0, binding = 6) readonly buffer typeCounts
     uint boxCount;
     uint sphereCount;
 } tCounts;
-
 
 bool CheckAllPlanesAgainstAABB(uint index)
 {
@@ -198,9 +196,7 @@ void main()
 {
 	uint index = (gl_WorkGroupID.x * gl_WorkGroupSize.x) + gl_LocalInvocationID.x;
 
-    uint debugType = 1;
-
-    uint typeCount = GetCount(debugType);
+    uint typeCount = GetCount(gs.debugType);
 
     if (index >= typeCount)
     {
@@ -209,7 +205,7 @@ void main()
 
     uint debugIndex = uint(texelFetch(globalDebugTypeIndices, int(index)).r);
 
-    bool visible = CheckDebugDrawAgainstFrustrum(debugType, debugIndex);
+    bool visible = CheckDebugDrawAgainstFrustrum(gs.debugType, debugIndex);
 
     if (!visible)
     {
@@ -220,7 +216,7 @@ void main()
 
     imageStore(globalDebugIndices, int(visibleIndex), uvec4(debugIndex, 0, 0, 0));
     
-    if (debugType == DEBUG_DRAW_TYPE_BOX)
+    if (gs.debugType == DEBUG_DRAW_TYPE_BOX)
     {
         cmdBuffer.commands[visibleIndex].vertexCount = 24;
         cmdBuffer.commands[visibleIndex].instanceCount = 1;
@@ -228,7 +224,7 @@ void main()
         cmdBuffer.commands[visibleIndex].firstInstance = 0;
 
     }
-    else if (debugType == DEBUG_DRAW_TYPE_SPHERE)
+    else if (gs.debugType == DEBUG_DRAW_TYPE_SPHERE)
     {
         vec4 temp = ddsbuffer.objects[debugIndex].halfExtents;
         uint numSlices = floatBitsToUint(temp.y);

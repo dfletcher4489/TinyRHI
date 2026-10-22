@@ -736,7 +736,7 @@ struct ResourceStatus
 
 struct ComputeQueue
 {
-	PipelineHandleIndex pipelines[63];
+	PipelineHandleIndex pipelines[127];
 	uint32_t queueCount;
 };
 

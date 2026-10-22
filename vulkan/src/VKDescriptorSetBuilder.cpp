@@ -30,7 +30,7 @@ void DescriptorSetBuilder::AddUniformBufferView(VkBufferView buffer, uint32_t bi
 		descriptorWrites[i-firstSet].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		descriptorWrites[i-firstSet].dstSet = descriptorSets[i];
 		descriptorWrites[i-firstSet].dstBinding = binding;
-		descriptorWrites[i-firstSet].dstArrayElement = 0;
+		descriptorWrites[i-firstSet].dstArrayElement = dstArrayElement;
 		descriptorWrites[i-firstSet].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
 		descriptorWrites[i-firstSet].descriptorCount = 1;
 		descriptorWrites[i-firstSet].pTexelBufferView = &buffer;
@@ -48,7 +48,7 @@ void DescriptorSetBuilder::AddStorageBufferView(VkBufferView buffer, uint32_t bi
 		descriptorWrites[i - firstSet].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		descriptorWrites[i - firstSet].dstSet = descriptorSets[i];
 		descriptorWrites[i - firstSet].dstBinding = binding;
-		descriptorWrites[i - firstSet].dstArrayElement = 0;
+		descriptorWrites[i - firstSet].dstArrayElement = dstArrayElement;
 		descriptorWrites[i - firstSet].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
 		descriptorWrites[i - firstSet].descriptorCount = 1;
 		descriptorWrites[i - firstSet].pTexelBufferView = &buffer;

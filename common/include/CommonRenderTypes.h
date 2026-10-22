@@ -450,6 +450,8 @@ struct GPUFeatureRequest
 	bool requireDrawIndirectCount;
 	bool requireRuntimeDescriptorArray;
 	bool requireTimelineSemaphores;
+	bool shaderStorageTexelBufferArrayDynamicIndexing;
+	bool shaderUniformTexelBufferArrayDynamicIndexing;
 
 	// base features
 	bool requireGeometryShader;

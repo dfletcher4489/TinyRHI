@@ -77,7 +77,7 @@ layout(set = 2, binding = 11) readonly buffer GeomInstBuffer
     GeometryRenderable geomRenderables[];
 } geomRends;
 
-vec4 DoLights(vec3 normal, vec3 worldPos, vec4 color, uint lightCount, uint lightIndices[4], vec3 specularBase, float shininess)
+vec4 DoLights(vec3 normal, vec3 worldPos, vec4 color, uint lightCount, uint renderableIndex, vec3 specularBase, float shininess)
 {
     vec3 camPos = gs.world[3].xyz;
 
@@ -89,11 +89,9 @@ vec4 DoLights(vec3 normal, vec3 worldPos, vec4 color, uint lightCount, uint ligh
 
     vec3 viewPosToWorldPos = normalize(camPos - worldPos);
 
-    float shadowColor = 0.0;
-
     for (uint i = 0; i<lightCount; i++)
     {
-        uint currentLightIndex = lightIndices[i];
+        uint currentLightIndex = rends.renderables[renderableIndex].lightIndices[i];
 
         LightSource light = lightBuffer.objects[currentLightIndex];
 
@@ -150,7 +148,11 @@ vec4 DoLights(vec3 normal, vec3 worldPos, vec4 color, uint lightCount, uint ligh
                 projCoordsPair
             ).r;
 
-            shadowColor = (currentDepth - bias >= sampledDepth) ? 1.0 : 0.0; 
+            float shadowColor = (currentDepth - bias >= sampledDepth) ? 1.0 : 0.0; 
+
+            SpecularColor *= (1.0 - shadowColor);
+
+            DiffuseColor *= (1.0 - shadowColor);
         }
         else if (lType == LIGHT_TYPE_POINT)
         {
@@ -205,7 +207,7 @@ vec4 DoLights(vec3 normal, vec3 worldPos, vec4 color, uint lightCount, uint ligh
         }
     }
 
-    return vec4(((1.0 - shadowColor) * (color.xyz * DiffuseColor + AmbientColor)) + SpecularColor, color.w);
+    return vec4(AmbientColor + (color.xyz * DiffuseColor + SpecularColor), color.w);
 }
 
 struct PixelColorData
@@ -251,8 +253,6 @@ float GetPixelBlendWeight(BlendDetails details, uint textureIndex)
 
 void main() 
 {
-    MeshRenderable currentRenderable = rends.renderables[renderableIndex];
-
     uint materialStart = rends.renderables[renderableIndex].materialStart;
 
     uint blendStart = rends.renderables[renderableIndex].blendLayersStart;
@@ -338,7 +338,7 @@ void main()
         albedoColor = DoLights(
             normalize(accumulatedColorData.normal), 
             worldPosition.xyz, albedoColor, 
-            lightCount, rends.renderables[renderableIndex].lightIndices, 
+            lightCount, renderableIndex, 
             accumulatedColorData.specular, accumulatedColorData.shininess
         );
     }

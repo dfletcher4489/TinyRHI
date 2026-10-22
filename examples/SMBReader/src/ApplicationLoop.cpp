@@ -86,6 +86,7 @@ enum ShaderResourceLayoutIdentifiers
 	LIGHTTYPECOUNTASSIGN,
 	LIGHTGRIDPREFIX,
 	MESHTOLIGHTASSIGNMENT,
+	DEBUGCLASSIFICATION,
 	SHADERRESOURCECOUNT
 };
 
@@ -148,6 +149,7 @@ static std::array<StringView, SHADERRESOURCECOUNT> layouts = {
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("LightTypeCountAssign.sgr"),
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("LightGridPrefixSum.sgr"),
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("MeshToLightAssignments.sgr"),
+	STRING_VIEW_FROM_LITERAL_INIT_LIST("3dDebugClassification.sgr")
 };
 
 static std::array<StringView, 2> mainLayoutAttachments =
@@ -448,7 +450,7 @@ static BufferMemoryIndex mainDeviceBuffer{};
 static ShaderResourceManagerIndex mainDescriptorManagerIndex{};
 static GPUCommandStreamIndex mainCommandStreamIndex{};
 
-static size_t mainHostSize = 64 * MiB;
+static size_t mainHostSize = 128 * MiB;
 static size_t mainDeviceSize = 64 * MiB;
 
 static DeviceSlabAllocator mainHostAllocator(mainHostSize, STRING_VIEW_FROM_LITERAL("Main GPU Host Driver Buffer"), &mainAppLogger);
@@ -552,6 +554,12 @@ static int jointMeshWorldMatrixCount = 0;
 
 static AllocationInstanceIndex jointMeshWorldMatrix;
 static AllocationInstanceIndex jointMeshParentIndices;
+
+static AllocationInstanceIndex debugSphereIndices;
+static AllocationInstanceIndex debugBoxIndices;
+static AllocationInstanceIndex debugTypesCounts;
+static PipelineHandleIndex debugClassificationHandle;
+static PipelineHandleIndex debugSphereHandle;
 
 static GPULightSource mainPointLight = { 
 	.color = Vector4f(229, 211, 191, 130.0), 
@@ -1260,15 +1268,31 @@ void ApplicationLoop::Execute()
 
 			if (cameraMove || debugIndirectDrawData.commandBufferCount != mainDebugDrawRenderableCount || updateMainDebugCommand)
 			{
-			
 				if (!updateMainDebugCommand || cameraMove)
 				{
 					GlobalRenderer::gRenderInstance.InsertTransferCommand(debugIndirectDrawData.commandBufferCountAlloc, 8, 0, 0);
 					updateMainDebugCommand = framesInFlight;
 				}
-				mainDebugDrawRenderableCount = debugIndirectDrawData.commandBufferCount;
+
+				if (debugIndirectDrawData.commandBufferCount != mainDebugDrawRenderableCount)
+				{
+					if (updateMainDebugCommand == framesInFlight)
+					{
+						GlobalRenderer::gRenderInstance.InsertTransferCommand(debugTypesCounts, 8, 0, 0);
+					}
+					
+					GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, debugClassificationHandle);
+				}
+			
 				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, debugIndirectDrawData.indirectCullPipeline);
+				//GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, debugSphereHandle);
+
 				updateMainDebugCommand--;
+
+				if (!updateMainDebugCommand)
+				{
+					mainDebugDrawRenderableCount = debugIndirectDrawData.commandBufferCount;
+				}
 			}
 
 			if (localUICount != globalUICount || updateUI > 0)
@@ -1362,6 +1386,8 @@ void ApplicationLoop::Execute()
 
 				running = ProcessCommands();
 
+				GlobalRenderer::gRenderInstance.DumpLogger();
+
 			}
 			else
 			{
@@ -1370,9 +1396,11 @@ void ApplicationLoop::Execute()
 
 			}	
 
-			//std::array<int, 125> arr{}, arr2{};
+		//	std::array<int, 140> arr{}, arr2{};
 
-			//GlobalRenderer::gRenderInstance.ReadData(lightPartition.gridCountsAlloc, arr.data(), sizeof(arr), 0);
+			//GlobalRenderer::gRenderInstance.ReadData(debugIndirectDrawData.indirectGlobalIDsAlloc, arr.data(), sizeof(arr), 0);
+			//GlobalRenderer::gRenderInstance.ReadData(debugSphereIndices, arr.data(), sizeof(arr), 0);
+			//GlobalRenderer::gRenderInstance.ReadData(debugBoxIndices, arr.data(), sizeof(arr), 0);
 			//GlobalRenderer::gRenderInstance.ReadData(lightPartition.gridCountsAlloc, arr2.data(), sizeof(arr), 0);
 			//GlobalRenderer::gRenderInstance.ReadData(lightPartition.worldSpaceDivisionAlloc, arr2.data(), sizeof(arr), 0);
 			
@@ -2774,19 +2802,61 @@ int CreateDebugCommandBuffers(int count)
 
 	debugIndirectDrawData.commandBufferAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, GetDriverIndirectDrawCommandSize(),  debugIndirectDrawData.commandBufferSize, GetDriverIndirectDrawCommandAlign(), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainDeviceAllocator);
 
-	debugIndirectDrawData.indirectGlobalIDsAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(uint32_t), debugIndirectDrawData.commandBufferSize, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::R32_UINT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
+	debugIndirectDrawData.indirectGlobalIDsAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(uint32_t), debugIndirectDrawData.commandBufferSize, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::R32_UINT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, -1, &mainDeviceAllocator);
 
 	debugIndirectDrawData.commandBufferCountAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(uint32_t), 2, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainDeviceAllocator);
 
-	ShaderResourceSetBuilder indirectCullBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[DEBUGCULL], 0, MAX_FRAMES_IN_FLIGHT);
+	debugSphereIndices = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(uint32_t), debugIndirectDrawData.commandBufferSize, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::R32_UINT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainDeviceAllocator);
+	debugBoxIndices = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(uint32_t), debugIndirectDrawData.commandBufferSize, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::R32_UINT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainDeviceAllocator);
+	debugTypesCounts = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(uint32_t), 2, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainDeviceAllocator);
 
-	debugIndirectDrawData.indirectCullDescriptor = indirectCullBuilder();
+	ShaderResourceSetBuilder indirectClassBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[DEBUGCLASSIFICATION], 0, MAX_FRAMES_IN_FLIGHT);
+
+	debugIndirectDrawData.indirectCullDescriptor = indirectClassBuilder();
+
+	std::array upload = { debugBoxIndices, debugSphereIndices };
+
+	indirectClassBuilder.BindBufferView(&debugRSContext, &globalDebugTypesAlloc, 0, 1, 0);
+	indirectClassBuilder.BindBufferView(&debugRSContext, upload.data(), 0, 2, 1);
+	indirectClassBuilder.BindBufferToShaderResource(&debugRSContext, &debugTypesCounts, 0, 1, 2);
+
+	indirectClassBuilder.UploadConstant(&debugRSContext, &debugIndirectDrawData.commandBufferCount, 0);
+
+	if (debugRSContext.contextFailed)
+	{
+		debugRSContext.contextLogger->ProcessMessage();
+		return -1;
+	}
+
+	std::array<ShaderResourceSetHandle, 1> debugClassDescriptors = { debugIndirectDrawData.indirectCullDescriptor };
+
+	ShaderComputeLayout* debugClassDescriptorLayout = GlobalRenderer::gRenderInstance.GetComputeLayout(shaderGraphHandles[DEBUGCLASSIFICATION]);
+
+	ComputeIntermediaryPipelineInfo debugClassPipelineCreate = {
+			.x = count / debugClassDescriptorLayout->x,
+			.y = 1,
+			.z = 1,
+			.pipelinename = pipelineHandles[DEBUGCLASSIFICATION],
+			.descCount = 1,
+			.indirectDispatchAllocation = -1,
+			.descriptorsetid = debugClassDescriptors.data()
+	};
+
+	debugClassificationHandle = GlobalRenderer::gRenderInstance.CreateComputePipelineObject(&debugClassPipelineCreate);
+
+	if (PipelineHandleIndex() == debugClassificationHandle)
+	{
+		mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Class pipeline failed creation"));
+		return -1;
+	}
+
+	ShaderResourceSetBuilder indirectCullBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[DEBUGCULL], 0, MAX_FRAMES_IN_FLIGHT);
 	 
 	indirectCullBuilder.BindBufferToShaderResource(&debugRSContext, &debugIndirectDrawData.commandBufferAlloc, 0, 1, 0);
 
 	indirectCullBuilder.BindBufferView(&debugRSContext, &debugIndirectDrawData.indirectGlobalIDsAlloc, 0, 1, 1);
 
-	indirectCullBuilder.BindBufferView(&debugRSContext, &globalDebugTypesAlloc, 0, 1, 2);
+	indirectCullBuilder.BindBufferView(&debugRSContext, upload.data(), 0, 1, 2);
 
 	indirectCullBuilder.BindBufferToShaderResource(&debugRSContext, &globalBufferLocation,  0, 1, 3);
 
@@ -2794,13 +2864,19 @@ int CreateDebugCommandBuffers(int count)
 
 	indirectCullBuilder.BindBufferToShaderResource(&debugRSContext, &debugIndirectDrawData.commandBufferCountAlloc, 0, 1, 5);
 
-	indirectCullBuilder.UploadConstant(&debugRSContext,  &debugIndirectDrawData.commandBufferCount, 0);
+	indirectCullBuilder.BindBufferToShaderResource(&debugRSContext, &debugTypesCounts, 0, 1, 6);
+
+	static DebugDrawType boxType = DebugDrawType::DEBUGBOX;
+
+	indirectCullBuilder.UploadConstant(&debugRSContext, &boxType, 0);
 
 	if (debugRSContext.contextFailed)
 	{
 		debugRSContext.contextLogger->ProcessMessage();
 		return -1;
 	}
+
+	debugIndirectDrawData.indirectCullDescriptor = indirectCullBuilder();
 
 	std::array<ShaderResourceSetHandle, 1> debugCullDescriptors = { debugIndirectDrawData.indirectCullDescriptor };
 
@@ -2820,6 +2896,54 @@ int CreateDebugCommandBuffers(int count)
 	debugIndirectDrawData.indirectCullPipeline = GlobalRenderer::gRenderInstance.CreateComputePipelineObject(&debugCullPipelineCreate);
 
 	if (PipelineHandleIndex() == debugIndirectDrawData.indirectCullPipeline)
+	{
+		mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Indirect cull pipeline failed creation"));
+		return -1;
+	}
+
+	ShaderResourceSetBuilder indirectCullBuilder2 = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[DEBUGCULL], 0, MAX_FRAMES_IN_FLIGHT);
+
+	ShaderResourceSetHandle indirectCullDescriptor2 = indirectCullBuilder2();
+
+	indirectCullBuilder2.BindBufferToShaderResource(&debugRSContext, &debugIndirectDrawData.commandBufferAlloc, 0, 1, 0);
+
+	indirectCullBuilder2.BindBufferView(&debugRSContext, &debugIndirectDrawData.indirectGlobalIDsAlloc, 0, 1, 1);
+
+	indirectCullBuilder2.BindBufferView(&debugRSContext, upload.data(), 0, 1, 2);
+
+	indirectCullBuilder2.BindBufferToShaderResource(&debugRSContext, &globalBufferLocation, 0, 1, 3);
+
+	indirectCullBuilder2.BindBufferToShaderResource(&debugRSContext, &globalDebugStructAlloc, 0, 1, 4);
+
+	indirectCullBuilder2.BindBufferToShaderResource(&debugRSContext, &debugIndirectDrawData.commandBufferCountAlloc, 0, 1, 5);
+
+	indirectCullBuilder2.BindBufferToShaderResource(&debugRSContext, &debugTypesCounts, 0, 1, 6);
+
+	static DebugDrawType sphereType = DebugDrawType::DEBUGSPHERE;
+
+	indirectCullBuilder2.UploadConstant(&debugRSContext, &sphereType, 0);
+
+	if (debugRSContext.contextFailed)
+	{
+		debugRSContext.contextLogger->ProcessMessage();
+		return -1;
+	}
+
+	debugCullDescriptors = { indirectCullDescriptor2 };
+
+	ComputeIntermediaryPipelineInfo debugCullPipelineCreate2 = {
+			.x = count / debugCullDescriptorLayout->x,
+			.y = 1,
+			.z = 1,
+			.pipelinename = pipelineHandles[DEBUGCULL],
+			.descCount = 1,
+			.indirectDispatchAllocation = -1,
+			.descriptorsetid = debugCullDescriptors.data()
+	};
+
+	debugSphereHandle = GlobalRenderer::gRenderInstance.CreateComputePipelineObject(&debugCullPipelineCreate2);
+
+	if (PipelineHandleIndex() == debugSphereHandle)
 	{
 		mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Indirect cull pipeline failed creation"));
 		return -1;
@@ -3966,12 +4090,12 @@ int ApplicationLoop::InitializeRuntime()
 	riCreateInfo.maxRenderQueues = 10;
 	riCreateInfo.maxPipelineTemplates = 15;
 	riCreateInfo.maxPipelineInstances = 55;
-	riCreateInfo.maxPipelineHandles = 35;
-	riCreateInfo.maxAllocations = 100;
+	riCreateInfo.maxPipelineHandles = 45;
+	riCreateInfo.maxAllocations = 150;
 	riCreateInfo.maxGPUCommandsStreams = 1;
 	riCreateInfo.maxTextureHandles = 100;
 	riCreateInfo.maxSamplerHandles = 5;
-	riCreateInfo.maxResourceStatuses = 125;
+	riCreateInfo.maxResourceStatuses = 200;
 	riCreateInfo.commandBuffersSize = 32 * KiB;
 	riCreateInfo.commandsCacheSize = 64 * KiB;
 	riCreateInfo.internalLoggerRingSize = 8 * KiB;
@@ -4007,6 +4131,8 @@ int ApplicationLoop::InitializeRuntime()
 	request.requireMultiDrawIndirect = true;
 	request.requireWideLines = true;
 	request.requireTimelineSemaphores = true;
+	request.shaderStorageTexelBufferArrayDynamicIndexing = true;
+	request.shaderUniformTexelBufferArrayDynamicIndexing = true;
 
 	LogicalDeviceFeatures deviceFeatures{};
 
@@ -4066,7 +4192,7 @@ int ApplicationLoop::InitializeRuntime()
 	lDeviceCreateInfo.driverPermanentSize = 4 * MiB;
 	lDeviceCreateInfo.maxFramesInFlight = MAX_FRAMES_IN_FLIGHT;
 	lDeviceCreateInfo.maxConcurrentRecordings = 1;
-	lDeviceCreateInfo.maxAllocations = 100;
+	lDeviceCreateInfo.maxAllocations = 150;
 	lDeviceCreateInfo.maxTextureHandles = 100;
 
 	mainLogicalDevice = GlobalRenderer::gRenderInstance.CreateLogicalDevice(&lDeviceCreateInfo);
@@ -4319,6 +4445,7 @@ int ApplicationLoop::InitializeRuntime()
 	pipelineHandles[LIGHTTYPECOUNTASSIGN] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[LIGHTTYPECOUNTASSIGN]);
 	pipelineHandles[LIGHTGRIDPREFIX] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[LIGHTGRIDPREFIX]);
 	pipelineHandles[MESHTOLIGHTASSIGNMENT] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[MESHTOLIGHTASSIGNMENT]);
+	pipelineHandles[DEBUGCLASSIFICATION] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[DEBUGCLASSIFICATION]);
 
 	for (int i = 0; i < pipelineHandles.size(); i++)
 	{

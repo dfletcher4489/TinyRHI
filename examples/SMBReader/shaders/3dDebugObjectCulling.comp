@@ -7,6 +7,7 @@
 
 layout(push_constant) uniform GlobalContext {
     uint indirectDrawCount;
+    uint debugType;
 } gs;
 
 layout(set = 0, binding = 0) writeonly buffer Commands 
@@ -16,7 +17,7 @@ layout(set = 0, binding = 0) writeonly buffer Commands
 
 layout(set = 0, binding = 1, r32ui) uniform uimageBuffer globalDebugIndices;
 
-layout(set = 0, binding = 2) uniform usamplerBuffer globalDebugTypes;
+layout(set = 0, binding = 2) uniform usamplerBuffer globalDebugTypeIndices;
 
 layout(set = 0, binding = 3) uniform CameraData {
      mat4 view;
@@ -35,6 +36,13 @@ layout(set = 0, binding = 5) writeonly buffer commandCounts
     uint visibleCount;
     uint invisibleCount;
 } cCounts;
+
+layout(set = 0, binding = 6) readonly buffer typeCounts 
+{
+    uint boxCount;
+    uint sphereCount;
+} tCounts;
+
 
 bool CheckAllPlanesAgainstAABB(uint index)
 {
@@ -121,7 +129,6 @@ bool CheckAllPlanesAgainstSphere(uint index)
         return false;
     }
     
-    
     dist = DistanceFromPlane(testFrustrum.topplane.planeEquation, transPosition);
 
     if (dist < -r)
@@ -169,32 +176,50 @@ bool CheckDebugDrawAgainstFrustrum(uint debugType, uint index)
     return ret;
 }
 
+uint GetCount(uint debugType)
+{
+    uint count = 0;
+
+    if (debugType == DEBUG_DRAW_TYPE_BOX)
+    {
+       count = tCounts.boxCount;
+    }
+    else if (debugType == DEBUG_DRAW_TYPE_SPHERE)
+    {
+        count = tCounts.sphereCount;
+    }
+
+    return count;
+}
+
 layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
 
 void main()
 {
 	uint index = (gl_WorkGroupID.x * gl_WorkGroupSize.x) + gl_LocalInvocationID.x;
 
-    if (index >= gs.indirectDrawCount)
+    uint debugType = 1;
+
+    uint typeCount = GetCount(debugType);
+
+    if (index >= typeCount)
     {
         return;
     }
 
-    uint debugType = uint(texelFetch(globalDebugTypes, int(index)).r);
+    uint debugIndex = uint(texelFetch(globalDebugTypeIndices, int(index)).r);
 
-    bool visible = CheckDebugDrawAgainstFrustrum(debugType, index);
+    bool visible = CheckDebugDrawAgainstFrustrum(debugType, debugIndex);
 
     if (!visible)
     {
-        uint invisibleIndex = atomicAdd(cCounts.invisibleCount, 1u);
-        cmdBuffer.commands[gs.indirectDrawCount-(1+invisibleIndex)].instanceCount = 0;
         return;
     } 
 
     uint visibleIndex = atomicAdd(cCounts.visibleCount, 1u);
 
-    imageStore(globalDebugIndices, int(visibleIndex), uvec4(index, 0, 0, 0));
-
+    imageStore(globalDebugIndices, int(visibleIndex), uvec4(debugIndex, 0, 0, 0));
+    
     if (debugType == DEBUG_DRAW_TYPE_BOX)
     {
         cmdBuffer.commands[visibleIndex].vertexCount = 24;
@@ -205,7 +230,7 @@ void main()
     }
     else if (debugType == DEBUG_DRAW_TYPE_SPHERE)
     {
-        vec4 temp = ddsbuffer.objects[index].halfExtents;
+        vec4 temp = ddsbuffer.objects[debugIndex].halfExtents;
         uint numSlices = floatBitsToUint(temp.y);
         cmdBuffer.commands[visibleIndex].vertexCount = 2*numSlices;
         cmdBuffer.commands[visibleIndex].instanceCount = 1;

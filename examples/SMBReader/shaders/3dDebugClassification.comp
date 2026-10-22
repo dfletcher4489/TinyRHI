@@ -1,0 +1,59 @@
+#version 450
+
+#extension GL_GOOGLE_include_directive: require
+
+#include "include/Math.iglsl"
+#include "include/Mesh.iglsl"
+
+layout(push_constant) uniform GlobalContext {
+    uint indirectDrawCount;
+} gs;
+
+layout(set = 0, binding = 0) uniform usamplerBuffer globalDebugTypes;
+layout(set = 0, binding = 1, r32ui) uniform uimageBuffer globalDebugTypeIndices[2];
+
+layout(set = 0, binding = 2) buffer typeCounts 
+{
+    uint boxCount;
+    uint sphereCount;
+} tCounts;
+
+shared uint debugTypesCount[2];
+
+layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+void main()
+{
+    if (gl_LocalInvocationID.x == 0)
+    {
+        debugTypesCount[DEBUG_DRAW_TYPE_BOX-1] = 0;
+        debugTypesCount[DEBUG_DRAW_TYPE_SPHERE-1] = 0;
+    }
+
+    barrier();
+
+	uint index = (gl_WorkGroupID.x * gl_WorkGroupSize.x) + gl_LocalInvocationID.x;
+
+    if (index >= gs.indirectDrawCount)
+    {
+        return;
+    }
+
+    uint debugType = uint(texelFetch(globalDebugTypes, int(index)).r);
+
+    debugType -= 1;
+
+    uint debugIndex = atomicAdd(debugTypesCount[debugType], 1u);
+
+    barrier();
+
+    if (gl_LocalInvocationID.x == 0)
+    {
+        debugTypesCount[DEBUG_DRAW_TYPE_BOX-1] = atomicAdd(tCounts.boxCount, debugTypesCount[DEBUG_DRAW_TYPE_BOX-1]);
+        debugTypesCount[DEBUG_DRAW_TYPE_SPHERE-1] = atomicAdd(tCounts.sphereCount, debugTypesCount[DEBUG_DRAW_TYPE_SPHERE-1]);
+    }
+
+    barrier();
+
+    imageStore(globalDebugTypeIndices[debugType], int(debugTypesCount[debugType] + debugIndex), uvec4(index, 0, 0, 0));
+}

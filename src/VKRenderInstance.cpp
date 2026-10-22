@@ -400,6 +400,9 @@ namespace API
 			request->requireRuntimeDescriptorArray ? VK_TRUE : VK_FALSE;
 		features12->timelineSemaphore = request->requireTimelineSemaphores ? VK_TRUE : VK_FALSE;
 
+		features12->shaderStorageTexelBufferArrayDynamicIndexing = request->shaderStorageTexelBufferArrayDynamicIndexing ? VK_TRUE : VK_FALSE;
+		features12->shaderUniformTexelBufferArrayDynamicIndexing = request->shaderUniformTexelBufferArrayDynamicIndexing ? VK_TRUE : VK_FALSE;
+
 		features2->sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
 		features2->pNext = features12;
 

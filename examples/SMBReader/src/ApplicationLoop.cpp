@@ -1266,7 +1266,6 @@ void ApplicationLoop::Execute()
 
 			if (cameraMove || mainDrawRenderableCount != mainIndirectDrawData.commandBufferCount || updateMainDrawCommand)
 			{
-
 				if (!updateMainDrawCommand || cameraMove) 
 				{
 					updateMainDrawCommand = framesInFlight;

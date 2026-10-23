@@ -2006,8 +2006,6 @@ void RenderInstance::InvokeTransferCommands(CommandRecorder* recorder)
 	{
 		link = transferCommandPool.PopLink(&region, link, &linkprev);
 
-		if (link == -1) break;
-
 		size_t rsize = 0, intOffset = 0;
 
 		int resourceIndex = 0;

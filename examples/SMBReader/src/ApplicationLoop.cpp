@@ -182,13 +182,12 @@ struct GPUMaterial
 struct GPUMeshRenderable
 {
 	uint32_t meshIndex;
-	uint32_t lightCount;
 	uint32_t instanceCount;
 	uint32_t geomIndex;
-	uint32_t lightIndices[4];
 	uint32_t materialStart;
 	uint32_t blendLayersStart;
 	uint32_t materialCount;
+	uint32_t pad1;
 	uint32_t pad2;
 	Matrix4f transform;
 	Matrix4f adjointMatrix;
@@ -1397,9 +1396,9 @@ void ApplicationLoop::Execute()
 
 			std::array<int, 400> arr{}, arr2{};
 
-			//GlobalRenderer::gRenderInstance.ReadData(debugTypesCounts, arr.data(), sizeof(arr), 0);
-			//GlobalRenderer::gRenderInstance.ReadData(debugSphereIndices, arr.data(), sizeof(arr), 0);
-		//	GlobalRenderer::gRenderInstance.ReadData(debugBoxIndices, arr.data(), sizeof(arr), 0);
+			GlobalRenderer::gRenderInstance.ReadData(lightPartition.gridCountsAlloc, arr.data(), sizeof(arr), 0);
+			GlobalRenderer::gRenderInstance.ReadData(lightPartition.gridOffsetsAlloc, arr.data(), sizeof(arr), 0);
+			GlobalRenderer::gRenderInstance.ReadData(lightPartition.worldSpaceDivisionAlloc, arr.data(), sizeof(arr), 0);
 			//GlobalRenderer::gRenderInstance.ReadData(lightPartition.gridCountsAlloc, arr2.data(), sizeof(arr), 0);
 			//GlobalRenderer::gRenderInstance.ReadData(lightPartition.worldSpaceDivisionAlloc, arr2.data(), sizeof(arr), 0);
 			
@@ -2780,7 +2779,7 @@ void ProcessSMBFile(SMBFile *file, int arenaIndex)
 			update.resourceDstBegin = globalTextureStartIndex;
 			update.resourceHandles = texViews;
 
-			GlobalRenderer::gRenderInstance.UpdateShaderResourceArray(globalTexturesDescriptor, 4, ShaderResourceType::IMAGE2D, &update);
+			GlobalRenderer::gRenderInstance.UpdateShaderResourceArray(globalTexturesDescriptor, 5, ShaderResourceType::IMAGE2D, &update);
 		}
 
 		SMBGeometricalObject(geoDef, file, globalTextureStartIndex, arenaIndex);
@@ -3041,6 +3040,9 @@ int CreateGenericMeshCommandBuffers(int count)
 	indirectDrawBuilder.BindBufferView(&genericMeshRSContext, &globalBlendRangesLocation, 0, 1, 9);
 	indirectDrawBuilder.BindBufferToShaderResource(&genericMeshRSContext, &globalGeometryDescriptionsLocation, 0, 1, 10);
 	indirectDrawBuilder.BindBufferToShaderResource(&genericMeshRSContext, &globalGeometryRenderableLocation, 0, 1, 11);
+	indirectDrawBuilder.BindBufferView(&genericMeshRSContext, &lightPartition.gridOffsetsAlloc, 0, 1, 12);
+	indirectDrawBuilder.BindBufferView(&genericMeshRSContext, &lightPartition.gridCountsAlloc, 0, 1, 13);
+	indirectDrawBuilder.BindBufferView(&genericMeshRSContext, &lightPartition.worldSpaceDivisionAlloc, 0, 1, 14);
 
 	std::array<ShaderResourceSetHandle, 3> indirectDrawDescriptors = {
 		globalBufferDescriptor,
@@ -3048,13 +3050,11 @@ int CreateGenericMeshCommandBuffers(int count)
 		mainIndirectDrawData.indirectDrawDescriptor,
 	};
 
-	shadowMapIndex = mainDictionary.AllocateNTextureHandles(MAX_FRAMES_IN_FLIGHT, nullptr);
-
 	int viewIndex = GlobalRenderer::gRenderInstance.CreateAttachmentImageView(MSAAShadowMapping, 1, 0, 1, 0, 1, DEPTH_IMAGE_ASPECT, ImageLayout::SHADERREADABLE);
 
-	GlobalRenderer::gRenderInstance.UploadFrameAttachmentResource(MSAAShadowMapping, 1, viewIndex, globalTexturesDescriptor, 4, shadowMapIndex);
+	GlobalRenderer::gRenderInstance.UploadFrameAttachmentResource(MSAAShadowMapping, 1, viewIndex, globalTexturesDescriptor, 4, 0);
 
-	indirectDrawBuilder.UploadConstant(&genericMeshRSContext, &shadowMapIndex, 0);
+	indirectDrawBuilder.UploadConstant(&genericMeshRSContext, &mainGrid, 0);
 	indirectDrawBuilder.UploadConstant(&genericMeshRSContext, &GlobalRenderer::gRenderInstance.GetDeviceHandle(mainLogicalDevice)->container.currentFrame, 1);
 
 	if (genericMeshRSContext.contextFailed)
@@ -3887,7 +3887,7 @@ void RecreateFrameGraphAttachments(uint32_t width, uint32_t height)
 		int viewIndexObjectID = GlobalRenderer::gRenderInstance.CreateAttachmentImageView(MSAAShadowMapping, 4, 0, 1, 0, 1, COLOR_IMAGE_ASPECT, ImageLayout::SHADERREADABLE);
 
 		GlobalRenderer::gRenderInstance.UploadFrameAttachmentResource(MSAAShadowMapping, 4, viewIndexObjectID, globalUIIDResourceHandle, 2, 0);
-		GlobalRenderer::gRenderInstance.UploadFrameAttachmentResource(MSAAShadowMapping, 1, viewIndex, globalTexturesDescriptor, 4, shadowMapIndex);
+		GlobalRenderer::gRenderInstance.UploadFrameAttachmentResource(MSAAShadowMapping, 1, viewIndex, globalTexturesDescriptor, 4, 0);
 		GlobalRenderer::gRenderInstance.UploadFrameAttachmentResource(MSAAShadowMapping, 1, viewIndex, smdpd.fullScreenDescriptorSet, 0, 0);
 	}
 }
@@ -4506,7 +4506,7 @@ int ApplicationLoop::InitializeRuntime()
 
 	globalBufferDescriptorB.BindBufferToShaderResource(&globalDescriptorBuilder, &globalBufferLocation, 0, 1, 0);
 
-	globalTexturesDescriptorB.SetVariableArrayCount(&globalDescriptorBuilder, 4, 512);
+	globalTexturesDescriptorB.SetVariableArrayCount(&globalDescriptorBuilder, 5, 512);
 
 	if (globalDescriptorBuilder.contextFailed)
 	{
@@ -5423,7 +5423,7 @@ int Read2DImage(StringView* name, int mipCounts, TextureIOType ioType)
 		update.resourceDstBegin = textureStart;
 		update.resourceHandles = &arrayUpdateStruct;
 
-		GlobalRenderer::gRenderInstance.UpdateShaderResourceArray(globalTexturesDescriptor, 4, ShaderResourceType::IMAGE2D, &update);
+		GlobalRenderer::gRenderInstance.UpdateShaderResourceArray(globalTexturesDescriptor, 5, ShaderResourceType::IMAGE2D, &update);
 	}
 	else
 	{

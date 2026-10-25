@@ -154,6 +154,7 @@ void main()
 
         if (lightMeshCount > 0)
         {
+        /*
            uint old = atomicAdd(rends.renderables[index].lightCount, lightMeshCount);
         
            if ((old+lightMeshCount) >= 4) 
@@ -172,6 +173,7 @@ void main()
                   rends.renderables[index].lightIndices[old+i] = ObjLightCopies[i];
               }
            }
+           */
         }
     } 
 

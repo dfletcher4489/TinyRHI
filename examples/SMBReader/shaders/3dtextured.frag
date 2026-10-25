@@ -14,10 +14,17 @@ layout(location = 11) flat in uint renderableIndex;
 layout(location = 12) in vec4 inTangent;
 layout(location = 0) out vec4 outColor;
 
+struct UniformGrid
+{
+    vec4 max;
+    vec4 min;
+	uint numberOfDivisions;
+    uint currentFrame;
+};
+
 layout(push_constant) uniform ShadowImageConstants 
 {
-    uint imageIndex;
-    uint currentFrame;
+    UniformGrid grid;
 } sic;
 
 layout(set = 0, binding = 0) uniform GlobalContext 
@@ -28,18 +35,23 @@ layout(set = 0, binding = 0) uniform GlobalContext
     mat4 world;
 } gs;
 
-layout(set = 1, binding = 4) uniform texture2D Textures[];
 layout(set = 1, binding = 0) uniform sampler samplerLinear;
-layout(set = 1, binding = 3) uniform samplerShadow shadowSampler;
+
 layout(set = 1, binding = 1) readonly buffer ShadowMap 
 {
     ShadowMapViewProj viewProjs[];
 } sm;
 
+layout(set = 1, binding = 3) uniform samplerShadow shadowSampler;
+
 layout(set = 1, binding = 2) readonly buffer shadowViews
 {
     ShadowMapView views[];
 } sv;
+
+layout(set = 1, binding = 4) uniform texture2D DepthTextures[3];
+
+layout(set = 1, binding = 5) uniform texture2D Textures[];
 
 layout(set = 2, binding = 3) readonly buffer GLBuffer 
 {
@@ -67,17 +79,11 @@ layout(set = 2, binding = 8) readonly buffer BLENDBuffer
 
 layout(set = 2, binding = 9) uniform usamplerBuffer globalBlendIndices;
 
-layout(set = 2, binding = 10) readonly buffer GeomDescBuffer
-{
-    GeometryDetails details[];
-} geomDetails;
+layout(set = 2, binding = 12) uniform usamplerBuffer globalLightOffsets;
+layout(set = 2, binding = 13) uniform usamplerBuffer globalLightCounts;
+layout(set = 2, binding = 14) uniform usamplerBuffer globalLightAllocations;
 
-layout(set = 2, binding = 11) readonly buffer GeomInstBuffer
-{
-    GeometryRenderable geomRenderables[];
-} geomRends;
-
-vec4 DoLights(vec3 normal, vec3 worldPos, vec4 color, uint lightCount, uint renderableIndex, vec3 specularBase, float shininess)
+vec4 DoLights(vec3 normal, vec4 color, uint renderableIndex, vec3 specularBase, float shininess)
 {
     vec3 camPos = gs.world[3].xyz;
 
@@ -87,11 +93,26 @@ vec4 DoLights(vec3 normal, vec3 worldPos, vec4 color, uint lightCount, uint rend
 
     vec3 AmbientColor = vec3(0.0);
 
-    vec3 viewPosToWorldPos = normalize(camPos - worldPos);
+    vec3 viewPosToWorldPos = normalize(camPos - worldPosition.xyz);
 
-    for (uint i = 0; i<lightCount; i++)
+    vec3 range = sic.grid.max.xyz - sic.grid.min.xyz;
+
+    uvec3 inGridPos = uvec3(round(range/(worldPosition.xyz - sic.grid.min.xyz)));
+
+    uint gridIndex = (inGridPos.x * sic.grid.numberOfDivisions * sic.grid.numberOfDivisions) + (inGridPos.y * sic.grid.numberOfDivisions) + inGridPos.z;
+  
+    uint lightOffsets =  texelFetch(globalLightOffsets, int(gridIndex)).r;
+    uint lightCounts =  texelFetch(globalLightCounts, int(gridIndex)).r;
+
+    uint dc = GET_LIGHT_TYPE_DIRECTIONAL_COUNT(lightCounts);
+    uint poc = GET_LIGHT_TYPE_POINT_COUNT(lightCounts);
+    uint sc = GET_LIGHT_TYPE_SPOT_COUNT(lightCounts);
+
+    uint lightCount = dc+poc+sc;
+
+    for (uint lightIter = 0; lightIter<lightCount; lightIter++)
     {
-        uint currentLightIndex = rends.renderables[renderableIndex].lightIndices[i];
+        uint currentLightIndex = texelFetch(globalLightAllocations, int(lightOffsets+lightIter)).r;
 
         LightSource light = lightBuffer.objects[currentLightIndex];
 
@@ -123,8 +144,6 @@ vec4 DoLights(vec3 normal, vec3 worldPos, vec4 color, uint lightCount, uint rend
 
             SpecularColor += lightColor * specularBase * specFactor * specularIntensity;
 
-            uint shadowMapIndex = sic.imageIndex + sic.currentFrame;
-
             ShadowMapViewProj sViewProj = sm.viewProjs[currentLightIndex];
             ShadowMapView sViewRange = sv.views[currentLightIndex];
 
@@ -143,20 +162,18 @@ vec4 DoLights(vec3 normal, vec3 worldPos, vec4 color, uint lightCount, uint rend
 
             float currentDepth = projCoords.z;
 
-            float sampledDepth = texture(
-                sampler2D(Textures[shadowMapIndex], samplerLinear),
-                projCoordsPair
-            ).r;
+            float shadowColor = texture(
+                sampler2DShadow(DepthTextures[sic.grid.currentFrame], shadowSampler),
+                vec3(projCoordsPair, currentDepth - bias)
+            );
 
-            float shadowColor = (currentDepth - bias >= sampledDepth) ? 1.0 : 0.0; 
+            SpecularColor *= (shadowColor);
 
-            SpecularColor *= (1.0 - shadowColor);
-
-            DiffuseColor *= (1.0 - shadowColor);
+            DiffuseColor *= (shadowColor);
         }
         else if (lType == LIGHT_TYPE_POINT)
         {
-            vec3 lightDir = light.pos.xyz - worldPos;
+            vec3 lightDir = light.pos.xyz - worldPosition.xyz;
 
             float distance = length(lightDir);
 
@@ -183,7 +200,7 @@ vec4 DoLights(vec3 normal, vec3 worldPos, vec4 color, uint lightCount, uint rend
         {
             vec3 lightingDir = normalize(-lightDirection);
 
-            vec3 lightLook =  light.pos.xyz - worldPos;
+            vec3 lightLook =  light.pos.xyz - worldPosition.xyz;
 
             float distance = max(length(lightLook), 0.001);
 
@@ -259,8 +276,6 @@ void main()
 
     uint materialCount = rends.renderables[renderableIndex].materialCount;
 
-    uint lightCount = rends.renderables[renderableIndex].lightCount;
-
     mat3 normalMatrix = mat3(rends.renderables[renderableIndex].adjointMatrix);
 
     uint textureIndex = 0;
@@ -333,12 +348,12 @@ void main()
 
     vec4 albedoColor = vec4(accumulatedColorData.diffuse, 1.0);
 
-    if (lightAffected && lightCount > 0)
+    if (lightAffected)
     {
         albedoColor = DoLights(
             normalize(accumulatedColorData.normal), 
-            worldPosition.xyz, albedoColor, 
-            lightCount, renderableIndex, 
+            albedoColor, 
+            renderableIndex, 
             accumulatedColorData.specular, accumulatedColorData.shininess
         );
     }

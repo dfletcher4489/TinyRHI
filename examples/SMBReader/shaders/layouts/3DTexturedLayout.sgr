@@ -18,13 +18,15 @@
 		</ShaderResourceItem>
 		<ShaderResourceItem type="sampler" used="f" count="1">
 		</ShaderResourceItem>
+		<ShaderResourceItem type="image2D" used="f" count="3">
+		</ShaderResourceItem>
 		<ShaderResourceItem type="image2D" used="vf" count="1024" unbounded="true">
 		</ShaderResourceItem>
 	</ShaderResourceSet>
 	<ShaderResourceSet>
-		<ShaderResourceItem type="constantbuffer" used="f" size="4" offset="0" pushstage="0">
+		<ShaderResourceItem type="constantbuffer" used="f" size="36" offset="0" pushstage="0">
 		</ShaderResourceItem>
-		<ShaderResourceItem type="constantbuffer" used="f" size="4" offset="4" pushstage="0">
+		<ShaderResourceItem type="constantbuffer" used="f" size="4" offset="36" pushstage="0">
 		</ShaderResourceItem>
 		<ShaderResourceItem type="storage" used="vf" rw="read">
 		</ShaderResourceItem>
@@ -49,6 +51,12 @@
 		<ShaderResourceItem type="storage" used="vf" rw="read">
 		</ShaderResourceItem>
 		<ShaderResourceItem type="storage" used="vf" rw="read">
+		</ShaderResourceItem>
+		<ShaderResourceItem type="bufferView" used="f" rw="read">
+		</ShaderResourceItem>
+		<ShaderResourceItem type="bufferView" used="f" rw="read">
+		</ShaderResourceItem>
+		<ShaderResourceItem type="bufferView" used="f" rw="read">
 		</ShaderResourceItem>
 	</ShaderResourceSet>
 </ShaderGraph>

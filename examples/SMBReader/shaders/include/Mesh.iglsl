@@ -66,14 +66,13 @@ struct GeometryRenderable
 
 struct MeshRenderable
 {
-	uint meshIndex;
-	uint lightCount; 
+	uint meshIndex; 
 	uint instanceCount;
 	uint geomInstIndex;
-	uint lightIndices[4];
 	uint materialStart;
 	uint blendLayersStart;
 	uint materialCount;
+	uint pad1;
     uint pad2;
 	mat4 transform;
 	mat4 adjointMatrix;

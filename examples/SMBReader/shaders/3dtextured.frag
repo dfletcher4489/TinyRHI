@@ -212,7 +212,7 @@ vec4 DoLights(vec3 normal, vec4 color, uint renderableIndex, vec3 specularBase, 
 
             float cosTheta = dot(lightLook, lightingDir);
 
-            float spotFactor = smoothstep(light.ancillary.y, light.ancillary.x, cosTheta);
+            float spotFactor = smoothstep(light.ancillary.w, light.ancillary.z, cosTheta);
 
             float specFactor = max(dot(H, normal), 0.0);
 

@@ -835,7 +835,7 @@ static bool ExecuteCommands(const StringView& command, int argCount);
 static void SetPositionOfGeometry(int geomIndex, const Vector3f& pos);
 static void CreateCrateObject();
 static void ScanSTDIN(void*);
-static int AddLight(GPULightSource& lightDesc, LightType type);
+static int AddLight(GPULightSource lightDesc, LightType type);
 static void UpdateLight(GPULightSource& lightDesc, int lightIndex);
 static int CreateBlendRange(int gpuBlendRangeID, int* blendIDs, int blendCount);
 static int CreateBlendDetails(int gpuBlendDescID, BlendMaterialType type, float constantAlpha);
@@ -1266,8 +1266,6 @@ void ApplicationLoop::Execute()
 
 					GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, worldSpaceAssignment.postWorldSpaceDivisionPipeline);
 
-					
-
 					if (updateMainDrawCommand == 1)
 						mainDrawRenderableCount = mainIndirectDrawData.commandBufferCount;
 				}
@@ -1284,8 +1282,6 @@ void ApplicationLoop::Execute()
 					updateShadowMap = framesInFlight;
 					GlobalRenderer::gRenderInstance.InsertTransferCommand(mainShadowMapManager.shadowMapObjectCountAlloc, 8, 0, 0);
 				}
-
-				//GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, mainShadowMapManager.shadowClippingPipeline);
 
 				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, mainShadowMapManager.shadowClippingPipeline);
 
@@ -1395,9 +1391,9 @@ void ApplicationLoop::Execute()
 
 			std::array<int, 400> arr{}, arr2{};
 
-			GlobalRenderer::gRenderInstance.ReadData(lightPartition.gridCountsAlloc, arr.data(), sizeof(arr), 0);
-			GlobalRenderer::gRenderInstance.ReadData(lightPartition.gridOffsetsAlloc, arr.data(), sizeof(arr), 0);
-			GlobalRenderer::gRenderInstance.ReadData(lightPartition.worldSpaceDivisionAlloc, arr.data(), sizeof(arr), 0);
+			//GlobalRenderer::gRenderInstance.ReadData(lightPartition.gridCountsAlloc, arr.data(), sizeof(arr), 0);
+			//GlobalRenderer::gRenderInstance.ReadData(lightPartition.gridOffsetsAlloc, arr.data(), sizeof(arr), 0);
+			//GlobalRenderer::gRenderInstance.ReadData(lightPartition.worldSpaceDivisionAlloc, arr.data(), sizeof(arr), 0);
 			//GlobalRenderer::gRenderInstance.ReadData(lightPartition.gridCountsAlloc, arr2.data(), sizeof(arr), 0);
 			//GlobalRenderer::gRenderInstance.ReadData(lightPartition.worldSpaceDivisionAlloc, arr2.data(), sizeof(arr), 0);
 			
@@ -5390,7 +5386,7 @@ int Read2DImage(StringView* name, int mipCounts, TextureIOType ioType)
 	return textureStart;
 }
 
-int AddLight(GPULightSource& lightDesc, LightType type)
+int AddLight(GPULightSource lightDesc, LightType type)
 {
 	if (globalLightCount == globalLightMax)
 	{
@@ -5401,8 +5397,8 @@ int AddLight(GPULightSource& lightDesc, LightType type)
 
 	if (type == LightType::SPOT)
 	{
-		lightDesc.ancillary.x = cosf(lightDesc.ancillary.x);
-		lightDesc.ancillary.y = cosf(lightDesc.ancillary.y);
+		lightDesc.ancillary.z = cosf(lightDesc.ancillary.x);
+		lightDesc.ancillary.w = cosf(lightDesc.ancillary.y);
 	}
 
 	GlobalRenderer::gRenderInstance.UpdateDriverMemory(&lightDesc, globalLightBuffer, sizeof(GPULightSource), sizeof(GPULightSource) * lightLocation, TransferType::CACHED);

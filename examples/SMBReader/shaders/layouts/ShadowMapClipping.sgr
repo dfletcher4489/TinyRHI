@@ -9,31 +9,37 @@
 		</ShaderResourceItem>
 		<ShaderResourceItem type="constantbuffer" used="c" size="4" offset="4" pushstage="0">
 		</ShaderResourceItem>
-		<ShaderResourceItem type="storage" used="c" rw="write">
-		</ShaderResourceItem>
-		<ShaderResourceItem type="storage" used="c" rw="read">
-		</ShaderResourceItem>
-		<ShaderResourceItem type="bufferView" used="c" rw="write">
-		</ShaderResourceItem>
-		<ShaderResourceItem type="storage" used="c" rw="write">
-		</ShaderResourceItem>
-		<ShaderResourceItem type="storage" used="c" rw="read">
-		</ShaderResourceItem>
-		<ShaderResourceItem type="storage" used="c" rw="read">
-		</ShaderResourceItem>
-		<ShaderResourceItem type="storage" used="c" rw="read">
-		</ShaderResourceItem>
-	</ShaderResourceSet>
-	<ShaderResourceSet>
-		<ShaderResourceItem type="storage" used="c" rw="read">
-		</ShaderResourceItem>
-		<ShaderResourceItem type="bufferView" used="c" rw="write">
-		</ShaderResourceItem>
-		<ShaderResourceItem type="bufferView" used="c" rw="write">
-		</ShaderResourceItem>
-		<ShaderResourceItem type="bufferView" used="c" rw="write">
+		<ShaderResourceItem type="bufferView" used="c" rw="read">
 		</ShaderResourceItem>
 		<ShaderResourceItem type="bufferView" used="c" rw="read">
+		</ShaderResourceItem>
+		<ShaderResourceItem type="bufferView" used="c" rw="read">
+		</ShaderResourceItem>
+		<ShaderResourceItem type="bufferView" used="c" rw="read">
+		</ShaderResourceItem>
+		<ShaderResourceItem type="bufferView" used="c" rw="read">
+		</ShaderResourceItem>
+		<ShaderResourceItem type="bufferView" used="c" rw="read">
+		</ShaderResourceItem>
+		<ShaderResourceItem type="storage" used="c" rw="read">
+		</ShaderResourceItem>
+		<ShaderResourceItem type="storage" used="c" rw="read">
+		</ShaderResourceItem>
+		<ShaderResourceItem type="storage" used="c" rw="read">
+		</ShaderResourceItem>
+		<ShaderResourceItem type="storage" used="c" rw="read">
+		</ShaderResourceItem>
+		<ShaderResourceItem type="bufferView" used="c" rw="write">
+		</ShaderResourceItem>
+		<ShaderResourceItem type="bufferView" used="c" rw="write">
+		</ShaderResourceItem>
+		<ShaderResourceItem type="bufferView" used="c" rw="write">
+		</ShaderResourceItem>
+		<ShaderResourceItem type="bufferView" used="c" rw="write">
+		</ShaderResourceItem>
+		<ShaderResourceItem type="storage" used="c" rw="write">
+		</ShaderResourceItem>
+		<ShaderResourceItem type="storage" used="c" rw="write">
 		</ShaderResourceItem>
 	</ShaderResourceSet>
 </ShaderGraph>

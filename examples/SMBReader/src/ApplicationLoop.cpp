@@ -85,7 +85,6 @@ enum ShaderResourceLayoutIdentifiers
 	LIGHTSPOTASSIGN,
 	LIGHTTYPECOUNTASSIGN,
 	LIGHTGRIDPREFIX,
-	MESHTOLIGHTASSIGNMENT,
 	DEBUGCLASSIFICATION,
 	SHADERRESOURCECOUNT
 };
@@ -148,7 +147,6 @@ static std::array<StringView, SHADERRESOURCECOUNT> layouts = {
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("LightSpotWorldAssign.sgr"),
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("LightTypeCountAssign.sgr"),
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("LightGridPrefixSum.sgr"),
-	STRING_VIEW_FROM_LITERAL_INIT_LIST("MeshToLightAssignments.sgr"),
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("3dDebugClassification.sgr")
 };
 
@@ -285,7 +283,6 @@ struct GPULightPartition
 	PipelineHandleIndex spotTypeCountPipeline;
 	PipelineHandleIndex spotTypeAssignPipeline;
 	PipelineHandleIndex worldSpacePrefixSumPipeline;
-	PipelineHandleIndex meshToLightAssignmentPipe;
 };
 
 static int sizeOfLightTypeCount = sizeof(uint32_t) * 3;
@@ -1221,19 +1218,6 @@ void ApplicationLoop::Execute()
 			
 			}
 
-			if (mainDrawRenderableCount != mainIndirectDrawData.commandBufferCount || updateShadowMap)
-			{
-				if (!updateShadowMap)
-				{
-					updateShadowMap = framesInFlight;
-					GlobalRenderer::gRenderInstance.InsertTransferCommand(mainShadowMapManager.shadowMapObjectCountAlloc, 8, 0, 0);
-				}
-
-				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, mainShadowMapManager.shadowClippingPipeline);
-
-				updateShadowMap--;
-			}
-
 			if (cameraMove || debugIndirectDrawData.commandBufferCount != mainDebugDrawRenderableCount || updateMainDebugCommand)
 			{
 				if (!updateMainDebugCommand || cameraMove)
@@ -1282,7 +1266,7 @@ void ApplicationLoop::Execute()
 
 					GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, worldSpaceAssignment.postWorldSpaceDivisionPipeline);
 
-					GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, lightPartition.meshToLightAssignmentPipe);
+					
 
 					if (updateMainDrawCommand == 1)
 						mainDrawRenderableCount = mainIndirectDrawData.commandBufferCount;
@@ -1291,6 +1275,21 @@ void ApplicationLoop::Execute()
 				updateMainDrawCommand--;
 
 				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, mainIndirectDrawData.indirectCullPipeline);
+			}
+
+			if (mainDrawRenderableCount != mainIndirectDrawData.commandBufferCount || updateShadowMap)
+			{
+				if (!updateShadowMap)
+				{
+					updateShadowMap = framesInFlight;
+					GlobalRenderer::gRenderInstance.InsertTransferCommand(mainShadowMapManager.shadowMapObjectCountAlloc, 8, 0, 0);
+				}
+
+				//GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, mainShadowMapManager.shadowClippingPipeline);
+
+				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, mainShadowMapManager.shadowClippingPipeline);
+
+				updateShadowMap--;
 			}
 
 			if (localUICount != globalUICount || updateUI > 0)
@@ -3470,7 +3469,7 @@ int CreateLightAssignments(int lightCount, int gridCount)
 	}
 
 	{
-		ShaderResourceSetBuilder builder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[MESHTOLIGHTASSIGNMENT], 0, MAX_FRAMES_IN_FLIGHT);
+		ShaderResourceSetBuilder builder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[SHADOWMAPCULL], 0, MAX_FRAMES_IN_FLIGHT);
 
 		builder.BindBufferView(&genericLightWorldRSContext, &lightPartition.gridOffsetsAlloc, 0, 1, 0);
 		builder.BindBufferView(&genericLightWorldRSContext, &lightPartition.gridCountsAlloc, 0, 1, 1);
@@ -3482,9 +3481,18 @@ int CreateLightAssignments(int lightCount, int gridCount)
 
 		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &globalRenderableLocation, 0, 1, 6);
 		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &globalMeshLocation, 0, 1, 7);
-		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &globalGeometryDescriptionsLocation, 0, 1, 8);
-		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &globalGeometryRenderableLocation, 0, 1, 9);
-		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &globalLightBuffer, 0, 1, 10);
+		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &globalGeometryRenderableLocation, 0, 1, 8);
+		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &globalLightBuffer, 0, 1, 9);
+
+		builder.BindBufferView(&genericLightWorldRSContext, &mainShadowMapManager.shadowMapOffsetsAlloc, 0, 1, 10);
+		builder.BindBufferView(&genericLightWorldRSContext, &mainShadowMapManager.shadowMapCountsAlloc, 0, 1, 11);
+		builder.BindBufferView(&genericLightWorldRSContext, &mainShadowMapManager.shadowMapAssignmentsAlloc, 0, 1, 12);
+		builder.BindBufferView(&genericLightWorldRSContext, &mainShadowMapManager.shadowMapObjectIDsAlloc, 0, 1, 13);
+		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &mainShadowMapManager.shadowMapObjectCountAlloc, 0, 1, 14);
+		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &mainShadowMapManager.shadowMapIndirectBufferAlloc, 0, 1, 15);
+		
+		builder.UploadConstant(&genericLightWorldRSContext, &mainIndirectDrawData.commandBufferCount, 0);
+		builder.UploadConstant(&genericLightWorldRSContext, &globalLightCount, 1);
 
 		std::array<ShaderResourceSetHandle, 1> prefixSumDescriptor = { builder() };
 
@@ -3494,19 +3502,19 @@ int CreateLightAssignments(int lightCount, int gridCount)
 			return -1;
 		}
 
-		ComputeIntermediaryPipelineInfo worldAssignmentPrefix = {
+		ComputeIntermediaryPipelineInfo shadowMapClipInfo = {
 				.x = partitionCount,
 				.y = 1,
 				.z = 1,
-				.pipelinename = pipelineHandles[MESHTOLIGHTASSIGNMENT],
+				.pipelinename = pipelineHandles[SHADOWMAPCULL],
 				.descCount = 1,
 				.indirectDispatchAllocation = -1,
 				.descriptorsetid = prefixSumDescriptor.data()
 		};
 
-		lightPartition.meshToLightAssignmentPipe = GlobalRenderer::gRenderInstance.CreateComputePipelineObject(&worldAssignmentPrefix);
+		mainShadowMapManager.shadowClippingPipeline = GlobalRenderer::gRenderInstance.CreateComputePipelineObject(&shadowMapClipInfo);
 
-		if (PipelineHandleIndex() == lightPartition.meshToLightAssignmentPipe)
+		if (PipelineHandleIndex() == mainShadowMapManager.shadowClippingPipeline)
 		{
 			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Light Mesh World Assignment failed creation"));
 			return -1;
@@ -3716,59 +3724,6 @@ int CreateShadowMapManager(int maxShadowMapAssignment, int maxObjCount, int shad
 
 	GlobalRenderer::gRenderInstance.UpdateBufferResourceArray(globalTexturesDescriptor, 1, ShaderResourceType::STORAGE_BUFFER, &shadowViewProjUp);
 	GlobalRenderer::gRenderInstance.UpdateBufferResourceArray(globalTexturesDescriptor, 2, ShaderResourceType::STORAGE_BUFFER, &shadowAtlasViews);
-
-	ShaderResourceSetBuilder shadowClippingDescriptorB1 = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[SHADOWMAPCULL], 0, MAX_FRAMES_IN_FLIGHT);
-	ShaderResourceSetBuilder shadowClippingDescriptorB2 = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[SHADOWMAPCULL], 1, MAX_FRAMES_IN_FLIGHT);
-	
-	mainShadowMapManager.shadowClippingDescriptor1 = shadowClippingDescriptorB1();
-	mainShadowMapManager.shadowClippingDescriptor2 = shadowClippingDescriptorB2();
-
-	shadowClippingDescriptorB1.BindBufferToShaderResource(&genericMainShadowMapRSContext, &mainShadowMapManager.shadowMapIndirectBufferAlloc, 0, 1, 0);
-	shadowClippingDescriptorB1.BindBufferToShaderResource(&genericMainShadowMapRSContext, &globalMeshLocation, 0, 1, 1);
-	shadowClippingDescriptorB1.BindBufferView(&genericMainShadowMapRSContext, &mainShadowMapManager.shadowMapObjectIDsAlloc, 0, 1, 2);
-	shadowClippingDescriptorB1.BindBufferToShaderResource(&genericMainShadowMapRSContext, &mainShadowMapManager.shadowMapObjectCountAlloc, 0, 1, 3);
-	shadowClippingDescriptorB1.BindBufferToShaderResource(&genericMainShadowMapRSContext, &globalRenderableLocation, 0, 1, 4);
-	shadowClippingDescriptorB1.BindBufferToShaderResource(&genericMainShadowMapRSContext, &globalGeometryDescriptionsLocation, 0, 1, 5);
-	shadowClippingDescriptorB1.BindBufferToShaderResource(&genericMainShadowMapRSContext, &globalGeometryRenderableLocation, 0, 1, 6);
-
-	shadowClippingDescriptorB2.BindBufferToShaderResource(&genericMainShadowMapRSContext, &globalLightBuffer, 0, 1, 0);
-	shadowClippingDescriptorB2.BindBufferView(&genericMainShadowMapRSContext, &mainShadowMapManager.shadowMapOffsetsAlloc, 0, 1, 1);
-	shadowClippingDescriptorB2.BindBufferView(&genericMainShadowMapRSContext, &mainShadowMapManager.shadowMapCountsAlloc, 0, 1, 2);
-	shadowClippingDescriptorB2.BindBufferView(&genericMainShadowMapRSContext, &mainShadowMapManager.shadowMapAssignmentsAlloc, 0, 1, 3);
-	shadowClippingDescriptorB2.BindBufferView(&genericMainShadowMapRSContext, &globalLightTypesBuffer, 0, 1, 4);
-
-	shadowClippingDescriptorB1.UploadConstant(&genericMainShadowMapRSContext, &mainIndirectDrawData.commandBufferCount, 0);
-	shadowClippingDescriptorB1.UploadConstant(&genericMainShadowMapRSContext, &globalLightCount, 1);
-
-	std::array<ShaderResourceSetHandle, 2> shadowClipDesc = { mainShadowMapManager.shadowClippingDescriptor1, mainShadowMapManager.shadowClippingDescriptor2 };
-
-	if (genericMainShadowMapRSContext.contextFailed)
-	{
-		genericMainShadowMapRSContext.contextLogger->ProcessMessage();
-		return -1;
-	}
-
-	ShaderComputeLayout* shadowMapCullLayout = GlobalRenderer::gRenderInstance.GetComputeLayout(shaderGraphHandles[SHADOWMAPCULL]);
-
-	uint32_t maxCullInvocations = (uint32_t)ceil(maxObjCount / (float)shadowMapCullLayout->x);
-
-	ComputeIntermediaryPipelineInfo shadowClipPipelineInfo = {
-			.x = maxCullInvocations,
-			.y = 1,
-			.z = 1,
-			.pipelinename = pipelineHandles[SHADOWMAPCULL],
-			.descCount = 2,
-			.indirectDispatchAllocation = -1,
-			.descriptorsetid = shadowClipDesc.data()
-	};
-	
-	mainShadowMapManager.shadowClippingPipeline = GlobalRenderer::gRenderInstance.CreateComputePipelineObject(&shadowClipPipelineInfo);
-
-	if (PipelineHandleIndex() == mainShadowMapManager.shadowClippingPipeline)
-	{
-		mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Shadow Clipping Pipeline failed creation"));
-		return -1;
-	}
 
 	ShaderResourceSetBuilder shadowMapDescBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[SHADOWMAPDRAW], 0, MAX_FRAMES_IN_FLIGHT);
 
@@ -4444,7 +4399,6 @@ int ApplicationLoop::InitializeRuntime()
 	pipelineHandles[LIGHTSPOTASSIGN] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[LIGHTSPOTASSIGN]);
 	pipelineHandles[LIGHTTYPECOUNTASSIGN] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[LIGHTTYPECOUNTASSIGN]);
 	pipelineHandles[LIGHTGRIDPREFIX] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[LIGHTGRIDPREFIX]);
-	pipelineHandles[MESHTOLIGHTASSIGNMENT] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[MESHTOLIGHTASSIGNMENT]);
 	pipelineHandles[DEBUGCLASSIFICATION] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[DEBUGCLASSIFICATION]);
 
 	for (int i = 0; i < pipelineHandles.size(); i++)
@@ -4515,11 +4469,12 @@ int ApplicationLoop::InitializeRuntime()
 
 	int creationRetSB = CreateSkyBox();
 	int creationRetDB = CreateDebugCommandBuffers(globalDebugStructMaxCount);
+	int creationRetSM = CreateShadowMapManager(4, globalMeshCountMax, 1024, 1024, mainShadowWidth, mainShadowHeight);
 	int creationRetMW = CreateMeshWorldAssignment(mainGrid.numberOfDivision * mainGrid.numberOfDivision * mainGrid.numberOfDivision);
 	int creationRetLW = CreateLightAssignments(globalLightMax, mainGrid.numberOfDivision * mainGrid.numberOfDivision * mainGrid.numberOfDivision);
 	
 	int creationRetGMB = CreateGenericMeshCommandBuffers(globalMeshCountMax);
-	int creationRetSM = CreateShadowMapManager(4, globalMeshCountMax, 1024, 1024, mainShadowWidth, mainShadowHeight);
+	
 	int creationRetFS = 0;//CreateMSAAPostFullScreen();
 	int creationRetUI = CreateUITools(25);
 

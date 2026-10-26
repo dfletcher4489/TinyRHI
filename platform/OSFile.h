@@ -2,6 +2,12 @@
 #pragma once
 #include "OS.h"
 
+#ifdef _WIN32
+#define OS_MAX_PATH 260
+#else
+#define OS_MAX_PATH 250
+#endif
+
 struct OSFileHandle
 {
 	uint64_t fileLength;
@@ -68,7 +74,7 @@ enum OSFileErrorFlags
 
 struct OSFileIterator
 {
-	char currentFileName[250];
+	char currentFileName[OS_MAX_PATH];
 	int osDataHandle;
 
 	OSFileIterator()

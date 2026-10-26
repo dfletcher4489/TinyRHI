@@ -14,9 +14,9 @@ static HANDLE* handles;
 static ThreadData* dataThreads;
 static int maxFreeListEntry = 0;
 
-ALIGNAS(128) static std::atomic<int> boundedLinearAllocator{ 0 };
-ALIGNAS(128) static std::atomic<size_t> enqueuePos{ 0 };
-ALIGNAS(128) static std::atomic<size_t> dequeuePos{ 0 };
+ALIGNAS(OS_PLATFORM_CACHE_SIZE) static std::atomic<int> boundedLinearAllocator{ 0 };
+ALIGNAS(OS_PLATFORM_CACHE_SIZE) static std::atomic<size_t> enqueuePos{ 0 };
+ALIGNAS(OS_PLATFORM_CACHE_SIZE) static std::atomic<size_t> dequeuePos{ 0 };
 
 static DWORD WINAPI MyThreadFunction(LPVOID lpParam);
 
@@ -44,11 +44,11 @@ static int PopFromFreeList()
             pos = dequeuePos.load(std::memory_order_relaxed);
     }
 
-    cell->currentSequence.store(pos + maxFreeListEntry, std::memory_order_release);
-
     int freeListIndex = cell->freeIndex;
 
     cell->freeIndex = -1;
+
+    cell->currentSequence.store(pos + maxFreeListEntry, std::memory_order_release);
 
     return freeListIndex;
 }
@@ -108,7 +108,7 @@ OSThreadMemoryRequirements OSGetThreadMemoryRequirements(int maxNumberOfOpenThre
     int threadDataSize = (maxNumberOfOpenThreads) * sizeof(ThreadData);
     int freeListSize = (maxNumberOfOpenThreads) * sizeof(MPMCQueueData);
 
-    OSThreadMemoryRequirements memReqs{ handlesSize + threadDataSize + freeListSize, alignof(HANDLE) };
+    OSThreadMemoryRequirements memReqs{ handlesSize + threadDataSize + freeListSize + (OS_PLATFORM_CACHE_SIZE * 3), OS_PLATFORM_CACHE_SIZE };
 
     return memReqs;
 }
@@ -116,6 +116,7 @@ OSThreadMemoryRequirements OSGetThreadMemoryRequirements(int maxNumberOfOpenThre
 int OSSeedThreadMemory(void* dataSource, int dataSize, int numberOfOpenThreads)
 {
     uintptr_t dataHead = (uintptr_t)dataSource;
+    uintptr_t dataStart = dataHead;
 
     int handleSize = numberOfOpenThreads;
 
@@ -123,11 +124,22 @@ int OSSeedThreadMemory(void* dataSource, int dataSize, int numberOfOpenThreads)
 
     dataHead += sizeof(HANDLE) * handleSize;
 
+    dataHead = (dataHead + (OS_PLATFORM_CACHE_SIZE - 1)) & ~(OS_PLATFORM_CACHE_SIZE - 1);
+
     dataThreads = (ThreadData*)dataHead;
 
     dataHead += sizeof(ThreadData) * handleSize;
 
+    dataHead = (dataHead + (OS_PLATFORM_CACHE_SIZE - 1)) & ~(OS_PLATFORM_CACHE_SIZE - 1);
+
     freeList = (MPMCQueueData*)dataHead;
+
+    dataHead += sizeof(MPMCQueueData) * handleSize;
+
+    if (dataHead > (dataStart + dataSize))
+    {
+        //
+    }
 
     for (int i = 0; i < handleSize; i++)
     {

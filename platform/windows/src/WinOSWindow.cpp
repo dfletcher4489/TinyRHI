@@ -8,9 +8,9 @@ static HWND* windowPtrs;
 static MPMCQueueData* freeList;
 static int maxFreeListEntry = 0;
 
-ALIGNAS(128) static std::atomic<int> boundedLinearAllocator{ 0 };
-ALIGNAS(128) static std::atomic<size_t> enqueuePos{ 0 };
-ALIGNAS(128) static std::atomic<size_t> dequeuePos{ 0 };
+ALIGNAS(OS_PLATFORM_CACHE_SIZE) static std::atomic<int> boundedLinearAllocator{ 0 };
+ALIGNAS(OS_PLATFORM_CACHE_SIZE) static std::atomic<size_t> enqueuePos{ 0 };
+ALIGNAS(OS_PLATFORM_CACHE_SIZE) static std::atomic<size_t> dequeuePos{ 0 };
 
 static LRESULT CALLBACK winproc(HWND hwnd, UINT wm, WPARAM wp, LPARAM lp);
 
@@ -36,11 +36,11 @@ static int PopFromFreeList()
             pos = dequeuePos.load(std::memory_order_relaxed);
     }
 
-    cell->currentSequence.store(pos + maxFreeListEntry, std::memory_order_release);
-
     int freeListIndex = cell->freeIndex;
 
     cell->freeIndex = -1;
+
+    cell->currentSequence.store(pos + maxFreeListEntry, std::memory_order_release);
 
     return freeListIndex;
 }
@@ -171,7 +171,7 @@ OSWindowMemoryRequirements OSGetWindowMemoryRequirements(int maxNumberOfWindows)
     int handlesWndSize = (maxNumberOfWindows) * sizeof(HWND);
     int freeListSize = (maxNumberOfWindows) * sizeof(MPMCQueueData);
 
-    OSWindowMemoryRequirements memReqs{ handlesSize + handlesWndSize + freeListSize, alignof(HINSTANCE) };
+    OSWindowMemoryRequirements memReqs{ handlesSize + handlesWndSize + freeListSize + (OS_PLATFORM_CACHE_SIZE * 3), OS_PLATFORM_CACHE_SIZE };
 
     return memReqs;
 }
@@ -206,11 +206,22 @@ int OSSeedWindowMemory(void* dataSource, int dataSize, int maxNumberOfWindows)
 
     dataHead += handleSize * sizeof(HINSTANCE);
 
+    dataHead = (dataHead + (OS_PLATFORM_CACHE_SIZE - 1)) & ~(OS_PLATFORM_CACHE_SIZE - 1);
+
     windowPtrs = (HWND*)dataHead;
     
     dataHead += sizeof(HWND) * handleSize;
 
+    dataHead = (dataHead + (OS_PLATFORM_CACHE_SIZE - 1)) & ~(OS_PLATFORM_CACHE_SIZE - 1);
+
     freeList = (MPMCQueueData*)dataHead;
+
+    dataHead += sizeof(MPMCQueueData) * handleSize;
+
+    if (dataHead > (dataStart + dataSize))
+    {
+       //
+    }
 
     for (int i = 0; i < handleSize; i++)
     {

@@ -11,9 +11,9 @@ static HANDLE stdInputHandle = INVALID_HANDLE_VALUE;
 static HANDLE stdOutputHandle = INVALID_HANDLE_VALUE;
 static HANDLE stdErrorHandle = INVALID_HANDLE_VALUE;
 
-ALIGNAS(128) static std::atomic<int> boundedLinearAllocator{ 0 };
-ALIGNAS(128) static std::atomic<size_t> enqueuePos{ 0 };
-ALIGNAS(128) static std::atomic<size_t> dequeuePos{ 0 };
+ALIGNAS(OS_PLATFORM_CACHE_SIZE) static std::atomic<int> boundedLinearAllocator{ 0 };
+ALIGNAS(OS_PLATFORM_CACHE_SIZE) static std::atomic<size_t> enqueuePos{ 0 };
+ALIGNAS(OS_PLATFORM_CACHE_SIZE) static std::atomic<size_t> dequeuePos{ 0 };
 
 static DWORD ConvertOSFlags(OSFileFlags flags, DWORD* shareMode, DWORD* creationFlags)
 {
@@ -66,11 +66,11 @@ static int PopFromFreeList()
             pos = dequeuePos.load(std::memory_order_relaxed);
     }
 
-    cell->currentSequence.store(pos + maxFreeListEntry, std::memory_order_release);
-
     int freeListIndex = cell->freeIndex;
 
     cell->freeIndex = -1;
+
+    cell->currentSequence.store(pos + maxFreeListEntry, std::memory_order_release);
 
     return freeListIndex;
 }
@@ -128,7 +128,7 @@ OSFileMemoryRequirements OSGetFileMemoryRequirements(int maxNumberOfOpenFiles)
     int handlesSize = (maxNumberOfOpenFiles) * sizeof(HANDLE);
     int freeListSize = (maxNumberOfOpenFiles) * sizeof(MPMCQueueData);
 
-    OSFileMemoryRequirements memReqs{ handlesSize + freeListSize, alignof(HANDLE) };
+    OSFileMemoryRequirements memReqs{ handlesSize + freeListSize + (OS_PLATFORM_CACHE_SIZE * 2), OS_PLATFORM_CACHE_SIZE };
 
     return memReqs;
 }
@@ -158,13 +158,22 @@ int OSSeedFileMemory(void* dataSource, int dataSize, int numberOfOpenFiles)
     uintptr_t dataHead = (uintptr_t)dataSource;
     uintptr_t dataStart = dataHead;
 
-    intFileHandles = (HANDLE*)dataHead;
-
     int handleSize = numberOfOpenFiles;
+
+    intFileHandles = (HANDLE*)dataHead;
 
     dataHead += handleSize * sizeof(HANDLE);
 
+    dataHead = (dataHead + (OS_PLATFORM_CACHE_SIZE - 1)) & ~(OS_PLATFORM_CACHE_SIZE - 1);
+
     freeList = (MPMCQueueData*)dataHead;
+
+    dataHead += sizeof(MPMCQueueData) * handleSize;
+
+    if (dataHead > (dataStart + dataSize))
+    {
+        //
+    }
 
     for (int i = 0; i < handleSize; i++)
     {
@@ -179,9 +188,9 @@ int OSSeedFileMemory(void* dataSource, int dataSize, int numberOfOpenFiles)
 
 int OSCreateFile(const char* filename, int nameLength, OSFileFlags flags, OSFileHandle* fileHandle)
 {
-    char pathscratch[MAX_PATH];
+    char pathscratch[OS_MAX_PATH];
 
-    if (nameLength <= 0 || nameLength >= MAX_PATH)
+    if (nameLength <= 0 || nameLength >= OS_MAX_PATH)
     {
         return OS_FILE_INVALID_ARGUMENT;
     }
@@ -220,9 +229,9 @@ int OSCreateFile(const char* filename, int nameLength, OSFileFlags flags, OSFile
 
 int OSOpenFile(const char* filename, int nameLength, OSFileFlags flags, OSFileHandle* fileHandle)
 {
-    char pathscratch[MAX_PATH];
+    char pathscratch[OS_MAX_PATH];
 
-    if (nameLength <= 0 || nameLength >= MAX_PATH)
+    if (nameLength <= 0 || nameLength >= OS_MAX_PATH)
     {
         return OS_FILE_INVALID_ARGUMENT;
     }
@@ -416,9 +425,9 @@ int OSSeekFile(OSFileHandle* fileHandle, size_t pointer, OSRelativeFlags flags)
 
 int OSCreateFileIterator(const char* searchString, int nameLength, OSFileIterator* iterator)
 {
-    char pathscratch[MAX_PATH];
+    char pathscratch[OS_MAX_PATH];
 
-    if (!searchString || !iterator || nameLength <= 0 || nameLength >= MAX_PATH)
+    if (!searchString || !iterator || nameLength <= 0 || nameLength >= OS_MAX_PATH)
     {
         return OS_FILE_INVALID_ARGUMENT;
     }
@@ -457,7 +466,7 @@ int OSNextFile(OSFileIterator* iterator)
 
     int fileIndex = iterator->osDataHandle;
 
-    if (fileIndex < 0 || fileIndex >= maxFreeListEntry + 1)
+    if (fileIndex < 0 || fileIndex >= maxFreeListEntry)
     {
         return OS_FILE_HANDLE_OUT_OF_BOUNDS;
     }
@@ -468,12 +477,12 @@ int OSNextFile(OSFileIterator* iterator)
 
     if (!ret)
     {
-        CloseHandle(intFileHandles[fileIndex]);
+        FindClose(intFileHandles[fileIndex]);
         ReturnIndex(fileIndex);
         return OS_FILE_REACH_ITER_END;
     }
 
-    strncpy(iterator->currentFileName, data.cFileName, MAX_PATH);
+    strncpy(iterator->currentFileName, data.cFileName, OS_MAX_PATH);
 
     return OS_FILE_SUCCESS;
 }
@@ -552,12 +561,12 @@ int OSPollFile(OSFileHandle* fileHandle, int millisecondTimeOut)
 
 int OSCreateDirectory(const char* directoryPath, int charCount, OSDirectoryFlag directoryFlag)
 {
-    if (charCount <= 0 || charCount >= MAX_PATH)
+    if (charCount <= 0 || charCount >= OS_MAX_PATH)
     {
         return OS_FILE_INVALID_ARGUMENT;
     }
 
-    char pathscratch[MAX_PATH];
+    char pathscratch[OS_MAX_PATH];
 
     memcpy(pathscratch, directoryPath, charCount);
 
@@ -611,12 +620,12 @@ int OSGetCurrentDirectory(int bufferSize, char* outputBuffer)
 
 int OSSetCurrentDirectory(const char* inputPath, int charCount)
 {
-    if (charCount <= 0 || charCount >= MAX_PATH)
+    if (charCount <= 0 || charCount >= OS_MAX_PATH)
     {
         return OS_FILE_INVALID_ARGUMENT;
     }
 
-    char pathscratch[MAX_PATH];
+    char pathscratch[OS_MAX_PATH];
 
     memcpy(pathscratch, inputPath, charCount);
 
@@ -634,7 +643,7 @@ int OSSetCurrentDirectory(const char* inputPath, int charCount)
 
 int OSExtractFileName(const char* inputFilePath, int inputFilePathCount, char* outputBuffer)
 {
-    if (inputFilePathCount <= 0 || inputFilePathCount >= MAX_PATH || !outputBuffer)
+    if (inputFilePathCount <= 0 || inputFilePathCount >= OS_MAX_PATH || !outputBuffer)
     {
         return OS_FILE_INVALID_ARGUMENT;
     }
@@ -679,9 +688,9 @@ int OSGetSystemFileTerminator()
 
 int OSFileExist(const char* inputFile, int charCount, OSFileFlags flags)
 {
-    char pathscratch[MAX_PATH];
+    char pathscratch[OS_MAX_PATH];
 
-    if (charCount <= 0 || charCount >= MAX_PATH)
+    if (charCount <= 0 || charCount >= OS_MAX_PATH)
     {
         return OS_FILE_INVALID_ARGUMENT;
     }

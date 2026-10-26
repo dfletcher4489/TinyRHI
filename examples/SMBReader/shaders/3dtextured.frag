@@ -204,6 +204,8 @@ vec4 DoLights(vec3 normal, vec4 color, uint renderableIndex, vec3 specularBase, 
 
             float distance = max(length(lightLook), 0.001);
 
+            float d2 = max(distance*distance, 0.01);
+
             lightLook /= distance;
 
             vec3 H = normalize(lightLook + viewPosToWorldPos);
@@ -218,9 +220,9 @@ vec4 DoLights(vec3 normal, vec4 color, uint renderableIndex, vec3 specularBase, 
 
             specFactor = (diffuse > 0.0) ? pow(specFactor, shininess) : 0.0;
 
-            DiffuseColor += lightColor * diffuse * diffuseIntensity * spotFactor * (1.0/max(distance*distance, 0.01));
+            DiffuseColor += lightColor * diffuse * diffuseIntensity * spotFactor * (1.0/d2);
 
-            SpecularColor += lightColor * specularBase * specFactor * specularIntensity * spotFactor * (1.0/(distance*distance));
+            SpecularColor += lightColor * specularBase * specFactor * specularIntensity * spotFactor * (1.0/d2);
         }
     }
 

@@ -29,9 +29,9 @@ static MPMCQueueData* freeList;
 static void** memoryLocations;
 static int maxFreeListEntry = 0;
 
-ALIGNAS(128) static std::atomic<int> boundedLinearAllocator{ 0 };
-ALIGNAS(128) static std::atomic<size_t> enqueuePos{ 0 };
-ALIGNAS(128) static std::atomic<size_t> dequeuePos{ 0 };
+ALIGNAS(OS_PLATFORM_CACHE_SIZE) static std::atomic<int> boundedLinearAllocator{ 0 };
+ALIGNAS(OS_PLATFORM_CACHE_SIZE) static std::atomic<size_t> enqueuePos{ 0 };
+ALIGNAS(OS_PLATFORM_CACHE_SIZE) static std::atomic<size_t> dequeuePos{ 0 };
 
 static int PopFromFreeList()
 {
@@ -55,11 +55,11 @@ static int PopFromFreeList()
             pos = dequeuePos.load(std::memory_order_relaxed);
     }
 
-    cell->currentSequence.store(pos + maxFreeListEntry, std::memory_order_release);
-
     int freeListIndex = cell->freeIndex;
 
     cell->freeIndex = -1;
+
+    cell->currentSequence.store(pos + maxFreeListEntry, std::memory_order_release);
 
     return freeListIndex;
 }
@@ -171,7 +171,7 @@ OSMemoryRequirements OSGetMemoryRequirements(int maxNumberOfAllocations)
     int handlesSize = (maxNumberOfAllocations) * sizeof(void*);
     int freeListSize = (maxNumberOfAllocations) * sizeof(MPMCQueueData);
 
-    OSMemoryRequirements memReqs{ handlesSize + freeListSize, alignof(void*) };
+    OSMemoryRequirements memReqs{ handlesSize + freeListSize + (OS_PLATFORM_CACHE_SIZE * 2), OS_PLATFORM_CACHE_SIZE };
 
     return memReqs;
 }
@@ -179,14 +179,24 @@ OSMemoryRequirements OSGetMemoryRequirements(int maxNumberOfAllocations)
 int OSSeedMemory(void* dataSource, int dataSize, int maxNumberOfAllocations)
 {
     uintptr_t dataHead = (uintptr_t)dataSource;
-
-    memoryLocations = (void**)dataSource;
+    uintptr_t dataStart = dataHead;
 
     int handleSize = maxNumberOfAllocations;
 
+    memoryLocations = (void**)dataSource;
+
     dataHead += sizeof(void*) * handleSize;
 
+    dataHead = (dataHead + (OS_PLATFORM_CACHE_SIZE - 1)) & ~(OS_PLATFORM_CACHE_SIZE - 1);
+
     freeList = (MPMCQueueData*)dataHead;
+
+    dataHead += sizeof(MPMCQueueData) * handleSize;
+
+    if (dataHead > (dataStart + dataSize))
+    {
+      //
+    }
 
     for (int i = 0; i < handleSize; i++)
     {

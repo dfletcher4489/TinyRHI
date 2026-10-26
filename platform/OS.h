@@ -9,6 +9,7 @@
 #define ALIGNAS(x) __attribute__((aligned(x)))
 #endif
 
+#define OS_PLATFORM_CACHE_SIZE 128 //potentially conservative
 
 struct MPMCQueueData
 {

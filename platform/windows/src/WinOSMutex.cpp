@@ -14,14 +14,19 @@ union WinHandleUnion
 	HANDLE semaphoreHandle;
 };
 
-static WinHandleUnion* handles;
-static int* handleTypes;
+struct alignas(OS_PLATFORM_CACHE_SIZE) WinMutexStruct
+{
+	WinHandleUnion actualHandle;
+	int handleType;
+};
+
+static WinMutexStruct* handles;
 static MPMCQueueData* freeList;
 static int maxFreeListEntry = 0;
 
-ALIGNAS(128) static std::atomic<int> boundedLinearAllocator{ 0 };
-ALIGNAS(128) static std::atomic<size_t> enqueuePos{ 0 };
-ALIGNAS(128) static std::atomic<size_t> dequeuePos{ 0 };
+ALIGNAS(OS_PLATFORM_CACHE_SIZE) static std::atomic<int> boundedLinearAllocator{ 0 };
+ALIGNAS(OS_PLATFORM_CACHE_SIZE) static std::atomic<size_t> enqueuePos{ 0 };
+ALIGNAS(OS_PLATFORM_CACHE_SIZE) static std::atomic<size_t> dequeuePos{ 0 };
 
 static int PopFromFreeList()
 {
@@ -45,11 +50,11 @@ static int PopFromFreeList()
 			pos = dequeuePos.load(std::memory_order_relaxed);
 	}
 
-	cell->currentSequence.store(pos + maxFreeListEntry, std::memory_order_release);
-
 	int freeListIndex = cell->freeIndex;
 
 	cell->freeIndex = -1;
+
+	cell->currentSequence.store(pos + maxFreeListEntry, std::memory_order_release);
 
 	return freeListIndex;
 }
@@ -76,17 +81,15 @@ static void ReturnIndex(int index)
 			pos = enqueuePos.load(std::memory_order_relaxed);
 	}
 
-	switch (handleTypes[index])
+	switch (handles[index].handleType)
 	{
 	case SEMAPHORE_HANDLE:
-		handles[index].semaphoreHandle = INVALID_HANDLE_VALUE;
+		handles[index].actualHandle.semaphoreHandle = INVALID_HANDLE_VALUE;
 		break;
 	case SRWLOCK_HANDLE:
-		handles[index].lock = SRWLOCK_INIT;
+		handles[index].actualHandle.lock = SRWLOCK_INIT;
 		break;
 	}
-
-	handleTypes[index] = 0;
 
 	cell->freeIndex = index;
 	cell->currentSequence.store(pos + 1, std::memory_order_release);
@@ -117,20 +120,20 @@ void CloseAllSyncObject()
 {
 	for (int idx = 0; idx < maxFreeListEntry; idx++)
 	{
-		if (handleTypes[idx] != 0)
+		if (handles[idx].handleType != 0)
 		{
-			switch (handleTypes[idx])
+			switch (handles[idx].handleType)
 			{
 			case SEMAPHORE_HANDLE:
-				CloseHandle(handles[idx].semaphoreHandle);
-				handles[idx].semaphoreHandle = INVALID_HANDLE_VALUE;
+				CloseHandle(handles[idx].actualHandle.semaphoreHandle);
+				handles[idx].actualHandle.semaphoreHandle = INVALID_HANDLE_VALUE;
 				break;
 			case SRWLOCK_HANDLE:
-				handles[idx].lock = SRWLOCK_INIT;
+				handles[idx].actualHandle.lock = SRWLOCK_INIT;
 				break;
 			}
 
-			handleTypes[idx] = 0;
+			handles[idx].handleType = 0;
 		}
 
 		freeList[idx].currentSequence.store(idx, std::memory_order_relaxed);
@@ -143,11 +146,10 @@ void CloseAllSyncObject()
 
 OSSyncMemoryRequirements OSGetSyncMemoryRequirements(int maxNumberOfOpenSyncObjects)
 {
-	int handlesSize = (maxNumberOfOpenSyncObjects) * sizeof(WinHandleUnion);
-	int handlesTypeSize = (maxNumberOfOpenSyncObjects) * sizeof(int);
+	int handlesSize = (maxNumberOfOpenSyncObjects) * sizeof(WinMutexStruct);
 	int freeListSize = (maxNumberOfOpenSyncObjects) * sizeof(MPMCQueueData);
 
-	OSSyncMemoryRequirements memReqs{ handlesSize + handlesTypeSize + freeListSize, alignof(MPMCQueueData) };
+	OSSyncMemoryRequirements memReqs{ handlesSize  + freeListSize + (OS_PLATFORM_CACHE_SIZE * 2), OS_PLATFORM_CACHE_SIZE };
 	
 	return memReqs;
 }
@@ -163,18 +165,23 @@ int OSSeedSyncMemory(void* dataSource, int dataSize, int maxNumberSyncObjects)
 
 	dataHead += sizeof(MPMCQueueData) * handleSize;
 
-	handles = (WinHandleUnion*)dataHead;
+	dataHead = (dataHead + (OS_PLATFORM_CACHE_SIZE - 1)) & ~(OS_PLATFORM_CACHE_SIZE - 1);
 
-	dataHead += handleSize * sizeof(WinHandleUnion);
+	handles = (WinMutexStruct*)dataHead;
 
-	handleTypes = (int*)dataHead;
+	dataHead += handleSize * sizeof(WinMutexStruct);
 
-	dataHead += sizeof(int) * handleSize;
+	dataHead = (dataHead + (OS_PLATFORM_CACHE_SIZE - 1)) & ~(OS_PLATFORM_CACHE_SIZE - 1);
+
+	if (dataHead > (dataStart + dataSize))
+	{
+		//
+	}
 
 	for (int i = 0; i < handleSize; i++)
 	{
 		freeList[i].currentSequence.store(i, std::memory_order_relaxed);
-		handleTypes[i] = 0;
+		handles[i].handleType = 0;
 	}
 
 	maxFreeListEntry = handleSize;
@@ -199,8 +206,8 @@ int CreateOSSemaphore(OSSemaphore* semaphore, int count)
 		return OS_SEMAPHORE_CREATE_FAILED;
 	}
 
-	handles[osIndex].semaphoreHandle = semaIndex;
-	handleTypes[osIndex] = SEMAPHORE_HANDLE;
+	handles[osIndex].actualHandle.semaphoreHandle = semaIndex;
+	handles[osIndex].handleType = SEMAPHORE_HANDLE;
 
 	semaphore->maxCount = count;
 	semaphore->osDataHandle = osIndex;
@@ -217,12 +224,12 @@ int WaitOSSemaphore(OSSemaphore* semaphore, unsigned int waitMS)
 		return OS_SEMAPHORE_HANDLE_OUT_OF_BOUNDS;
 	}
 
-	if (handleTypes[osIndex] != SEMAPHORE_HANDLE)
+	if (handles[osIndex].handleType != SEMAPHORE_HANDLE)
 	{
 		return OS_SEMAPHORE_WRONG_TYPE;
 	}
 
-	HANDLE sema = handles[osIndex].semaphoreHandle;
+	HANDLE sema = handles[osIndex].actualHandle.semaphoreHandle;
 
 	DWORD waitResult = WaitForSingleObject(sema, waitMS);
 
@@ -249,12 +256,12 @@ int NotifyOSSemaphore(OSSemaphore* semaphore)
 		return OS_SEMAPHORE_HANDLE_OUT_OF_BOUNDS;
 	}
 
-	if (handleTypes[osIndex] != SEMAPHORE_HANDLE)
+	if (handles[osIndex].handleType != SEMAPHORE_HANDLE)
 	{
 		return OS_SEMAPHORE_WRONG_TYPE;
 	}
 
-	HANDLE sema = handles[osIndex].semaphoreHandle;
+	HANDLE sema = handles[osIndex].actualHandle.semaphoreHandle;
 
 	if (!ReleaseSemaphore(
 		sema,  
@@ -276,12 +283,12 @@ int DeleteOSSemaphore(OSSemaphore* semaphore)
 		return OS_SEMAPHORE_HANDLE_OUT_OF_BOUNDS;
 	}
 
-	if (handleTypes[osIndex] != SEMAPHORE_HANDLE)
+	if (handles[osIndex].handleType != SEMAPHORE_HANDLE)
 	{
 		return OS_SEMAPHORE_WRONG_TYPE;
 	}
 
-	HANDLE sema = handles[semaphore->osDataHandle].semaphoreHandle;
+	HANDLE sema = handles[semaphore->osDataHandle].actualHandle.semaphoreHandle;
 
 	CloseHandle(sema);
 
@@ -301,7 +308,7 @@ int CreateOSSharedExclusive(OSSharedExclusive* osse)
 		return OS_SEMAPHORE_HANDLE_EXHAUSTED;
 	}
 
-	InitializeSRWLock(&handles[osIndex].lock);
+	InitializeSRWLock(&handles[osIndex].actualHandle.lock);
 
 	osse->internalOSHandle = osIndex;
 
@@ -317,12 +324,12 @@ int ExclusiveAcquireOSSharedExclusive(OSSharedExclusive* osse)
 		return OS_SEMAPHORE_HANDLE_OUT_OF_BOUNDS;
 	}
 
-	if (handleTypes[osIndex] != SRWLOCK_HANDLE)
+	if (handles[osIndex].handleType != SRWLOCK_HANDLE)
 	{
 		return OSSE_WRONG_TYPE;
 	}
 
-	AcquireSRWLockExclusive(&handles[osIndex].lock);
+	AcquireSRWLockExclusive(&handles[osIndex].actualHandle.lock);
 
 	return OSSE_SUCCESS;
 }
@@ -336,12 +343,12 @@ int SharedAcquireOSSharedExclusive(OSSharedExclusive* osse)
 		return OS_SEMAPHORE_HANDLE_OUT_OF_BOUNDS;
 	}
 
-	if (handleTypes[osIndex] != SRWLOCK_HANDLE)
+	if (handles[osIndex].handleType != SRWLOCK_HANDLE)
 	{
 		return OSSE_WRONG_TYPE;
 	}
 
-	AcquireSRWLockShared(&handles[osIndex].lock);
+	AcquireSRWLockShared(&handles[osIndex].actualHandle.lock);
 
 	return OSSE_SUCCESS;
 }
@@ -355,12 +362,12 @@ int ExclusiveReleaseOSSharedExclusive(OSSharedExclusive* osse)
 		return OS_SEMAPHORE_HANDLE_OUT_OF_BOUNDS;
 	}
 
-	if (handleTypes[osIndex] != SRWLOCK_HANDLE)
+	if (handles[osIndex].handleType != SRWLOCK_HANDLE)
 	{
 		return OSSE_WRONG_TYPE;
 	}
 
-	ReleaseSRWLockExclusive(&handles[osIndex].lock);
+	ReleaseSRWLockExclusive(&handles[osIndex].actualHandle.lock);
 
 	return OSSE_SUCCESS;
 }
@@ -374,12 +381,12 @@ int SharedReleaseOSSharedExclusive(OSSharedExclusive* osse)
 		return OS_SEMAPHORE_HANDLE_OUT_OF_BOUNDS;
 	}
 
-	if (handleTypes[osIndex] != SRWLOCK_HANDLE)
+	if (handles[osIndex].handleType != SRWLOCK_HANDLE)
 	{
 		return OSSE_WRONG_TYPE;
 	}
 
-	ReleaseSRWLockShared(&handles[osIndex].lock);
+	ReleaseSRWLockShared(&handles[osIndex].actualHandle.lock);
 
 	return OSSE_SUCCESS;
 }
@@ -393,12 +400,12 @@ int TryExclusiveAcquireOSSharedExclusive(OSSharedExclusive* osse)
 		return OS_SEMAPHORE_HANDLE_OUT_OF_BOUNDS;
 	}
 
-	if (handleTypes[osIndex] != SRWLOCK_HANDLE)
+	if (handles[osIndex].handleType != SRWLOCK_HANDLE)
 	{
 		return OSSE_WRONG_TYPE;
 	}
 
-	if (!TryAcquireSRWLockExclusive(&handles[osIndex].lock))
+	if (!TryAcquireSRWLockExclusive(&handles[osIndex].actualHandle.lock))
 	{
 		return OSSE_ACQUIRE_FAILED;
 	}
@@ -415,12 +422,12 @@ int TrySharedAcquireOSSharedExclusive(OSSharedExclusive* osse)
 		return OS_SEMAPHORE_HANDLE_OUT_OF_BOUNDS;
 	}
 
-	if (handleTypes[osIndex] != SRWLOCK_HANDLE)
+	if (handles[osIndex].handleType != SRWLOCK_HANDLE)
 	{
 		return OSSE_WRONG_TYPE;
 	}
 
-	if (!TryAcquireSRWLockShared(&handles[osIndex].lock))
+	if (!TryAcquireSRWLockShared(&handles[osIndex].actualHandle.lock))
 	{
 		return OSSE_ACQUIRE_FAILED;
 	}
@@ -437,7 +444,7 @@ void DeleteOSSharedExclusive(OSSharedExclusive* osse)
 		return;
 	}
 
-	if (handleTypes[osIndex] != SRWLOCK_HANDLE)
+	if (handles[osIndex].handleType != SRWLOCK_HANDLE)
 	{
 		return;
 	}

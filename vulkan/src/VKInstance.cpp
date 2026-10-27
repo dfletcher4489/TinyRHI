@@ -975,6 +975,28 @@ bool VKInstance::QuerySpecificPhysicalDeviceFeatures(GPUFeatureRequest* featureR
 			meetsRequirements = false;
 	}
 
+	if (featureRequest->clipDistance)
+	{
+		if (!features2.features.shaderClipDistance)
+			meetsRequirements = false;
+	}
+
+	if (featureRequest->shaderStorageTexelBufferArrayDynamicIndexing)
+	{
+		if (!features12.shaderStorageTexelBufferArrayDynamicIndexing)
+		{
+			meetsRequirements = false;
+		}
+	}
+
+	if (featureRequest->shaderUniformTexelBufferArrayDynamicIndexing)
+	{
+		if (!features12.shaderUniformTexelBufferArrayDynamicIndexing)
+		{
+			meetsRequirements = false;
+		}
+	}
+
 	*closestFeatures = currentRequest;
 
 	return meetsRequirements;

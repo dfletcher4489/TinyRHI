@@ -42,12 +42,12 @@ layout(set = 1, binding = 1) readonly buffer ShadowMap
     ShadowMapViewProj viewProjs[];
 } sm;
 
-layout(set = 1, binding = 3) uniform samplerShadow shadowSampler;
-
 layout(set = 1, binding = 2) readonly buffer shadowViews
 {
     ShadowMapView views[];
 } sv;
+
+layout(set = 1, binding = 3) uniform samplerShadow shadowSampler;
 
 layout(set = 1, binding = 4) uniform texture2D DepthTextures[3];
 
@@ -125,9 +125,23 @@ vec4 DoLights(vec3 normal, vec4 color, uint renderableIndex, vec3 specularBase, 
         float specularIntensity = light.direction.w;
 
         vec3 lightDirection = light.direction.xyz;
+
+        uint lightViewIndex = floatBitsToUint(light.direction.w);
         
         if (lType == LIGHT_TYPE_DIRECTIONAL)
         {
+            ShadowMapViewProj sViewProj = sm.viewProjs[lightViewIndex];
+            ShadowMapView sViewRange = sv.views[lightViewIndex];
+
+            vec4 smTransCoords = sViewProj.shadowMapViewProj * worldPosition;
+
+            vec3 projCoords = smTransCoords.xyz / smTransCoords.w;
+
+            if (any(lessThan(projCoords.xy, vec2(-1.0))) || any(greaterThan(projCoords.xy, vec2(1.0))) || projCoords.z < 0.0 || projCoords.z > 1.0)
+            {
+                continue;
+            }
+
             vec3 lightingDir = normalize(-lightDirection); 
 
             vec3 H = normalize(lightingDir + viewPosToWorldPos);
@@ -137,19 +151,6 @@ vec4 DoLights(vec3 normal, vec4 color, uint renderableIndex, vec3 specularBase, 
             float specFactor = max(dot(normal, H), 0.0);
 
             specFactor = (diffuse > 0.0) ? pow(specFactor, shininess) : 0.0;
-
-            DiffuseColor += lightColor * diffuse * diffuseIntensity;
-
-            AmbientColor += light.ancillary.xyz;
-
-            SpecularColor += lightColor * specularBase * specFactor * specularIntensity;
-
-            ShadowMapViewProj sViewProj = sm.viewProjs[currentLightIndex];
-            ShadowMapView sViewRange = sv.views[currentLightIndex];
-
-            vec4 smTransCoords = sViewProj.shadowMapViewProj * worldPosition;
-
-            vec3 projCoords = smTransCoords.xyz / smTransCoords.w;
 
             vec2 projCoordsPair = projCoords.xy * 0.5 + 0.5;
 
@@ -167,9 +168,11 @@ vec4 DoLights(vec3 normal, vec4 color, uint renderableIndex, vec3 specularBase, 
                 vec3(projCoordsPair, currentDepth - bias)
             );
 
-            SpecularColor *= (shadowColor);
+            DiffuseColor += lightColor * diffuse * diffuseIntensity * shadowColor;
 
-            DiffuseColor *= (shadowColor);
+            AmbientColor += light.ancillary.xyz * shadowColor;
+
+            SpecularColor += lightColor * specularBase * specFactor * specularIntensity * shadowColor;
         }
         else if (lType == LIGHT_TYPE_POINT)
         {
@@ -198,6 +201,18 @@ vec4 DoLights(vec3 normal, vec4 color, uint renderableIndex, vec3 specularBase, 
         }
         else if (lType == LIGHT_TYPE_SPOT)
         {
+            ShadowMapViewProj sViewProj = sm.viewProjs[lightViewIndex];
+            ShadowMapView sViewRange = sv.views[lightViewIndex];
+
+            vec4 smTransCoords = sViewProj.shadowMapViewProj * worldPosition;
+
+            vec3 projCoords = smTransCoords.xyz / smTransCoords.w;
+
+            if (any(lessThan(projCoords.xy, vec2(-1.0))) || any(greaterThan(projCoords.xy, vec2(1.0))) || projCoords.z < 0.0 || projCoords.z > 1.0)
+            {
+                continue;
+            }
+
             vec3 lightingDir = normalize(-lightDirection);
 
             vec3 lightLook =  light.pos.xyz - worldPosition.xyz;
@@ -220,9 +235,25 @@ vec4 DoLights(vec3 normal, vec4 color, uint renderableIndex, vec3 specularBase, 
 
             specFactor = (diffuse > 0.0) ? pow(specFactor, shininess) : 0.0;
 
-            DiffuseColor += lightColor * diffuse * diffuseIntensity * spotFactor * (1.0/d2);
+            vec2 projCoordsPair = projCoords.xy * 0.5 + 0.5;
 
-            SpecularColor += lightColor * specularBase * specFactor * specularIntensity * spotFactor * (1.0/d2);
+            vec2 sViewOff = vec2(sViewRange.xOff, sViewRange.yOff);
+            vec2 sViewScale = vec2(sViewRange.xScale, sViewRange.yScale);
+
+            projCoordsPair  = (sViewScale * projCoordsPair) + sViewOff;
+
+            float bias = max(0.05 * (1.0 - dot(normal, lightingDir)), 0.005);
+
+            float currentDepth = projCoords.z;
+
+            float shadowColor = texture(
+                sampler2DShadow(DepthTextures[sic.grid.currentFrame], shadowSampler),
+                vec3(projCoordsPair, currentDepth - bias)
+            );
+
+            DiffuseColor += lightColor * diffuse * diffuseIntensity * spotFactor * (1.0/d2) * shadowColor;
+
+            SpecularColor += lightColor * specularBase * specFactor * specularIntensity * spotFactor * (1.0/d2) * shadowColor;
         }
     }
 

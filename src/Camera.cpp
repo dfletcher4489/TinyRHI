@@ -24,13 +24,11 @@ void Camera::CreateProjectionMatrix(float aspect, float n, float f, float angle)
 	float w = cotFov / aspect;
 	float h = cotFov;
 
-	Projection = Identity4f();
-
 	Projection[0][0] = w;
 	Projection[1][1] = -h;
-	Projection[2][2] = -(f + n) / (f - n);
+	Projection[2][2] = -(f) / (f - n);
 	Projection[2][3] = -1.0f;
-	Projection[3][2] = -(2 * f * n) / (f - n);
+	Projection[3][2] = -(f * n) / (f - n);
 	Projection[3][3] = 0.0f;
 
 	CreateCameraFrustrum(angle, aspect, n, f);

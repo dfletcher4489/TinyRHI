@@ -461,6 +461,7 @@ struct GPUFeatureRequest
 	bool requireMultiDrawIndirect;
 	bool requireWideLines;
 	bool requireLogicOp;
+	bool clipDistance;
 };
 
 enum class WindowManagementType

@@ -9,6 +9,11 @@
 #include "include/Mesh.iglsl"
 #include "include/Lights.iglsl"
 
+out gl_PerVertex {
+    vec4  gl_Position;
+    float gl_ClipDistance[4];
+};
+
 layout(set = 0, binding = 0) readonly buffer PMBuffer 
 {
     MeshDetails objects[];
@@ -31,16 +36,6 @@ layout(set = 0, binding = 3) readonly buffer RENDBuffer
 layout(set = 0, binding = 4) uniform usamplerBuffer globalSMRenderableStart;
 layout(set = 0, binding = 5) uniform usamplerBuffer globalSMPerRendIndices;
 
-layout(set = 0, binding = 8) readonly buffer GeomDescBuffer
-{
-    GeometryDetails details[];
-} geomDetails;
-
-layout(set = 0, binding = 9) readonly buffer GeomInstBuffer
-{
-    GeometryRenderable geomRenderables[];
-} geomRends;
-
 layout(set = 0, binding = 6) readonly buffer ShadowMap 
 {
     ShadowMapViewProj viewProjs[];
@@ -51,17 +46,36 @@ layout(set = 0, binding = 7) readonly buffer shadowViews
     ShadowMapView views[];
 } sv;
 
+layout(set = 0, binding = 8) readonly buffer GeomDescBuffer
+{
+    GeometryDetails details[];
+} geomDetails;
+
+layout(set = 0, binding = 9) readonly buffer GeomInstBuffer
+{
+    GeometryRenderable geomRenderables[];
+} geomRends;
+
+layout(set = 0, binding = 10) readonly buffer GLBuffer 
+{
+    LightSource objects[];
+} lightBuffer;
+
+layout(set = 0, binding = 11) uniform usamplerBuffer globalLightTypes;
+
 void main() 
 {    
     uint renderableIndex = uint(texelFetch(globalRenderableIndices, gl_DrawID).r);
 
     uint shadowMapBase = uint(texelFetch(globalSMRenderableStart, int(renderableIndex)).r);
 
-    uint shadowViewProjOffset = uint(texelFetch(globalSMPerRendIndices, int(shadowMapBase) + gl_InstanceIndex).r);
+    uint lightIndex = uint(texelFetch(globalSMPerRendIndices, int(shadowMapBase) + gl_InstanceIndex).r);
 
-    ShadowMapViewProj sViewProj = sm.viewProjs[shadowViewProjOffset];
+    uint shadowMapViewIndex = floatBitsToUint(lightBuffer.objects[lightIndex].direction.w);
 
-    ShadowMapView viewSize = sv.views[shadowViewProjOffset];
+    ShadowMapViewProj sViewProj = sm.viewProjs[shadowMapViewIndex];
+
+    ShadowMapView viewSize = sv.views[shadowMapViewIndex];
 
     uint geomInstIndex = rends.renderables[renderableIndex].geomInstIndex;
     
@@ -126,14 +140,14 @@ void main()
             
             vec4 outPos = (MVP * intPos);
 
-            outPos = vec4(outPos.xyz / outPos.w, 1.0);
+            gl_ClipDistance[0] = outPos.w + outPos.x;
+            gl_ClipDistance[1] = outPos.w - outPos.x;
+            gl_ClipDistance[2] = outPos.w + outPos.y;
+            gl_ClipDistance[3] = outPos.w - outPos.y;
 
-            vec4 ndcScale = vec4(0.5, 0.5, 1.0, 1.0);
-            vec4 ndcOffset = vec4(0.5, 0.5, 0.0, 0.0);
+            vec2 s = 0.5 * scale.xy;
 
-            vec4 outPosNormalize = ndcScale * outPos + ndcOffset;
-
-            gl_Position = scale * outPosNormalize + vec4(viewBase, 0.0, 0.0);
+            gl_Position = vec4(s * outPos.xy + (s + viewBase) * outPos.w, scale.z * outPos.z, outPos.w);
         }
     } 
     else 
@@ -181,14 +195,14 @@ void main()
 
             vec4 outPos = (MVP * intPos);
 
-            outPos = vec4(outPos.xyz / outPos.w, 1.0);
+            gl_ClipDistance[0] = outPos.w + outPos.x;
+            gl_ClipDistance[1] = outPos.w - outPos.x;
+            gl_ClipDistance[2] = outPos.w + outPos.y;
+            gl_ClipDistance[3] = outPos.w - outPos.y;
 
-            vec4 ndcScale = vec4(0.5, 0.5, 1.0, 1.0);
-            vec4 ndcOffset = vec4(0.5, 0.5, 0.0, 0.0);
+            vec2 s = 0.5 * scale.xy;
 
-            vec4 outPosNormalize = ndcScale * outPos + ndcOffset;
-
-            gl_Position = scale * outPosNormalize + vec4(viewBase, 0.0, 0.0);
+            gl_Position = vec4(s * outPos.xy + (s + viewBase) * outPos.w, scale.z * outPos.z, outPos.w);
         }
     }
 }

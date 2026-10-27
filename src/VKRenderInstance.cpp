@@ -419,6 +419,8 @@ namespace API
 		features2->features.wideLines =
 			request->requireWideLines ? VK_TRUE : VK_FALSE;
 
+		features2->features.shaderClipDistance = request->clipDistance ? VK_TRUE : VK_FALSE;
+
 		features2->features.logicOp = request->requireLogicOp ? VK_TRUE : VK_FALSE;
 	}
 

@@ -113,7 +113,7 @@ void main()
            lightMeshCount++;
         }
             
-        for (;light<poc; light++)
+        for (;light<dc+poc; light++)
         {
            uint lightIndex = texelFetch(globalLightAllocations, int(lightOffsets+light)).r;
         
@@ -137,7 +137,7 @@ void main()
            }
         }
         
-        for (;light<sc; light++)
+        for (;light<dc+poc+sc; light++)
         {
            uint lightIndex = texelFetch(globalLightAllocations, int(lightOffsets+light)).r;
         
@@ -148,10 +148,10 @@ void main()
         
            if (addToLights)
            {
-              // ObjLightCopies[lightMeshCount] = lightIndex;
+               ObjLightCopies[lightMeshCount] = lightIndex;
 
-              // lightMeshCount++;   
-            } 
+               lightMeshCount++;  
+           } 
         }
 
         if (lightMeshCount == 0)
@@ -174,9 +174,9 @@ void main()
         cmdBuffer.commands[visibleIndex].firstInstance = 0;
         cmdBuffer.commands[visibleIndex].vertexOffset = 0;
 
-        for (uint light = 0; light<lightMeshCount; light++)
+        for (uint lightIndex = 0; lightIndex<lightMeshCount; lightIndex++)
         { 
-            imageStore(globalSMPerRendIndices, int(smStartIndex), uvec4(ObjLightCopies[light], 0, 0, 0));
+            imageStore(globalSMPerRendIndices, int(smStartIndex), uvec4(ObjLightCopies[lightIndex], 0, 0, 0));
             smStartIndex += 1;   
         }
     }

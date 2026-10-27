@@ -373,13 +373,11 @@ Matrix4f CreateProjectionMatrix(float aspect, float n, float f, float angle)
 	float w = cotFov / aspect;
 	float h = cotFov;
 
-	Projection = Identity4f();
-
 	Projection[0][0] = w;
 	Projection[1][1] = -h;
-	Projection[2][2] = -(f + n) / (f - n);
+	Projection[2][2] = -(f) / (f - n);
 	Projection[2][3] = -1.0f;
-	Projection[3][2] = -(2 * f * n) / (f - n);
+	Projection[3][2] = -(f * n) / (f - n);
 	Projection[3][3] = 0.0f;
 
 	return Projection;
@@ -391,11 +389,11 @@ Matrix4f CreateOrthographicMatrix(float left, float right, float bottom, float t
 
 	ortho[0][0] = 2.0f / (right - left);
 	ortho[1][1] = 2.0f / (bottom - top);
-	ortho[2][2] = 1.0f / (n - f);
+	ortho[2][2] = -1.0f / (f - n);
 
 	ortho[0][3] = -(right + left) / (right - left);
-	ortho[1][3] = -(top + bottom) / (bottom - top);
-	ortho[2][3] =  (n) / (n - f);
+	ortho[1][3] = -(top + bottom) / (top - bottom);
+	ortho[2][3] =  (-n) / (f - n);
 
 	return ortho;
 }

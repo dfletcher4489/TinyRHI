@@ -299,8 +299,8 @@ struct GPULightSource
 {
 	Vector4f color; //w is intensity;
 	Vector4f pos; //w is radius for point right
-	Vector4f direction; //w is unused;
-	Vector4f ancillary; //for spot, x, y are cosine theta cutoffs
+	Vector4f direction; //w is shadowmap
+	Vector4f ancillary; //for spot, x, y are cosine theta cutoffs, 
 };
 
 enum class DebugDrawType : uint32_t
@@ -575,7 +575,7 @@ static GPULightSource mainDirectionalLight =
 static GPULightSource mainSpotLight =
 {
 	Vector4f(229.0, 211.0, 191.0, 50.5),
-	Vector4f(-10.0,5.0, 4.0,15.0),
+	Vector4f(-10.0,5.0, 5.0,50.0),
 	Vector4f(0.0, 0.0, -1.0, 0.0),
 	Vector4f(DegToRad(0.0),DegToRad(10.0),0.0,0.0),
 };
@@ -3735,6 +3735,8 @@ int CreateShadowMapManager(int maxShadowMapAssignment, int maxObjCount, int shad
 	shadowMapDescBuilder.BindBufferToShaderResource(&genericMainShadowMapRSContext, &mainShadowMapManager.shadowMapAtlasViewsAlloc, 0, 1, 7);
 	shadowMapDescBuilder.BindBufferToShaderResource(&genericMainShadowMapRSContext, &globalGeometryDescriptionsLocation, 0, 1, 8);
 	shadowMapDescBuilder.BindBufferToShaderResource(&genericMainShadowMapRSContext, &globalGeometryRenderableLocation, 0, 1, 9);
+	shadowMapDescBuilder.BindBufferToShaderResource(&genericMainShadowMapRSContext, &globalLightBuffer, 0, 1, 10);
+	shadowMapDescBuilder.BindBufferView(&genericMainShadowMapRSContext, &globalLightTypesBuffer, 0, 1, 11);
 
 	if (genericMainShadowMapRSContext.contextFailed)
 	{
@@ -4084,6 +4086,7 @@ int ApplicationLoop::InitializeRuntime()
 	request.requireTimelineSemaphores = true;
 	request.shaderStorageTexelBufferArrayDynamicIndexing = true;
 	request.shaderUniformTexelBufferArrayDynamicIndexing = true;
+	request.clipDistance = true;
 
 	LogicalDeviceFeatures deviceFeatures{};
 
@@ -5401,10 +5404,6 @@ int AddLight(GPULightSource lightDesc, LightType type)
 		lightDesc.ancillary.w = cosf(lightDesc.ancillary.y);
 	}
 
-	GlobalRenderer::gRenderInstance.UpdateDriverMemory(&lightDesc, globalLightBuffer, sizeof(GPULightSource), sizeof(GPULightSource) * lightLocation, TransferType::CACHED);
-
-	GlobalRenderer::gRenderInstance.UpdateDriverMemory(&type, globalLightTypesBuffer, sizeof(LightType), sizeof(LightType) * lightLocation, TransferType::CACHED);
-
 	if (type == LightType::DIRECTIONAL)
 	{
 		Vector3f pos;
@@ -5430,24 +5429,90 @@ int AddLight(GPULightSource lightDesc, LightType type)
 
 		Matrix4f viewProj = Upload.proj * Upload.view;
 
-		GlobalRenderer::gRenderInstance.UpdateDriverMemory(&viewProj, mainShadowMapManager.shadowMapViewProjAlloc, sizeof(viewProj), sizeof(viewProj) * lightLocation, TransferType::CACHED);
-
 		ShadowMapView view{};
+
+		uint32_t lightZone = mainShadowMapManager.zoneAlloc;
+
+		mainShadowMapManager.zoneAlloc++;
 
 		int shadowXScale = mainShadowMapManager.atlasWidth / mainShadowMapManager.avgShadowWidth;
 		int shadowYScale = mainShadowMapManager.atlasHeight / mainShadowMapManager.avgShadowHeight;
 
-		view.xOff = (float)(mainShadowMapManager.avgShadowWidth) * (mainShadowMapManager.zoneAlloc % shadowXScale);
+		view.xOff = (float)(mainShadowMapManager.avgShadowWidth) * (lightZone % shadowXScale);
 		view.xOff /= (float)mainShadowMapManager.atlasWidth;
 
-		view.yOff = (float)(mainShadowMapManager.avgShadowHeight) * (mainShadowMapManager.zoneAlloc++ / shadowXScale);
+		view.yOff = (float)(mainShadowMapManager.avgShadowHeight) * (lightZone / shadowXScale);
 		view.yOff /= (float)mainShadowMapManager.atlasHeight;
+
 		view.xScale = 1.0f / (float)shadowXScale;
 		view.yScale = 1.0f / (float)shadowYScale;
 
-		GlobalRenderer::gRenderInstance.UpdateDriverMemory(&view, mainShadowMapManager.shadowMapAtlasViewsAlloc, sizeof(view), sizeof(view) * lightLocation, TransferType::CACHED);
+		GlobalRenderer::gRenderInstance.UpdateDriverMemory(&view, mainShadowMapManager.shadowMapAtlasViewsAlloc, sizeof(view), sizeof(view) * lightZone, TransferType::CACHED);
 
+		GlobalRenderer::gRenderInstance.UpdateDriverMemory(&viewProj, mainShadowMapManager.shadowMapViewProjAlloc, sizeof(viewProj), sizeof(viewProj) * lightZone, TransferType::CACHED);
+
+		lightDesc.direction.w = std::bit_cast<float, uint32_t>(lightZone);
 	}
+
+	if (type == LightType::SPOT)
+	{
+		Vector3f pos, dir;
+
+		float distance = lightDesc.pos.w;
+
+		pos = Vector3f(lightDesc.pos.x, lightDesc.pos.y, lightDesc.pos.z);
+
+		dir = Vector3f(lightDesc.direction.x, lightDesc.direction.y, lightDesc.direction.z);
+
+		LTM ltm{};
+
+		float outer = lightDesc.ancillary.y;           
+		outer = MIN(outer, DegToRad(80.0f));     
+		float fov = 2.0f * outer;
+
+		Vector3f up = fabsf(dir.y) > 0.99f ? Vector3f(1, 0, 0) : Vector3f(0, 1, 0);
+
+		LookAt(&ltm, pos, pos + (dir * distance), up);
+
+		struct
+		{
+			Matrix4f view;
+			Matrix4f proj;
+		} Upload{
+			.view = CreateViewMatrix(&ltm),
+			.proj = CreateProjectionMatrix(1.0f, 1.0, distance, fov)
+		};
+
+		Matrix4f viewProj = Upload.proj * Upload.view;
+
+		ShadowMapView view{};
+
+		uint32_t lightZone = mainShadowMapManager.zoneAlloc;
+
+		mainShadowMapManager.zoneAlloc++;
+
+		int shadowXScale = mainShadowMapManager.atlasWidth / mainShadowMapManager.avgShadowWidth;
+		int shadowYScale = mainShadowMapManager.atlasHeight / mainShadowMapManager.avgShadowHeight;
+
+		view.xOff = (float)(mainShadowMapManager.avgShadowWidth) * (lightZone % shadowXScale);
+		view.xOff /= (float)mainShadowMapManager.atlasWidth;
+
+		view.yOff = (float)(mainShadowMapManager.avgShadowHeight) * (lightZone / shadowXScale);
+		view.yOff /= (float)mainShadowMapManager.atlasHeight;
+
+		view.xScale = 1.0f / (float)shadowXScale;
+		view.yScale = 1.0f / (float)shadowYScale;
+
+		GlobalRenderer::gRenderInstance.UpdateDriverMemory(&view, mainShadowMapManager.shadowMapAtlasViewsAlloc, sizeof(view), sizeof(view) * lightZone, TransferType::CACHED);
+
+		GlobalRenderer::gRenderInstance.UpdateDriverMemory(&viewProj, mainShadowMapManager.shadowMapViewProjAlloc, sizeof(viewProj), sizeof(viewProj) * lightZone, TransferType::CACHED);
+
+		lightDesc.direction.w = std::bit_cast<float, uint32_t>(lightZone);
+	}
+
+	GlobalRenderer::gRenderInstance.UpdateDriverMemory(&lightDesc, globalLightBuffer, sizeof(GPULightSource), sizeof(GPULightSource) * lightLocation, TransferType::CACHED);
+
+	GlobalRenderer::gRenderInstance.UpdateDriverMemory(&type, globalLightTypesBuffer, sizeof(LightType), sizeof(LightType) * lightLocation, TransferType::CACHED);
 
 	return lightLocation;
 }

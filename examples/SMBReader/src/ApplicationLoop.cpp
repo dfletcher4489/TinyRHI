@@ -282,6 +282,8 @@ struct GPULightPartition
 	PipelineHandleIndex directTypeAssignPipeline;
 	PipelineHandleIndex spotTypeCountPipeline;
 	PipelineHandleIndex spotTypeAssignPipeline;
+	PipelineHandleIndex pointTypeCountPipeline;
+	PipelineHandleIndex pointTypeAssignPipeline;
 	PipelineHandleIndex worldSpacePrefixSumPipeline;
 };
 
@@ -3673,6 +3675,86 @@ int CreateLightAssignments(int lightCount, int gridCount)
 		}
 	}
 
+	{
+		ShaderResourceSetBuilder builder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[LIGHTPOINTCOUNT], 0, MAX_FRAMES_IN_FLIGHT);
+
+		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &lightPartition.typeCountAlloc, 0, 1, 0);
+		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &globalLightBuffer, 0, 1, 1);
+
+		std::array offsetIndices = { lightPartition.directLightOffset, lightPartition.pointLightOffset, lightPartition.spotLightOffset };
+
+		builder.BindBufferToShaderResource(&genericLightWorldRSContext, offsetIndices.data(), 0, 3, 2);
+		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &lightPartition.gridCountsAlloc, 0, 1, 3);
+
+		builder.UploadConstant(&genericLightWorldRSContext, &mainGrid, 0);
+
+		if (genericLightWorldRSContext.contextFailed)
+		{
+			genericLightWorldRSContext.contextLogger->ProcessMessage();
+			return -1;
+		}
+
+		ShaderResourceSetHandle descriptorHandle = builder();
+
+		ComputeIntermediaryPipelineInfo pipeinfo = {
+				.x = (partitionCount + 31) / 32,
+				.y = 1,
+				.z = 1,
+				.pipelinename = pipelineHandles[LIGHTPOINTCOUNT],
+				.descCount = 1,
+				.indirectDispatchAllocation = -1,
+				.descriptorsetid = &descriptorHandle
+		};
+
+		lightPartition.pointTypeCountPipeline = GlobalRenderer::gRenderInstance.CreateComputePipelineObject(&pipeinfo);
+
+		if (PipelineHandleIndex() == lightPartition.pointTypeCountPipeline)
+		{
+			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("failed direct type count creation"));
+			return -1;
+		}
+	}
+
+	{
+		ShaderResourceSetBuilder builder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[LIGHTPOINTASSIGN], 0, MAX_FRAMES_IN_FLIGHT);
+
+		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &lightPartition.typeCountAlloc, 0, 1, 0);
+		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &globalLightBuffer, 0, 1, 1);
+		std::array offsetIndices = { lightPartition.directLightOffset, lightPartition.pointLightOffset, lightPartition.spotLightOffset };
+		builder.BindBufferToShaderResource(&genericLightWorldRSContext, offsetIndices.data(), 0, 3, 2);
+		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &lightPartition.gridOffsetsAlloc, 0, 1, 3);
+		builder.BindBufferView(&genericLightWorldRSContext, &lightPartition.worldSpaceDivisionAlloc, 0, 1, 4);
+		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &lightPartition.gridCountsAlloc, 0, 1, 5);
+
+		builder.UploadConstant(&genericLightWorldRSContext, &mainGrid, 0);
+
+		if (genericLightWorldRSContext.contextFailed)
+		{
+			genericLightWorldRSContext.contextLogger->ProcessMessage();
+			return -1;
+		}
+
+		ShaderResourceSetHandle descriptorHandle = builder();
+
+		ComputeIntermediaryPipelineInfo pipeinfo = {
+				.x = (partitionCount + 31) / 32,
+				.y = 1,
+				.z = 1,
+				.pipelinename = pipelineHandles[LIGHTPOINTASSIGN],
+				.descCount = 1,
+				.indirectDispatchAllocation = -1,
+				.descriptorsetid = &descriptorHandle
+		};
+
+		lightPartition.pointTypeAssignPipeline = GlobalRenderer::gRenderInstance.CreateComputePipelineObject(&pipeinfo);
+
+		if (PipelineHandleIndex() == lightPartition.pointTypeAssignPipeline)
+		{
+			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("failed direct type assign creation"));
+			return -1;
+		}
+	}
+
 	return 0;
 }
 
@@ -5404,11 +5486,16 @@ int AddLight(GPULightSource lightDesc, LightType type)
 		lightDesc.ancillary.w = cosf(lightDesc.ancillary.y);
 	}
 
+	uint32_t lightZone = ~0;
+
+	int shadowXScale = mainShadowMapManager.atlasWidth / mainShadowMapManager.avgShadowWidth;
+	int shadowYScale = mainShadowMapManager.atlasHeight / mainShadowMapManager.avgShadowHeight;
+
 	if (type == LightType::DIRECTIONAL)
 	{
 		Vector3f pos;
 
-		float distance = 25.0f;
+		const float distance = 25.0f;
 
 		pos = Vector3f(-lightDesc.direction.x, -lightDesc.direction.y, -lightDesc.direction.z);
 
@@ -5418,25 +5505,16 @@ int AddLight(GPULightSource lightDesc, LightType type)
 
 		LookAt(&ltm, pos, Vector3f(0.0, 0.0, 0.0), Vector3f(0.0, 1.0, 0.0));
 
-		struct
-		{
-			Matrix4f view;
-			Matrix4f proj;
-		} Upload{
-			.view = CreateViewMatrix(&ltm),
-			.proj = CreateOrthographicMatrix(-10.0, 10.0f, -10.0f, 10.0f, 1.0f, 100.0f)
-		};
-
-		Matrix4f viewProj = Upload.proj * Upload.view;
+		Matrix4f viewM = CreateViewMatrix(&ltm);
+		Matrix4f projM = CreateOrthographicMatrix(-10.0, 10.0f, -10.0f, 10.0f, 1.0f, distance*4.0f);
+	
+		Matrix4f viewProj = projM * viewM;
 
 		ShadowMapView view{};
 
-		uint32_t lightZone = mainShadowMapManager.zoneAlloc;
+		lightZone = mainShadowMapManager.zoneAlloc;
 
 		mainShadowMapManager.zoneAlloc++;
-
-		int shadowXScale = mainShadowMapManager.atlasWidth / mainShadowMapManager.avgShadowWidth;
-		int shadowYScale = mainShadowMapManager.atlasHeight / mainShadowMapManager.avgShadowHeight;
 
 		view.xOff = (float)(mainShadowMapManager.avgShadowWidth) * (lightZone % shadowXScale);
 		view.xOff /= (float)mainShadowMapManager.atlasWidth;
@@ -5450,11 +5528,9 @@ int AddLight(GPULightSource lightDesc, LightType type)
 		GlobalRenderer::gRenderInstance.UpdateDriverMemory(&view, mainShadowMapManager.shadowMapAtlasViewsAlloc, sizeof(view), sizeof(view) * lightZone, TransferType::CACHED);
 
 		GlobalRenderer::gRenderInstance.UpdateDriverMemory(&viewProj, mainShadowMapManager.shadowMapViewProjAlloc, sizeof(viewProj), sizeof(viewProj) * lightZone, TransferType::CACHED);
-
-		lightDesc.direction.w = std::bit_cast<float, uint32_t>(lightZone);
 	}
 
-	if (type == LightType::SPOT)
+	else if (type == LightType::SPOT)
 	{
 		Vector3f pos, dir;
 
@@ -5472,27 +5548,18 @@ int AddLight(GPULightSource lightDesc, LightType type)
 
 		Vector3f up = fabsf(dir.y) > 0.99f ? Vector3f(1, 0, 0) : Vector3f(0, 1, 0);
 
-		LookAt(&ltm, pos, pos + (dir * distance), up);
+		LookAt(&ltm, pos, pos + dir, up);
 
-		struct
-		{
-			Matrix4f view;
-			Matrix4f proj;
-		} Upload{
-			.view = CreateViewMatrix(&ltm),
-			.proj = CreateProjectionMatrix(1.0f, 1.0, distance, fov)
-		};
+		Matrix4f viewM = CreateViewMatrix(&ltm);
+		Matrix4f projM = CreateProjectionMatrix(1.0f, 1.0, distance, fov);
 
-		Matrix4f viewProj = Upload.proj * Upload.view;
+		Matrix4f viewProj = projM * viewM;
 
 		ShadowMapView view{};
 
-		uint32_t lightZone = mainShadowMapManager.zoneAlloc;
+		lightZone = mainShadowMapManager.zoneAlloc;
 
 		mainShadowMapManager.zoneAlloc++;
-
-		int shadowXScale = mainShadowMapManager.atlasWidth / mainShadowMapManager.avgShadowWidth;
-		int shadowYScale = mainShadowMapManager.atlasHeight / mainShadowMapManager.avgShadowHeight;
 
 		view.xOff = (float)(mainShadowMapManager.avgShadowWidth) * (lightZone % shadowXScale);
 		view.xOff /= (float)mainShadowMapManager.atlasWidth;
@@ -5506,9 +5573,71 @@ int AddLight(GPULightSource lightDesc, LightType type)
 		GlobalRenderer::gRenderInstance.UpdateDriverMemory(&view, mainShadowMapManager.shadowMapAtlasViewsAlloc, sizeof(view), sizeof(view) * lightZone, TransferType::CACHED);
 
 		GlobalRenderer::gRenderInstance.UpdateDriverMemory(&viewProj, mainShadowMapManager.shadowMapViewProjAlloc, sizeof(viewProj), sizeof(viewProj) * lightZone, TransferType::CACHED);
-
-		lightDesc.direction.w = std::bit_cast<float, uint32_t>(lightZone);
 	}
+	else if (type == LightType::POINT)
+	{
+		Vector3f pos;
+
+		float distance = lightDesc.pos.w;
+
+		pos = Vector3f(lightDesc.pos.x, lightDesc.pos.y, lightDesc.pos.z);
+
+		float fov = DegToRad(45.0f);
+
+		Matrix4f projM = CreateProjectionMatrix(1.0f, 1.0, distance, fov);
+
+		ShadowMapView view{};
+
+		view.xScale = 1.0f / (float)shadowXScale;
+		view.yScale = 1.0f / (float)shadowYScale;
+
+		lightZone = mainShadowMapManager.zoneAlloc;
+
+		mainShadowMapManager.zoneAlloc+=6;
+
+		Vector3f dirs[6] =
+		{
+			Vector3f(1.0, 0.0, 0.0),
+			Vector3f(-1.0, 0.0, 0.0),
+			Vector3f(0.0, 1.0, 0.0),
+			Vector3f(0.0, -1.0, 0.0),
+			Vector3f(0.0, 0.0, 1.0),
+			Vector3f(0.0, 0.0, -1.0),
+		};
+
+		Vector3f ups[6] =
+		{
+			Vector3f(0.0, 1.0, 0.0),
+			Vector3f(0.0, 1.0, 0.0),
+			Vector3f(1.0, 0.0, 0.0),
+			Vector3f(1.0, 0.0, 0.0),
+			Vector3f(0.0, 1.0, 0.0),
+			Vector3f(0.0, 1.0, 0.0),
+		};
+
+		for (int i = 0; i < 6; i++)
+		{
+			view.xOff = (float)(mainShadowMapManager.avgShadowWidth) * ((lightZone+i) % shadowXScale);
+			view.xOff /= (float)mainShadowMapManager.atlasWidth;
+
+			view.yOff = (float)(mainShadowMapManager.avgShadowHeight) * ((lightZone + i) / shadowXScale);
+			view.yOff /= (float)mainShadowMapManager.atlasHeight;
+
+			LTM ltm{};
+
+			LookAt(&ltm, pos, pos + dirs[i], ups[i]);
+
+			Matrix4f viewM = CreateViewMatrix(&ltm);
+
+			Matrix4f viewProj = projM * viewM;
+
+			GlobalRenderer::gRenderInstance.UpdateDriverMemory(&view, mainShadowMapManager.shadowMapAtlasViewsAlloc, sizeof(view), sizeof(view) * (lightZone + i), TransferType::CACHED);
+
+			GlobalRenderer::gRenderInstance.UpdateDriverMemory(&viewProj, mainShadowMapManager.shadowMapViewProjAlloc, sizeof(viewProj), sizeof(viewProj) * (lightZone + i), TransferType::CACHED);
+		}
+	}
+
+	lightDesc.direction.w = std::bit_cast<float, uint32_t>(lightZone);
 
 	GlobalRenderer::gRenderInstance.UpdateDriverMemory(&lightDesc, globalLightBuffer, sizeof(GPULightSource), sizeof(GPULightSource) * lightLocation, TransferType::CACHED);
 

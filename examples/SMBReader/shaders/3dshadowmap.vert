@@ -69,13 +69,17 @@ void main()
 
     uint shadowMapBase = uint(texelFetch(globalSMRenderableStart, int(renderableIndex)).r);
 
-    uint lightIndex = uint(texelFetch(globalSMPerRendIndices, int(shadowMapBase) + gl_InstanceIndex).r);
+    uint lightIndexPtrVal = uint(texelFetch(globalSMPerRendIndices, int(shadowMapBase) + gl_InstanceIndex).r);
+
+    uint lightIndex = (lightIndexPtrVal & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
+
+    uint viewSpecificIndex = (lightIndexPtrVal >> LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) & LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_MASK;
 
     uint shadowMapViewIndex = floatBitsToUint(lightBuffer.objects[lightIndex].direction.w);
 
-    ShadowMapViewProj sViewProj = sm.viewProjs[shadowMapViewIndex];
+    ShadowMapViewProj sViewProj = sm.viewProjs[shadowMapViewIndex + viewSpecificIndex];
 
-    ShadowMapView viewSize = sv.views[shadowMapViewIndex];
+    ShadowMapView viewSize = sv.views[shadowMapViewIndex + viewSpecificIndex];
 
     uint geomInstIndex = rends.renderables[renderableIndex].geomInstIndex;
     

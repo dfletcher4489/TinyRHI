@@ -83,10 +83,31 @@ layout(set = 2, binding = 12) uniform usamplerBuffer globalLightOffsets;
 layout(set = 2, binding = 13) uniform usamplerBuffer globalLightCounts;
 layout(set = 2, binding = 14) uniform usamplerBuffer globalLightAllocations;
 
-float ShadowContribution(uint lightViewIndex, vec3 normal, vec3 lightingDir)
+uint GetPointCubeFace(vec3 v) {
+    vec3 vAbs = abs(v);
+
+    uint faceIndex = 0;
+ 
+    if (vAbs.z >= vAbs.x && vAbs.z >= vAbs.y) 
+    {
+        faceIndex = v.z < 0.0 ? 5 : 4;
+    } 
+    else if (vAbs.y >= vAbs.x) 
+    {
+        faceIndex = v.y < 0.0 ? 3 : 2;
+    } 
+    else 
+    {
+        faceIndex = v.x < 0.0 ? 1 : 0;
+    }
+    
+    return faceIndex;
+}
+
+float ShadowContribution(uvec2 lightViewIndex, vec3 normal, vec3 lightingDir)
 {
-    ShadowMapViewProj sViewProj = sm.viewProjs[lightViewIndex];
-    ShadowMapView sViewRange = sv.views[lightViewIndex];
+    ShadowMapViewProj sViewProj = sm.viewProjs[lightViewIndex.x + lightViewIndex.y];
+    ShadowMapView sViewRange = sv.views[lightViewIndex.x + lightViewIndex.y];
 
     vec4 smTransCoords = sViewProj.shadowMapViewProj * worldPosition;
 
@@ -171,7 +192,7 @@ vec4 DoLights(vec3 normal, vec4 color, uint renderableIndex, vec3 specularBase, 
 
             specFactor = (diffuse > 0.0) ? pow(specFactor, shininess) : 0.0;
 
-            float shadowColor = ShadowContribution(lightViewIndex, normal, lightingDir);
+            float shadowColor = ShadowContribution(uvec2(lightViewIndex, 0), normal, lightingDir);
 
             DiffuseColor += lightColor * diffuse * diffuseIntensity * shadowColor;
 
@@ -181,15 +202,15 @@ vec4 DoLights(vec3 normal, vec4 color, uint renderableIndex, vec3 specularBase, 
         }
         else if (lType == LIGHT_TYPE_POINT)
         {
-            vec3 lightDir = light.pos.xyz - worldPosition.xyz;
+            vec3 lightingDir = light.pos.xyz - worldPosition.xyz;
 
-            float distance = length(lightDir);
+            float distance = length(lightingDir);
 
-            lightDir = normalize(lightDir);
+            lightingDir = normalize(lightingDir);
 
-            float diffuse = max(dot(normal, lightDir), 0.0);
+            float diffuse = max(dot(normal, lightingDir), 0.0);
 
-            vec3 H = normalize(lightDir + viewPosToWorldPos);
+            vec3 H = normalize(lightingDir + viewPosToWorldPos);
 
             float attenuation = (1.0/(.01 + (.25 * distance) + (.67 * distance * distance)));
 
@@ -197,11 +218,13 @@ vec4 DoLights(vec3 normal, vec4 color, uint renderableIndex, vec3 specularBase, 
 
             specFactor = (diffuse > 0.0) ? pow(specFactor, shininess) : 0.0;
 
+            float shadowColor = ShadowContribution(uvec2(lightViewIndex, GetPointCubeFace(worldPosition.xyz)), normal, lightingDir);
+
             AmbientColor += light.ancillary.xyz * attenuation;
 
-            DiffuseColor += lightColor * diffuse * diffuseIntensity * attenuation;
+            DiffuseColor += lightColor * diffuse * diffuseIntensity * attenuation * shadowColor;
 
-            SpecularColor += lightColor * specularBase * specFactor * specularIntensity * attenuation;
+            SpecularColor += lightColor * specularBase * specFactor * specularIntensity * attenuation * shadowColor;
         }
         else if (lType == LIGHT_TYPE_SPOT)
         {
@@ -227,7 +250,7 @@ vec4 DoLights(vec3 normal, vec4 color, uint renderableIndex, vec3 specularBase, 
 
             specFactor = (diffuse > 0.0) ? pow(specFactor, shininess) : 0.0;
 
-            float shadowColor = ShadowContribution(lightViewIndex, normal, lightingDir);
+            float shadowColor = ShadowContribution(uvec2(lightViewIndex, 0), normal, lightingDir);
 
             DiffuseColor += lightColor * diffuse * diffuseIntensity * spotFactor * (1.0/d2) * shadowColor;
 

@@ -56,6 +56,22 @@ layout(set = 0, binding = 15) writeonly buffer Commands
 
 shared uint allocIndex;
 
+const vec3 planeNormals[6] = vec3[](
+                vec3(1.0, 0.0, 0.0),
+                vec3(-1.0, 0.0, 0.0),
+                vec3(0.0, 1.0, 0.0),
+                vec3(0.0, -1.0, 0.0),
+                vec3(0.0, 0.0, 1.0),
+                vec3(0.0, 0.0, -1.0)
+           );
+
+const vec3 antiPlaneNormals[3] = vec3[](
+                vec3(0.0, 1.0, 1.0),
+                vec3(1.0, 0.0, 1.0),
+                vec3(1.0, 1.0, 0.0)
+           );
+
+
 layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
 
 void main()
@@ -100,7 +116,7 @@ void main()
 
         uint lightStage = 0;
 
-        uint ObjLightCopies[4]; 
+        uint ObjLightCopies[8]; 
 
         uint light = 0;
 
@@ -122,18 +138,77 @@ void main()
            float lR = posLoad.w;
         
            vec3 posTest = posLoad.xyz;
+
+           float perspectiveAngle = lightBuffer.objects[lightIndex].ancillary.w;
         
-           posTest = sphereWPos - posTest;
+           vec3 pointToPointTest = sphereWPos - posTest;
         
            float totalRadius = lR + r;
         
-           float d = dot(posTest, posTest);
-        
+           float d = dot(pointToPointTest, pointToPointTest);
+
            if (d <= totalRadius * totalRadius)
            {
-             // ObjLightCopies[lightMeshCount] = lightIndex;
+                vec3 aabbCorner1 = (vec3(0.0, -1.0, -1.0) * lR * perspectiveAngle) + posTest;
+                vec3 aabbCorner2 = (vec3(1.0, 1.0, 1.0) * lR * perspectiveAngle) + posTest;
 
-             // lightMeshCount++;
+                if (SphereIntersectsAABB(sphereWPos, r, aabbCorner1, aabbCorner2))
+                {
+                    ObjLightCopies[lightMeshCount] = (0 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (lightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
+
+                    lightMeshCount++;
+                }
+
+                aabbCorner1 = (vec3(-1.0, -1.0, -1.0) * lR * perspectiveAngle) + posTest;
+                aabbCorner2 = (vec3(0.0, 1.0, 1.0) * lR * perspectiveAngle) + posTest;
+
+                if (SphereIntersectsAABB(sphereWPos, r, aabbCorner1, aabbCorner2))
+                {
+                    ObjLightCopies[lightMeshCount] = (1 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (lightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
+
+                    lightMeshCount++;
+                }
+
+                 aabbCorner1 = (vec3(-1.0, 0.0, -1.0) * lR * perspectiveAngle) + posTest;
+                 aabbCorner2 = (vec3(1.0, 1.0, 1.0) * lR * perspectiveAngle) + posTest;
+
+                if (SphereIntersectsAABB(sphereWPos, r, aabbCorner1, aabbCorner2))
+                {
+                    ObjLightCopies[lightMeshCount] = (2 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (lightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
+
+                    lightMeshCount++;
+                }
+
+                aabbCorner1 = (vec3(-1.0, -1.0, -1.0) * lR * perspectiveAngle) + posTest;
+                aabbCorner2 = (vec3(1.0, 0.0, 1.0) * lR * perspectiveAngle) + posTest;
+
+                if (SphereIntersectsAABB(sphereWPos, r, aabbCorner1, aabbCorner2))
+                {
+                    ObjLightCopies[lightMeshCount] = (3 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (lightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
+
+                    lightMeshCount++;
+                }
+
+                aabbCorner1 = (vec3(-1.0, -1.0, 0.0) * lR * perspectiveAngle) + posTest;
+                aabbCorner2 = (vec3(1.0, 1.0, 1.0) * lR * perspectiveAngle) + posTest;
+
+                if (SphereIntersectsAABB(sphereWPos, r, aabbCorner1, aabbCorner2))
+                {
+                    ObjLightCopies[lightMeshCount] = (4 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (lightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
+
+                    lightMeshCount++;
+                }
+
+                
+                aabbCorner1 = (vec3(-1.0, -1.0, -1.0) * lR * perspectiveAngle) + posTest;
+                aabbCorner2 = (vec3(1.0, 1.0, 0.0) * lR * perspectiveAngle) + posTest;
+
+                if (SphereIntersectsAABB(sphereWPos, r, aabbCorner1, aabbCorner2))
+                {
+                    ObjLightCopies[lightMeshCount] = (5 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (lightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
+
+                    lightMeshCount++;
+                }
            }
         }
         

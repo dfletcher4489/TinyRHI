@@ -302,7 +302,7 @@ struct GPULightSource
 	Vector4f color; //w is intensity;
 	Vector4f pos; //w is radius for point right
 	Vector4f direction; //w is shadowmap
-	Vector4f ancillary; //for spot, x, y are cosine theta cutoffs, 
+	Vector4f ancillary; //for spot, x, y are cosine theta cutoffs, for point x is fov for perspective
 };
 
 enum class DebugDrawType : uint32_t
@@ -560,10 +560,10 @@ static PipelineHandleIndex debugClassificationHandle;
 static PipelineHandleIndex debugSphereHandle;
 
 static GPULightSource mainPointLight = { 
-	.color = Vector4f(229, 211, 191, 130.0), 
-	.pos = Vector4f(0.0f, 5.0f, 0.0f, 15.0f),
+	.color = Vector4f(229, 211, 191, 15.0), 
+	.pos = Vector4f(-2.0f, 2.0f, 0.0f, 15.5f),
 	.direction= Vector4f(0.54,0.75,0.38,0.0), 
-	.ancillary= Vector4f(0.04,0.07,0.03,0.0) 
+	.ancillary= Vector4f(0.0,0.0,0.0,DegToRad(45))
 };
 
 static GPULightSource mainDirectionalLight =
@@ -1208,9 +1208,11 @@ void ApplicationLoop::Execute()
 				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, lightPartition.lightTypeCountPipeline);
 				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, lightPartition.directTypeCountPipeline);
 				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, lightPartition.spotTypeCountPipeline);
+				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, lightPartition.pointTypeCountPipeline);
 				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, lightPartition.worldSpacePrefixSumPipeline);
 				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, lightPartition.directTypeAssignPipeline);
 				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, lightPartition.spotTypeAssignPipeline);
+				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, lightPartition.pointTypeAssignPipeline);
 
 				//GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, lightAssignment.prefixSumPipeline);
 
@@ -1399,6 +1401,9 @@ void ApplicationLoop::Execute()
 			//GlobalRenderer::gRenderInstance.ReadData(lightPartition.gridCountsAlloc, arr2.data(), sizeof(arr), 0);
 			//GlobalRenderer::gRenderInstance.ReadData(lightPartition.worldSpaceDivisionAlloc, arr2.data(), sizeof(arr), 0);
 			
+
+			//GlobalRenderer::gRenderInstance.ReadData(mainShadowMapManager.shadowMapAssignmentsAlloc, arr.data(), sizeof(arr), 0);
+			//GlobalRenderer::gRenderInstance.ReadData(mainShadowMapManager.shadowMapObjectIDsAlloc, arr.data(), sizeof(arr), 0);
 
 			fps();
 
@@ -3776,10 +3781,10 @@ int CreateShadowMapManager(int maxShadowMapAssignment, int maxObjCount, int shad
 	mainShadowMapManager.shadowMapOffsetsAllocSize =  maxObjCount;
 	mainShadowMapManager.shadowMapOffsetsAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(uint32_t), mainShadowMapManager.shadowMapOffsetsAllocSize, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::R32_UINT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, -1, &mainDeviceAllocator);
 	mainShadowMapManager.shadowMapAssignmentsAllocSize = maxShadowMapAssignment * maxObjCount;
-	mainShadowMapManager.shadowMapAssignmentsAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(uint32_t), mainShadowMapManager.shadowMapAssignmentsAllocSize, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::R32_UINT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, -1, &mainDeviceAllocator);
+	mainShadowMapManager.shadowMapAssignmentsAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(uint32_t), mainShadowMapManager.shadowMapAssignmentsAllocSize, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::R32_UINT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
 
 	mainShadowMapManager.shadowMapObjectIDsAllocSize = maxObjCount;
-	mainShadowMapManager.shadowMapObjectIDsAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(uint32_t), mainShadowMapManager.shadowMapObjectIDsAllocSize, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::R32_UINT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, -1, &mainDeviceAllocator);
+	mainShadowMapManager.shadowMapObjectIDsAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(uint32_t), mainShadowMapManager.shadowMapObjectIDsAllocSize, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::R32_UINT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
 	mainShadowMapManager.shadowMapObjectCountAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(uint32_t), 2, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainDeviceAllocator);
 	mainShadowMapManager.shadowMapIndirectBufferAllocSize = maxObjCount;
 	mainShadowMapManager.shadowMapIndirectBufferAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, GetDriverIndexedIndirectDrawCommandSize(), mainShadowMapManager.shadowMapIndirectBufferAllocSize, GetDriverIndexedIndirectDrawCommandAlign(), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainDeviceAllocator); ;
@@ -4584,7 +4589,8 @@ int ApplicationLoop::InitializeRuntime()
 	CreateUIText(&mainRightContainer, globalUITestText2, sizeof(globalUITestText2) - 1);
 
 	AddLight(mainSpotLight, LightType::SPOT);
-	AddLight(mainDirectionalLight, LightType::DIRECTIONAL);
+	//AddLight(mainDirectionalLight, LightType::DIRECTIONAL);
+	AddLight(mainPointLight, LightType::POINT);
 	
 	c.CamLookAt(Vector3f(25.0 * -mainDirectionalLight.direction.x, 25.0 * -mainDirectionalLight.direction.y,  25.0 * -mainDirectionalLight.direction.z), Vector3f(0.0f, 0.0f, 0.0f), Vector3f(0.0f, 1.0f, 0.0f));
 
@@ -5480,12 +5486,6 @@ int AddLight(GPULightSource lightDesc, LightType type)
 
 	int lightLocation = globalLightCount++;
 
-	if (type == LightType::SPOT)
-	{
-		lightDesc.ancillary.z = cosf(lightDesc.ancillary.x);
-		lightDesc.ancillary.w = cosf(lightDesc.ancillary.y);
-	}
-
 	uint32_t lightZone = ~0;
 
 	int shadowXScale = mainShadowMapManager.atlasWidth / mainShadowMapManager.avgShadowWidth;
@@ -5532,6 +5532,9 @@ int AddLight(GPULightSource lightDesc, LightType type)
 
 	else if (type == LightType::SPOT)
 	{
+		lightDesc.ancillary.z = cosf(lightDesc.ancillary.x);
+		lightDesc.ancillary.w = cosf(lightDesc.ancillary.y);
+
 		Vector3f pos, dir;
 
 		float distance = lightDesc.pos.w;
@@ -5578,13 +5581,17 @@ int AddLight(GPULightSource lightDesc, LightType type)
 	{
 		Vector3f pos;
 
+		
+
 		float distance = lightDesc.pos.w;
 
 		pos = Vector3f(lightDesc.pos.x, lightDesc.pos.y, lightDesc.pos.z);
 
-		float fov = DegToRad(45.0f);
+		float fov = lightDesc.ancillary.w;
 
 		Matrix4f projM = CreateProjectionMatrix(1.0f, 1.0, distance, fov);
+
+		lightDesc.ancillary.w = cosf(lightDesc.ancillary.w);
 
 		ShadowMapView view{};
 

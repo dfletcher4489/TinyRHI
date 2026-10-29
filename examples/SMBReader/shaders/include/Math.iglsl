@@ -1,4 +1,8 @@
 
+#define TWOPI 6.283185307179586476925286766559
+#define PI 3.1415926535897932384626433832795
+#define PIHALF 1.5707963267948966192313216916398
+#define PIDIV4 0.78539816339744830961566084581988
 
 struct AABB
 {
@@ -40,6 +44,13 @@ Plane TransformPlane(mat4 transform, Plane inputPlane)
     vec3 tNormal = normalize(mat3(transform) * inputPlane.planeEquation.xyz);
     vec4 tPip = transform * inputPlane.pointInPlane;
     return ComputePlane(tNormal, tPip);
+}
+
+bool TestSphereAgainstPlane(vec3 spherePos, float r, Plane plane)
+{
+    float dist = dot(spherePos, plane.planeEquation.xyz) - plane.planeEquation.w;
+
+    return dist <= r;
 }
 
 vec3 FindVert(vec4 lerpStart, vec4 lerpEnd, vec3 normal)

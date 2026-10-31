@@ -561,9 +561,9 @@ static PipelineHandleIndex debugSphereHandle;
 
 static GPULightSource mainPointLight = { 
 	.color = Vector4f(229, 211, 191, 15.0), 
-	.pos = Vector4f(-2.0f, 2.0f, 0.0f, 15.5f),
+	.pos = Vector4f(-1.0f, 2.0f, 1.0f, 20.5f),
 	.direction= Vector4f(0.54,0.75,0.38,0.0), 
-	.ancillary= Vector4f(0.0,0.0,0.0,DegToRad(45))
+	.ancillary= Vector4f(0.0,0.0,0.0,DegToRad(90))
 };
 
 static GPULightSource mainDirectionalLight =
@@ -1213,10 +1213,6 @@ void ApplicationLoop::Execute()
 				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, lightPartition.directTypeAssignPipeline);
 				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, lightPartition.spotTypeAssignPipeline);
 				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, lightPartition.pointTypeAssignPipeline);
-
-				//GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, lightAssignment.prefixSumPipeline);
-
-				//GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, lightAssignment.postWorldSpaceDivisionPipeline);
 
 				updateLights--;
 			
@@ -5581,8 +5577,6 @@ int AddLight(GPULightSource lightDesc, LightType type)
 	{
 		Vector3f pos;
 
-		
-
 		float distance = lightDesc.pos.w;
 
 		pos = Vector3f(lightDesc.pos.x, lightDesc.pos.y, lightDesc.pos.z);
@@ -5590,8 +5584,6 @@ int AddLight(GPULightSource lightDesc, LightType type)
 		float fov = lightDesc.ancillary.w;
 
 		Matrix4f projM = CreateProjectionMatrix(1.0f, 1.0, distance, fov);
-
-		lightDesc.ancillary.w = cosf(lightDesc.ancillary.w);
 
 		ShadowMapView view{};
 

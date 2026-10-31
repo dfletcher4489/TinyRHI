@@ -218,7 +218,7 @@ vec4 DoLights(vec3 normal, vec4 color, uint renderableIndex, vec3 specularBase, 
 
             specFactor = (diffuse > 0.0) ? pow(specFactor, shininess) : 0.0;
 
-            float shadowColor = ShadowContribution(uvec2(lightViewIndex, GetPointCubeFace(worldPosition.xyz)), normal, lightingDir);
+            float shadowColor = ShadowContribution(uvec2(lightViewIndex, GetPointCubeFace(worldPosition.xyz - light.pos.xyz)), normal, lightingDir);
 
             AmbientColor += light.ancillary.xyz * attenuation;
 

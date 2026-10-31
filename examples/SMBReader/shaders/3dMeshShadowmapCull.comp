@@ -56,23 +56,18 @@ layout(set = 0, binding = 15) writeonly buffer Commands
 
 shared uint allocIndex;
 
-const vec3 planeNormals[6] = vec3[](
-                vec3(1.0, 0.0, 0.0),
-                vec3(-1.0, 0.0, 0.0),
-                vec3(0.0, 1.0, 0.0),
-                vec3(0.0, -1.0, 0.0),
-                vec3(0.0, 0.0, 1.0),
-                vec3(0.0, 0.0, -1.0)
-           );
-
-const vec3 antiPlaneNormals[3] = vec3[](
-                vec3(0.0, 1.0, 1.0),
-                vec3(1.0, 0.0, 1.0),
-                vec3(1.0, 1.0, 0.0)
-           );
-
-
 layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+bool SphereVsFaceFrustum(vec3 distVector, float objRadius, vec3 forward, vec3 up, vec3 right, float angle)
+{
+    float df = dot(distVector, forward);
+    float du = dot(distVector, up);
+    float dr = dot(distVector, right);
+
+    float k = objRadius * sqrt(1.0 + (angle * angle));
+
+    return (angle * df + du >= -k) && (angle * df - du >= -k) && (angle * df + dr >= -k) && (angle * df - dr >= -k);
+}
 
 void main()
 {
@@ -149,61 +144,44 @@ void main()
 
            if (d <= totalRadius * totalRadius)
            {
-                vec3 aabbCorner1 = (vec3(0.0, -1.0, -1.0) * lR * perspectiveAngle) + posTest;
-                vec3 aabbCorner2 = (vec3(1.0, 1.0, 1.0) * lR * perspectiveAngle) + posTest;
+                float t = tan(perspectiveAngle * 0.5);
 
-                if (SphereIntersectsAABB(sphereWPos, r, aabbCorner1, aabbCorner2))
+                if (SphereVsFaceFrustum(pointToPointTest, r, vec3(1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0), t))
                 {
                     ObjLightCopies[lightMeshCount] = (0 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (lightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
 
                     lightMeshCount++;
                 }
-
-                aabbCorner1 = (vec3(-1.0, -1.0, -1.0) * lR * perspectiveAngle) + posTest;
-                aabbCorner2 = (vec3(0.0, 1.0, 1.0) * lR * perspectiveAngle) + posTest;
-
-                if (SphereIntersectsAABB(sphereWPos, r, aabbCorner1, aabbCorner2))
+                
+                if (SphereVsFaceFrustum(pointToPointTest, r, vec3(-1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0), t))
                 {
                     ObjLightCopies[lightMeshCount] = (1 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (lightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
 
                     lightMeshCount++;
                 }
 
-                 aabbCorner1 = (vec3(-1.0, 0.0, -1.0) * lR * perspectiveAngle) + posTest;
-                 aabbCorner2 = (vec3(1.0, 1.0, 1.0) * lR * perspectiveAngle) + posTest;
-
-                if (SphereIntersectsAABB(sphereWPos, r, aabbCorner1, aabbCorner2))
+                if (SphereVsFaceFrustum(pointToPointTest, r, vec3(0.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), t))
                 {
                     ObjLightCopies[lightMeshCount] = (2 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (lightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
 
                     lightMeshCount++;
                 }
 
-                aabbCorner1 = (vec3(-1.0, -1.0, -1.0) * lR * perspectiveAngle) + posTest;
-                aabbCorner2 = (vec3(1.0, 0.0, 1.0) * lR * perspectiveAngle) + posTest;
-
-                if (SphereIntersectsAABB(sphereWPos, r, aabbCorner1, aabbCorner2))
+                if (SphereVsFaceFrustum(pointToPointTest, r, vec3(0.0, -1.0, 0.0), vec3(1.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), t))
                 {
                     ObjLightCopies[lightMeshCount] = (3 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (lightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
 
                     lightMeshCount++;
                 }
 
-                aabbCorner1 = (vec3(-1.0, -1.0, 0.0) * lR * perspectiveAngle) + posTest;
-                aabbCorner2 = (vec3(1.0, 1.0, 1.0) * lR * perspectiveAngle) + posTest;
-
-                if (SphereIntersectsAABB(sphereWPos, r, aabbCorner1, aabbCorner2))
+                if (SphereVsFaceFrustum(pointToPointTest, r, vec3(0.0, 0.0, 1.0), vec3(0.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), t))
                 {
                     ObjLightCopies[lightMeshCount] = (4 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (lightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
 
                     lightMeshCount++;
                 }
 
-                
-                aabbCorner1 = (vec3(-1.0, -1.0, -1.0) * lR * perspectiveAngle) + posTest;
-                aabbCorner2 = (vec3(1.0, 1.0, 0.0) * lR * perspectiveAngle) + posTest;
-
-                if (SphereIntersectsAABB(sphereWPos, r, aabbCorner1, aabbCorner2))
+                if (SphereVsFaceFrustum(pointToPointTest, r, vec3(0.0, 0.0, -1.0), vec3(0.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), t))
                 {
                     ObjLightCopies[lightMeshCount] = (5 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (lightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
 

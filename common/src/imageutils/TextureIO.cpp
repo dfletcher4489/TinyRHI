@@ -1,4 +1,5 @@
 #include "imageutils/TextureIO.h"
+#include "imageutils/DXTCompression.h"
 #include <string.h>
 
 void ReadBMPData(char* _fileData, int dataPointer, TextureDetails* details)
@@ -160,6 +161,24 @@ int ReadDDSDetails(char* _fileData, TextureDetails* details)
 	if (details->type == ImageFormat::DXT1 || details->type == ImageFormat::DXT3) 
 	{
 		details->dataSize = header.pitchOrLinearSize;
+
+		uint32_t originalWidth = header.width;
+		uint32_t originalHeight = header.height;
+
+		for (int i = 0; i < header.mipMapCount; i++)
+		{
+			originalHeight >>= 1;
+			originalWidth >>= 1;
+
+			if (details->type == ImageFormat::DXT1)
+			{
+				details->dataSize += DXTCompression::DXT1CompressedSize(originalWidth, originalHeight);
+			}
+			else if (details->type == ImageFormat::DXT3)
+			{
+				details->dataSize += DXTCompression::DXT3CompressedSize(originalWidth, originalHeight);
+			}
+		}
 	}
 	else if (details->type == ImageFormat::R8G8B8A8_UNORM || details->type == ImageFormat::B8G8R8A8_UNORM)
 	{

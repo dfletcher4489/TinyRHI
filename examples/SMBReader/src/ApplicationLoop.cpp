@@ -2096,17 +2096,17 @@ void CreateCrateObject()
 
 	sphere.sphere = Vector4f(0.0, 0.0, 0.0, 1.5f);
 
-	StringView blendname = STRING_VIEW_FROM_LITERAL("blendmap.bmp");
+	StringView blendname = STRING_VIEW_FROM_LITERAL("blendmap.dds");
 
 	StringView skyname = STRING_VIEW_FROM_LITERAL("sky.dds");
 
-	StringView normalmapname = STRING_VIEW_FROM_LITERAL("WNN2.bmp");
+	StringView normalmapname = STRING_VIEW_FROM_LITERAL("wnn2.dds");
 
-	StringView albedomapname = STRING_VIEW_FROM_LITERAL("WNN.bmp");
+	StringView albedomapname = STRING_VIEW_FROM_LITERAL("WNN.dds");
 
-	int albedoMapped = Read2DImage(&albedomapname, 1, BMP);
-	int normalMapped = Read2DImage(&normalmapname, 1, BMP);
-	int blendMapped = Read2DImage(&blendname, 1, BMP);
+	int albedoMapped = Read2DImage(&albedomapname, 1, DDS);
+	int normalMapped = Read2DImage(&normalmapname, 1, DDS);
+	int blendMapped = Read2DImage(&blendname, 1, DDS);
 	int skymapped = Read2DImage(&skyname, 1, DDS);
 
 	if (-1 == skymapped || -1 == albedoMapped || -1 == normalMapped  || -1 == blendMapped)

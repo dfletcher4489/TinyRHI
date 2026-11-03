@@ -2098,7 +2098,7 @@ void CreateCrateObject()
 
 	StringView blendname = STRING_VIEW_FROM_LITERAL("blendmap.bmp");
 
-	StringView skyname = STRING_VIEW_FROM_LITERAL("sky.bmp");
+	StringView skyname = STRING_VIEW_FROM_LITERAL("sky.dds");
 
 	StringView normalmapname = STRING_VIEW_FROM_LITERAL("WNN2.bmp");
 
@@ -2107,7 +2107,7 @@ void CreateCrateObject()
 	int albedoMapped = Read2DImage(&albedomapname, 1, BMP);
 	int normalMapped = Read2DImage(&normalmapname, 1, BMP);
 	int blendMapped = Read2DImage(&blendname, 1, BMP);
-	int skymapped = Read2DImage(&skyname, 1, BMP);
+	int skymapped = Read2DImage(&skyname, 1, DDS);
 
 	if (-1 == skymapped || -1 == albedoMapped || -1 == normalMapped  || -1 == blendMapped)
 	{
@@ -4036,7 +4036,7 @@ int CreateSkyBox()
 
 	GlobalRenderer::gRenderInstance.UpdateDriverMemory(BoxVerts, vertexAlloc, sizeof(BoxVerts), 0, TransferType::CACHED);
 	GlobalRenderer::gRenderInstance.UpdateDriverMemory(BoxIndices, indexAlloc, sizeof(BoxIndices), 0, TransferType::CACHED);
-
+	/*
 	StringView names[6] = {
 		STRING_VIEW_FROM_LITERAL("face4.bmp"),
 		STRING_VIEW_FROM_LITERAL("face1.bmp"),
@@ -4046,13 +4046,18 @@ int CreateSkyBox()
 		STRING_VIEW_FROM_LITERAL("face3.bmp"),
 	};
 
-	ShaderResourceSetContext genericSkyBoxRSontext{ &mainAppLogger, false };
-
 	skyboxCubeImage = ReadCubeImage(names, 6, BMP);
+	*/
+
+	StringView name = STRING_VIEW_FROM_LITERAL("skybox.dds");
+
+	skyboxCubeImage = ReadCubeImage(&name, 1, DDS);
 
 	static Matrix4f matrix = Identity4f();
 
 	matrix.axes.translate = Vector4f(-30.0, 0.0, 0.0, 1.0f);
+
+	ShaderResourceSetContext genericSkyBoxRSontext{ &mainAppLogger, false };
 
 	ShaderResourceSetBuilder camSkyboxData = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[SKYBOX], 0, MAX_FRAMES_IN_FLIGHT);
 	ShaderResourceSetBuilder skyboxDesc = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[SKYBOX], 1, MAX_FRAMES_IN_FLIGHT);
@@ -5226,7 +5231,7 @@ void UpdateLight(GPULightSource& lightDesc, int lightIndex)
 
 TextureIndex ReadCubeImage(StringView* name, int textureCount, TextureIOType ioType)
 {
-	TextureDetails details;
+	TextureDetails details{};
 
 	OSFileHandle outHandle{};
 
@@ -5252,53 +5257,65 @@ TextureIndex ReadCubeImage(StringView* name, int textureCount, TextureIOType ioT
 		return -1;
 	}
 
-
-	int filePointer = ReadBMPDetails((char*)fileData, &details);
-
-	details.data = (char*)mainDictionary.AllocateImageCache(details.dataSize);
-
-	details.currPointer = details.data;
-
-	for (int i = 1; i < textureCount; i++)
+	if (ioType == TextureIOType::BMP)
 	{
+		int filePointer = ReadBMPDetails((char*)fileData, &details);
+
+		details.data = (char*)mainDictionary.AllocateImageCache(details.dataSize);
+
+		details.currPointer = details.data;
+
+		for (int i = 1; i < textureCount; i++)
+		{
+			ReadBMPData((char*)fileData, filePointer, &details);
+
+			nRet = OSOpenFile(name[i].stringData, name[i].charCount, READ, &outHandle);
+
+			if (nRet)
+			{
+				mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Cannot open cube image file"));
+				return -1;
+			}
+
+			size = outHandle.fileLength;
+
+			fileData = GlobaScratchAllocator.Allocate(size);
+
+			nRead = OSReadFile(&outHandle, size, (char*)fileData);
+
+			OSCloseFile(&outHandle);
+
+			if (nRead < 0)
+			{
+				mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Cannot read cube image file"));
+				return -1;
+			}
+
+			TextureDetails stubDetails{};
+
+			filePointer = ReadBMPDetails((char*)fileData, &stubDetails);
+
+			if (stubDetails.width != details.width || stubDetails.height != details.height) {
+				mainAppLogger.AddLogMessage(LOGWARNING, STRING_VIEW_FROM_LITERAL("Cube Image Dimension mismatch"));
+			}
+
+			details.currPointer = (char*)mainDictionary.AllocateImageCache(details.dataSize);
+		}
+
 		ReadBMPData((char*)fileData, filePointer, &details);
+	}
+	else if (ioType == TextureIOType::DDS)
+	{
+		int filePointer = ReadDDSDetails((char*)fileData, &details);
 
-		nRet = OSOpenFile(name[i].stringData, name[i].charCount, READ, &outHandle);
+		details.data = (char*)mainDictionary.AllocateImageCache(details.dataSize);
 
-		if (nRet)
-		{
-			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Cannot open cube image file"));
-			return -1;
-		}
+		details.currPointer = details.data;
 
-		size = outHandle.fileLength;
-
-		fileData = GlobaScratchAllocator.Allocate(size);
-
-		nRead = OSReadFile(&outHandle, size, (char*)fileData);
-
-		OSCloseFile(&outHandle);
-
-		if (nRead < 0)
-		{
-			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Cannot read cube image file"));
-			return -1;
-		}
-
-		TextureDetails stubDetails{};
-
-		filePointer = ReadBMPDetails((char*)fileData, &stubDetails);
-
-		if (stubDetails.width != details.width || stubDetails.height != details.height) {
-			mainAppLogger.AddLogMessage(LOGWARNING, STRING_VIEW_FROM_LITERAL("Cube Image Dimension mismatch"));
-		}
-
-		details.currPointer = (char*)mainDictionary.AllocateImageCache(details.dataSize);
+		ReadDDSData((char*)fileData, filePointer, &details);
 	}
 
-	ReadBMPData((char*)fileData, filePointer, &details);
-
-	details.arrayLayers = textureCount;
+	details.arrayLayers = (details.arrayLayers == 0 ? textureCount : details.arrayLayers);
 
 	DeviceSlabAllocator* perFormatAllocator = nullptr;
 
@@ -5392,18 +5409,33 @@ int Read2DImage(StringView* name, int mipCounts, TextureIOType ioType)
 
 		TextureDetails* currDetailPtr = (!i) ? details : &stubDetails;
 
-		int filePointer = ReadBMPDetails((char*)fileData, currDetailPtr);
+		if (ioType == TextureIOType::BMP)
+		{
+			int filePointer = ReadBMPDetails((char*)fileData, currDetailPtr);
 
-		currDetailPtr->data = (char*)mainDictionary.AllocateImageCache(currDetailPtr->dataSize);
+			currDetailPtr->data = (char*)mainDictionary.AllocateImageCache(currDetailPtr->dataSize);
 
-		currDetailPtr->currPointer = currDetailPtr->data;
+			currDetailPtr->currPointer = currDetailPtr->data;
 
-		totalBlobSize += currDetailPtr->dataSize;
+			totalBlobSize += currDetailPtr->dataSize;
 
-		ReadBMPData((char*)fileData, filePointer, currDetailPtr);
+			ReadBMPData((char*)fileData, filePointer, currDetailPtr);
+		}
+		else if (ioType == TextureIOType::DDS)
+		{
+			int filePointer = ReadDDSDetails((char*)fileData, currDetailPtr);
+
+			currDetailPtr->data = (char*)mainDictionary.AllocateImageCache(currDetailPtr->dataSize);
+
+			currDetailPtr->currPointer = currDetailPtr->data;
+
+			totalBlobSize += currDetailPtr->dataSize;
+
+			ReadDDSData((char*)fileData, filePointer, currDetailPtr);
+		}
 	}
 
-	details->miplevels = mipCounts;
+	details->miplevels = (details->miplevels == 0 ? mipCounts : details->miplevels);
 	details->arrayLayers = 1;
 
 	DeviceSlabAllocator* perFormatAllocator = nullptr;
@@ -5592,7 +5624,7 @@ int AddLight(GPULightSource lightDesc, LightType type)
 
 		lightZone = mainShadowMapManager.zoneAlloc;
 
-		mainShadowMapManager.zoneAlloc+=6;
+		mainShadowMapManager.zoneAlloc += 6;
 
 		Vector3f dirs[6] =
 		{

@@ -1894,6 +1894,17 @@ void RenderInstance::UploadImageMemoryTransfers(CommandRecorder* recorder)
 
 	MakeAndBindDriverAccumulatedBarriers(recorder);
 
+	void* stagingDataBuffer; 
+
+	int mappedRet = GetDriverMemoryMappedPointer(recorder->device,
+		recorder->device->container.stagingBuffers[recorder->device->container.currentFrame],
+		0, stagingAlloc->dataSize, &stagingDataBuffer);
+
+	if (mappedRet)
+	{
+		internalRendererLogger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Cannot mapped staging buffer pointer in image memory transfer"));
+	}
+
 	for (int i = 0; i < regionCount; i++)
 	{
 		TextureMemoryRegion* region = &regions[i];
@@ -1902,23 +1913,52 @@ void RenderInstance::UploadImageMemoryTransfers(CommandRecorder* recorder)
 
 		EntryHandle handle = desc->textureIndex;
 
-		size_t currentImageOffsetInUploadArena = stagingAlloc->Allocate(region->totalSize, GetTexelSizeRoundedUpToPowerOfTwo(desc->format));
+		size_t totalUploadSize = 0;
 
-		if (currentImageOffsetInUploadArena == (size_t)-1)
+		size_t currentImageOffsetInUploadArena = 0;
+
+		if (region->textureMemoryHandlingFlags & TEXTURE_RAW_MEMORY_TYPE)
 		{
-			continue;
+			totalUploadSize = region->uploaderContext.imageMemory.totalSize;
+
+			currentImageOffsetInUploadArena = stagingAlloc->Allocate(totalUploadSize, GetTexelSizeRoundedUpToPowerOfTwo(desc->format));
+
+			if (currentImageOffsetInUploadArena == (size_t)-1)
+			{
+				continue;
+			}
+
+			memcpy(((char*)stagingDataBuffer) + currentImageOffsetInUploadArena, region->uploaderContext.imageMemory.data, totalUploadSize);
+		}
+		else if (region->textureMemoryHandlingFlags & TEXTURE_FILE_MEMORY_TYPE)
+		{
+			totalUploadSize = region->uploaderContext.imageFile.fileHandle.fileLength - region->uploaderContext.imageFile.fileHandle.filePointer;
+
+			currentImageOffsetInUploadArena = stagingAlloc->Allocate(totalUploadSize, GetTexelSizeRoundedUpToPowerOfTwo(desc->format));
+
+			if (currentImageOffsetInUploadArena == (size_t)-1)
+			{
+				continue;
+			}
+
+			OSReadFile(
+				&region->uploaderContext.imageFile.fileHandle, 
+				totalUploadSize, 
+				(char*)(((char*)stagingDataBuffer) + currentImageOffsetInUploadArena));
 		}
 
 		UploadImageDataToDeviceMemory(
 			recorder,
 			handle, recorder->device->container.stagingBuffers[recorder->device->container.currentFrame],
-			region->data, region->totalSize,
+			totalUploadSize,
 			currentImageOffsetInUploadArena,
 			region->width, region->height,
 			region->mipLevels, region->layerCount,
 			desc->format, region->transferMask
 		);
 	}
+
+	UnmapDriverMemoryMappedPointer(recorder->device, recorder->device->container.stagingBuffers[recorder->device->container.currentFrame]);
 
 	imageMemoryUpdateManager.linkHead = -1;
 }

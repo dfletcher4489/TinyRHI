@@ -2749,6 +2749,40 @@ VkImageView VKDevice::GetImageViewByHandle(EntryHandle handle)
 	return reinterpret_cast<VkImageView>(objHandle.memoryLocation);
 }
 
+int VKDevice::GetMappedHostPointer(EntryHandle bufferHandle, VkDeviceSize offset, VkDeviceSize size, void** ptr)
+{
+	BufferAlloc* buffer = GetBufferAlloc(bufferHandle);
+
+	if (!buffer)
+	{
+		return -1;
+	}
+
+	VkResult result = vkMapMemory(device, buffer->memory, offset, size, 0, ptr);
+
+	if (result != VK_SUCCESS)
+	{
+		AddDeviceErrorCode(MINOR_CODE_PACK(DEVICE_VK_TYPE_BUFFER_FAILED) | DEVICE_VK_TYPE_MAP_MEMORY_FAILED, result);
+		return -1;
+	}
+
+	return 0;
+}
+
+int VKDevice::UnmapMappedHostPointer(EntryHandle bufferHandle)
+{
+	BufferAlloc* buffer = GetBufferAlloc(bufferHandle);
+
+	if (!buffer)
+	{
+		return -1;
+	}
+
+	vkUnmapMemory(device, buffer->memory);
+
+	return 0;
+}
+
 /*
 
 VkImageView VKDevice::GetImageViewByTexture(EntryHandle handle, int imageViewIndex)
@@ -3723,6 +3757,35 @@ int VKDevice::WriteToDeviceBufferBatch(EntryHandle deviceIndex, EntryHandle stag
 	return 0;
 }
 
+int VKDevice::UploadImageData(EntryHandle imageIndex, EntryHandle stagingBufferIndex, size_t totalImageDataSize,
+	int width, int height, 
+	int mipLevels, int layers, VkFormat format, VkImageAspectFlags aspectMask, size_t stagingOffsetStart, RecordingBufferObject* rbo
+)
+{
+	VkDeviceSize imagesSize = static_cast<VkDeviceSize>(totalImageDataSize);
+
+	BufferAlloc* stagingBufferAlloc = GetBufferAlloc(stagingBufferIndex);
+
+	if (!stagingBufferAlloc)
+		return -1;
+
+	VkBuffer stagingBuffer = stagingBufferAlloc->buffer;
+
+	VkImage image = GetImageByHandle(imageIndex);
+
+	VkDeviceSize offset = stagingOffsetStart;
+
+	for (int i = 0; i < mipLevels; i++)
+	{
+		VkDeviceSize individualSize = VK::Utils::GetRawImageSizeFromFormat(format, width >> i, height >> i);
+
+		VK::Utils::MultiCommands::CopyBufferToImage(rbo->cbBufferHandler.buffer, stagingBuffer, image, width >> i, height >> i, i, offset, { 0, 0, 0 }, 0, layers, aspectMask);
+
+		offset += individualSize;
+	}
+
+	return 0;
+}
 
 int VKDevice::UploadImageData(EntryHandle imageIndex,
 	char* imageData, size_t totalImageDataSize,

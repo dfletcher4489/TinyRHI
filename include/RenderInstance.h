@@ -577,6 +577,19 @@ EntryHandle CreateDriverRenderTarget(RHIDevice* device, EntryHandle renderPassIn
 
 int CreateDriverRenderTargetFrameBuffer(RHIDevice* device, EntryHandle renderTargetHandle, EntryHandle* imageViews,  uint32_t attachmentsCount, uint32_t frameBufferIndex, uint32_t width, uint32_t height);
 
+int GetDriverMemoryMappedPointer(RHIDevice* device, EntryHandle bufferHandle, size_t offset, size_t mappedSize, void** ptrOut);
+
+int UnmapDriverMemoryMappedPointer(RHIDevice* device, EntryHandle bufferHandle);
+
+int UploadImageDataToDeviceMemory(
+	CommandRecorder* recorder,
+	EntryHandle textureHandle, EntryHandle stagingBufferHandle,
+	size_t totalUploadSize, size_t imageDataOffsetInStaging,
+	uint32_t writeWidth, uint32_t writeHeight,
+	uint32_t mipLevels, uint32_t layersCount,
+	ImageFormat imageFormat, ImageViewAspectMask aspectMask
+);
+
 size_t GetDriverImageMemoryBarrierSize();
 size_t GetDriverBufferMemoryBarrierSize();
 size_t GetDriverImageMemoryBarrierAlign();

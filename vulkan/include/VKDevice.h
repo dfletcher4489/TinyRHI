@@ -266,6 +266,7 @@ enum DeviceErrorCodeMajor
 	DEVICE_VK_TYPE_TIMED_RESULT_FAILED = 12,
 	DEVICE_VK_TYPE_ACQUIRE_IMAGE_FAILED = 13,
 	DEVICE_VK_TYPE_ALLOCATION_FAILED = 14,
+	DEVICE_VK_TYPE_MAP_MEMORY_FAILED = 15,
 };
 
 enum DeviceErrorCodeMinor
@@ -302,6 +303,7 @@ enum DeviceErrorCodeMinor
 	DEVICE_VK_TYPE_GRAPHICS_PIPELINE_FAILED = 30,
 	DEVICE_VK_TYPE_COMPUTE_PIPELINE_FAILED = 31,
 	DEVICE_VK_TYPE_PIPELINE_LAYOUT_FAILED = 32,
+	DEVICE_VK_TYPE_
 };
 
 struct HandlePoolObject
@@ -462,13 +464,13 @@ struct VKDevice
 
 	VkImage GetImageByHandle(EntryHandle handle);
 
-//	VkImage GetImageByTexture(EntryHandle handle);
-
 	ImageMemoryPool* GetImageMemoryPool(EntryHandle handle);
 
 	VkImageView GetImageViewByHandle(EntryHandle handle);
 
-//	VkImageView GetImageViewByTexture(EntryHandle handle, int imageViewIndex);
+	int GetMappedHostPointer(EntryHandle bufferHandle, VkDeviceSize offset, VkDeviceSize size, void** ptr);
+
+	int UnmapMappedHostPointer(EntryHandle bufferHandle);
 
 	PipelineCacheObject* GetPipelineCacheObject(EntryHandle handle);
 
@@ -681,6 +683,11 @@ struct VKDevice
 	);
 
 	int ReadHostBuffer(void* dest, EntryHandle hostIndex, size_t size, size_t offset);
+
+	int UploadImageData(EntryHandle imageIndex, EntryHandle stagingBufferIndex, size_t totalImageDataSize,
+		int width, int height,
+		int mipLevels, int layers, VkFormat format, VkImageAspectFlags aspectMask, size_t stagingOffsetStart, RecordingBufferObject* rbo
+	);
 
 	int UploadImageData(EntryHandle imageIndex,
 		char* imageData, size_t totalImageDataSize,

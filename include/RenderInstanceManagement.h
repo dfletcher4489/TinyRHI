@@ -102,11 +102,29 @@ struct BufferMemoryTransferRegion
 	int allocoffset;
 };
 
+union TextureMemoryRawOrFileUnion
+{
+	struct ImageFile
+	{
+		OSFileHandle fileHandle;
+	} imageFile;
+
+	struct ImageMemory
+	{
+		void* data;
+		size_t totalSize;
+		size_t currentPointerUpdate;
+	} imageMemory;
+};
+
+#define TEXTURE_RAW_MEMORY_TYPE 1
+#define TEXTURE_FILE_MEMORY_TYPE 2
+#define TEXTURE_FILE_MEMORY_CLOSE_ON_FINISH 4
+
 struct TextureMemoryRegion
 {
-	void* data;
-	size_t totalSize;
-	size_t currentPointerUpdate;
+	int textureMemoryHandlingFlags;
+	TextureMemoryRawOrFileUnion uploaderContext;
 	TextureIndex textureIndex;
 	int width;
 	int height;
@@ -612,13 +630,14 @@ struct ImageMemoryUpdateManager
 
 		regionLinks[regionAlloc] = -1;
 
-		region->data = data;
+		region->textureMemoryHandlingFlags = TEXTURE_RAW_MEMORY_TYPE;
+		region->uploaderContext.imageMemory.data = data;
 		region->height = height;
 		region->width = width;
-		region->totalSize = totalSize;
+		region->uploaderContext.imageMemory.totalSize = totalSize;
 		region->mipLevels = mipLevels;
 		region->textureIndex = textureIndex;
-		region->currentPointerUpdate = 0;
+		region->uploaderContext.imageMemory.currentPointerUpdate = 0;
 		region->layerCount = layerCount;
 		region->mipStart = mipStart;
 		region->layerStart = layerStart;
@@ -649,13 +668,23 @@ struct ImageMemoryUpdateManager
 		int regionIndex = link;
 		TextureMemoryRegion* src = &transferRegions[regionIndex];
 
-		outputRegion->data = src->data;
-		outputRegion->totalSize = src->totalSize;
+		if (src->textureMemoryHandlingFlags & TEXTURE_RAW_MEMORY_TYPE)
+		{
+			outputRegion->uploaderContext.imageMemory.data = src->uploaderContext.imageMemory.data;
+			outputRegion->uploaderContext.imageMemory.totalSize = src->uploaderContext.imageMemory.totalSize;
+			outputRegion->uploaderContext.imageMemory.currentPointerUpdate = src->uploaderContext.imageMemory.currentPointerUpdate;
+		}
+		else if (src->textureMemoryHandlingFlags & TEXTURE_FILE_MEMORY_TYPE)
+		{
+			outputRegion->uploaderContext.imageFile.fileHandle = src->uploaderContext.imageFile.fileHandle;
+		}
+
+		outputRegion->textureMemoryHandlingFlags = src->textureMemoryHandlingFlags;
 		outputRegion->textureIndex = src->textureIndex;
 		outputRegion->width = src->width;
 		outputRegion->height = src->height;
 		outputRegion->mipLevels = src->mipLevels;
-		outputRegion->currentPointerUpdate = src->currentPointerUpdate;
+		
 		outputRegion->layerCount = src->layerCount;
 		outputRegion->transferMask = src->transferMask;
 		outputRegion->mipStart = src->mipStart;
@@ -667,13 +696,13 @@ struct ImageMemoryUpdateManager
 
 		FreeSlot(link);
 
-		src->data = nullptr;
-		src->totalSize = 0;
+		src->uploaderContext.imageMemory.data = nullptr;
+		src->uploaderContext.imageMemory.totalSize = 0;
+		src->uploaderContext.imageMemory.currentPointerUpdate = 0;
 		src->textureIndex = 0;
 		src->width = 0;
 		src->height = 0;
 		src->mipLevels = 0;
-		src->currentPointerUpdate = 0;
 		src->layerCount = -1;
 		src->layerStart = -1;
 		src->mipStart = -1;

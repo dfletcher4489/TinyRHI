@@ -2046,6 +2046,30 @@ int UploadImageDataToDeviceMemory(
 	return 0;
 }
 
+int UploadImageDataToDeviceMemory(
+	CommandRecorder* recorder,
+	EntryHandle textureHandle, EntryHandle stagingBufferHandle,
+	size_t totalUploadSize, size_t imageDataOffsetInStaging,
+	uint32_t writeWidth, uint32_t writeHeight,
+	uint32_t mipLevels, uint32_t layersCount,
+	ImageFormat imageFormat, ImageViewAspectMask aspectMask
+)
+{
+	return recorder->device->device->UploadImageData(
+		textureHandle,
+		stagingBufferHandle,
+		totalUploadSize,
+		writeWidth,
+		writeHeight,
+		mipLevels,
+		layersCount,
+		API::ConvertImageFormatToVulkanFormat(imageFormat),
+		API::ConvertImageViewAspectMaskToVulkanImageAspectFlags(aspectMask),
+		imageDataOffsetInStaging,
+		recorder->rbo
+	);
+}
+
 size_t GetDriverImageMemoryBarrierSize()
 {
 	return sizeof(VkImageMemoryBarrier);
@@ -2802,4 +2826,14 @@ int CreateDriverRenderTargetFrameBuffer(RHIDevice* device, EntryHandle renderTar
 		);
 
 	return 0;
+}
+
+int GetDriverMemoryMappedPointer(RHIDevice* device, EntryHandle bufferHandle, size_t offset, size_t mappedSize, void** ptrOut)
+{
+	return device->device->GetMappedHostPointer(bufferHandle, offset, mappedSize, ptrOut);
+}
+
+int UnmapDriverMemoryMappedPointer(RHIDevice* device, EntryHandle bufferHandle)
+{
+	return device->device->UnmapMappedHostPointer(bufferHandle);
 }

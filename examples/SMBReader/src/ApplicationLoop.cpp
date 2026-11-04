@@ -1191,18 +1191,17 @@ void ApplicationLoop::Execute()
 
 			bool cameraMove = MoveCamera(FPS);
 
-			if (previousGlobalLightCount != globalLightCount || updateLights)
 			{
 				if (!updateLights)
 				{
 					updateLights = framesInFlight;
-				}
-
-				if (previousGlobalLightCount != globalLightCount)
-				{
-					//GlobalRenderer::gRenderInstance.InsertTransferCommand(lightAssignment.deviceCountsAlloc, lightAssignment.totalElementsCount * sizeof(uint32_t), 0, 0);
-				
-					previousGlobalLightCount = globalLightCount;
+					
+					GlobalRenderer::gRenderInstance.InsertTransferCommand(lightPartition.typeCountAlloc, sizeof(uint32_t) * 3, 0, 0);
+					GlobalRenderer::gRenderInstance.InsertTransferCommand(lightPartition.directLightOffset, sizeof(uint32_t) * 1, 0, 0);
+					GlobalRenderer::gRenderInstance.InsertTransferCommand(lightPartition.pointLightOffset, sizeof(uint32_t) * 1, 0, 0);
+					GlobalRenderer::gRenderInstance.InsertTransferCommand(lightPartition.spotLightOffset, sizeof(uint32_t) * 1, 0, 0);
+					GlobalRenderer::gRenderInstance.InsertTransferCommand(lightPartition.gridCountsAlloc, sizeof(uint32_t) * mainGrid.numberOfDivision * mainGrid.numberOfDivision * mainGrid.numberOfDivision, 0, 0);
+					GlobalRenderer::gRenderInstance.InsertTransferCommand(lightPartition.gridOffsetsAlloc, sizeof(uint32_t) * mainGrid.numberOfDivision * mainGrid.numberOfDivision * mainGrid.numberOfDivision, 0, 0);
 				}
 
 				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, lightPartition.lightTypeCountPipeline);
@@ -1215,14 +1214,12 @@ void ApplicationLoop::Execute()
 				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, lightPartition.pointTypeAssignPipeline);
 
 				updateLights--;
-			
 			}
 
-			if (cameraMove || debugIndirectDrawData.commandBufferCount != mainDebugDrawRenderableCount || updateMainDebugCommand)
 			{
-				if (!updateMainDebugCommand || cameraMove)
+				if (!updateMainDebugCommand)
 				{
-					GlobalRenderer::gRenderInstance.InsertTransferCommand(debugIndirectDrawData.commandBufferCountAlloc, 8, 0, 0);
+					GlobalRenderer::gRenderInstance.InsertTransferCommand(debugIndirectDrawData.commandBufferCountAlloc, sizeof(uint32_t) * 2, 0, 0);
 					updateMainDebugCommand = framesInFlight;
 				}
 
@@ -1234,22 +1231,21 @@ void ApplicationLoop::Execute()
 					}
 
 					GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, debugClassificationHandle);
+
+					if (updateMainDebugCommand == 1)
+					{
+						mainDebugDrawRenderableCount = debugIndirectDrawData.commandBufferCount;
+					}
 				}
 
 				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, debugIndirectDrawData.indirectCullPipeline);
 				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, debugSphereHandle);
 
 				updateMainDebugCommand--;
-
-				if (!updateMainDebugCommand)
-				{
-					mainDebugDrawRenderableCount = debugIndirectDrawData.commandBufferCount;
-				}
 			}
 
-			if (cameraMove || mainDrawRenderableCount != mainIndirectDrawData.commandBufferCount || updateMainDrawCommand)
 			{
-				if (!updateMainDrawCommand || cameraMove) 
+				if (!updateMainDrawCommand) 
 				{
 					updateMainDrawCommand = framesInFlight;
 					GlobalRenderer::gRenderInstance.InsertTransferCommand(mainIndirectDrawData.commandBufferCountAlloc, 8, 0, 0);
@@ -1270,12 +1266,11 @@ void ApplicationLoop::Execute()
 						mainDrawRenderableCount = mainIndirectDrawData.commandBufferCount;
 				}
 
-				updateMainDrawCommand--;
-
 				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, mainIndirectDrawData.indirectCullPipeline);
+
+				updateMainDrawCommand--;
 			}
 
-			if (mainDrawRenderableCount != mainIndirectDrawData.commandBufferCount || updateShadowMap)
 			{
 				if (!updateShadowMap)
 				{
@@ -1288,13 +1283,12 @@ void ApplicationLoop::Execute()
 				updateShadowMap--;
 			}
 
-			if (localUICount != globalUICount || updateUI > 0)
 			{
 				if (!updateUI)
 					updateUI = framesInFlight;
 
 				if (updateUI == framesInFlight)
-					GlobalRenderer::gRenderInstance.InsertTransferCommand(globalUIElementsIndirectCountBuffer, sizeof(uint32_t), 0, 0);
+					GlobalRenderer::gRenderInstance.InsertTransferCommand(globalUIElementsIndirectCountBuffer, sizeof(uint32_t)*2, 0, 0);
 
 				if (localUICount != globalUICount)
 				{
@@ -1388,7 +1382,8 @@ void ApplicationLoop::Execute()
 				running = false;
 
 			}	
-
+			
+			/*
 			std::array<int, 400> arr{}, arr2{};
 
 			//GlobalRenderer::gRenderInstance.ReadData(lightPartition.gridCountsAlloc, arr.data(), sizeof(arr), 0);
@@ -1400,6 +1395,7 @@ void ApplicationLoop::Execute()
 
 			//GlobalRenderer::gRenderInstance.ReadData(mainShadowMapManager.shadowMapAssignmentsAlloc, arr.data(), sizeof(arr), 0);
 			//GlobalRenderer::gRenderInstance.ReadData(mainShadowMapManager.shadowMapObjectIDsAlloc, arr.data(), sizeof(arr), 0);
+			*/
 
 			fps();
 
@@ -4141,7 +4137,7 @@ int ApplicationLoop::InitializeRuntime()
 	riCreateInfo.commandsCacheSize = 64 * KiB;
 	riCreateInfo.internalLoggerRingSize = 8 * KiB;
 	riCreateInfo.numberOfDriverHostAllocations = 800;
-	riCreateInfo.numberOfTransferCommandAllocations = 20;
+	riCreateInfo.numberOfTransferCommandAllocations = 30;
 	riCreateInfo.numberOfResourceUpdateAllocations = 30;
 	riCreateInfo.numberOfDriverDeviceAllocations = 60;
 	riCreateInfo.numberOfImageMemoryAllocations = 30;

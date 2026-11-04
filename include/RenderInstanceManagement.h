@@ -283,7 +283,7 @@ struct MemoryDriverTransferPool
 	int* regionLinks;
 	int linkHead = -1;
 	int linkCount = 0;
-	int ddsRegionAlloc = 0;
+	int freeHead = -1;
 	int ddsRegionSize = 0;
 
 	int GetSize(int numberOfRegions)
@@ -293,11 +293,35 @@ struct MemoryDriverTransferPool
 
 	void AllocateList(void* poolData, int poolSize)
 	{
-		ddsRegionSize = (int)((float)poolSize/(float)(sizeof(BufferMemoryTransferRegion) + sizeof(int)));
+		ddsRegionSize = poolSize / (int)(sizeof(BufferMemoryTransferRegion) + sizeof(int));
 
 		transferRegions = (BufferMemoryTransferRegion*)poolData;
 
 		regionLinks = (int*)(transferRegions + ddsRegionSize);
+
+		for (int i = 0; i < ddsRegionSize; i++)
+			regionLinks[i] = (i + 1 < ddsRegionSize) ? i + 1 : -1;
+
+		freeHead = ddsRegionSize > 0 ? 0 : -1;
+		linkHead = -1;
+		linkCount = 0;
+	}
+
+	int AllocSlot()
+	{
+		int slot = freeHead;
+		if (slot >= 0)
+		{
+			freeHead = regionLinks[slot];
+			regionLinks[slot] = -1;
+		}
+		return slot;
+	}
+
+	void FreeSlot(int slot)
+	{
+		regionLinks[slot] = freeHead;
+		freeHead = slot;
 	}
 
 	int Create(void* data, int size, AllocationInstanceIndex& allocationIndex, int allocOffset, int copies)
@@ -308,9 +332,8 @@ struct MemoryDriverTransferPool
 		
 		if (link < 0)
 		{
-			int regionAlloc = ddsRegionAlloc;
-
-			ddsRegionAlloc = (ddsRegionAlloc + 1) % ddsRegionSize;
+			int regionAlloc = AllocSlot();
+			if (regionAlloc < 0) return -1;
 
 			region = &transferRegions[regionAlloc];
 
@@ -375,12 +398,12 @@ struct MemoryDriverTransferPool
 		{
 			*(*popprev) = linkRet;
 			linkCount--;
+			FreeSlot(link);
 			transferRegions[link].allocationIndex = -1;
 			transferRegions[link].size = 0;
 			transferRegions[link].copyCount = -1;
 			transferRegions[link].allocoffset = -1;
 			transferRegions[link].data = nullptr;
-			regionLinks[link] = -1;
 		}
 		return linkRet;
 	}
@@ -391,10 +414,10 @@ struct TransferCommandsPool
 	TransferCommand* transferRegions;
 	int* regionLinks;
 	int linkHead = -1;
+	int freeHead = -1;
 	int linkCount = 0;
-	int ddsRegionAlloc = 0;
 	int ddsRegionSize = 0;
-
+	
 	int GetSize(int numberOfRegions)
 	{
 		return (sizeof(TransferCommand) + sizeof(int)) * numberOfRegions;
@@ -402,11 +425,35 @@ struct TransferCommandsPool
 
 	void AllocateList(void* poolData, int poolSize)
 	{
-		ddsRegionSize = (int)((float)poolSize / (float)(sizeof(TransferCommand) + sizeof(int)));
+		ddsRegionSize = poolSize / (int)(sizeof(TransferCommand) + sizeof(int));
 
 		transferRegions = (TransferCommand*)poolData;
 
 		regionLinks = (int*)(transferRegions + ddsRegionSize);
+
+		for (int i = 0; i < ddsRegionSize; i++)
+			regionLinks[i] = (i + 1 < ddsRegionSize) ? i + 1 : -1;
+
+		freeHead = ddsRegionSize > 0 ? 0 : -1;
+		linkHead = -1;
+		linkCount = 0;
+	}
+
+	int AllocSlot()
+	{
+		int slot = freeHead;
+		if (slot >= 0)
+		{
+			freeHead = regionLinks[slot];
+			regionLinks[slot] = -1;
+		}
+		return slot;
+	}
+
+	void FreeSlot(int slot)
+	{
+		regionLinks[slot] = freeHead;
+		freeHead = slot;
 	}
 
 	int Create(AllocationInstanceIndex& allocationIndex, int size, int allocOffset, uint32_t fillValue, int copies)
@@ -416,20 +463,18 @@ struct TransferCommandsPool
 
 		if (link < 0)
 		{
-			int regionAlloc = ddsRegionAlloc;
+			int slot = AllocSlot();
+			if (slot < 0) return -1;
 
-			ddsRegionAlloc = (ddsRegionAlloc + 1) % ddsRegionSize;
-
-			region = &transferRegions[regionAlloc];
-
-			regionLinks[regionAlloc] = -1;
+			region = &transferRegions[slot];
 
 			region->allocationIndex = allocationIndex;
 			region->offset = allocOffset;
 			region->size = size;
 			region->fillVal = fillValue;
+			
 
-			Insert(regionAlloc);
+			Insert(slot);
 		}
 		else
 		{
@@ -447,10 +492,12 @@ struct TransferCommandsPool
 	void Insert(int newlink)
 	{
 		int* test = &linkHead;
-		while ((*test >= 0) && (transferRegions[*test].allocationIndex <= transferRegions[newlink].allocationIndex))
+
+		while (*test >= 0)
 		{
 			test = &(regionLinks[*test]);
 		}
+
 		regionLinks[newlink] = *test;
 		*test = newlink;
 		linkCount++;
@@ -469,12 +516,15 @@ struct TransferCommandsPool
 	int PopLink(TransferCommand* outputRegion, int link, int** popprev)
 	{
 		if (link < 0 || link >= ddsRegionSize) return -1;
+
 		outputRegion->allocationIndex = transferRegions[link].allocationIndex;
 		outputRegion->size = transferRegions[link].size;
 		outputRegion->copycount = transferRegions[link].copycount;
 		outputRegion->fillVal = transferRegions[link].fillVal;
 		outputRegion->offset = transferRegions[link].offset;
+
 		int linkRet = regionLinks[link];
+
 		if (transferRegions[link].copycount > 1)
 		{
 			transferRegions[link].copycount--;
@@ -482,10 +532,14 @@ struct TransferCommandsPool
 		}
 		else
 		{
-			*(*popprev) = linkRet;
 			linkCount--;
-			regionLinks[link] = -1;
+
+			*(*popprev) = linkRet;
+		
+			FreeSlot(link);
+
 			TransferCommand* region = &transferRegions[link];
+
 			region->allocationIndex = -1;
 			region->size = 0;
 			region->copycount = -1;
@@ -502,7 +556,7 @@ struct ImageMemoryUpdateManager
 	int* regionLinks;
 	int linkHead = -1;
 	int linkCount = 0;
-	int ddsRegionAlloc = 0;
+	int freeHead = -1;
 	int ddsRegionSize = 0;
 
 	int GetSize(int numberOfRegions)
@@ -512,11 +566,35 @@ struct ImageMemoryUpdateManager
 
 	void AllocateList(void* poolData, int poolSize)
 	{
-		ddsRegionSize = (int)((float)poolSize / (float)(sizeof(TextureMemoryRegion) + sizeof(int)));
+		ddsRegionSize = poolSize / (int)(sizeof(TextureMemoryRegion) + sizeof(int));
 
 		transferRegions = (TextureMemoryRegion*)poolData;
 
 		regionLinks = (int*)(transferRegions + ddsRegionSize);
+
+		for (int i = 0; i < ddsRegionSize; i++)
+			regionLinks[i] = (i + 1 < ddsRegionSize) ? i + 1 : -1;
+
+		freeHead = ddsRegionSize > 0 ? 0 : -1;
+		linkHead = -1;
+		linkCount = 0;
+	}
+
+	int AllocSlot()
+	{
+		int slot = freeHead;
+		if (slot >= 0)
+		{
+			freeHead = regionLinks[slot];
+			regionLinks[slot] = -1;
+		}
+		return slot;
+	}
+
+	void FreeSlot(int slot)
+	{
+		regionLinks[slot] = freeHead;
+		freeHead = slot;
 	}
 
 	int Create(void* data, TextureIndex textureIndex, size_t totalSize, int width, int height, int mipLevels, int layerCount, int mipStart, int layerStart, ImageViewAspectMask mask)
@@ -526,9 +604,9 @@ struct ImageMemoryUpdateManager
 
 		if (link >= 0) return -1;
 		
-		int regionAlloc = ddsRegionAlloc;
+		int regionAlloc = AllocSlot();
 
-		ddsRegionAlloc = (ddsRegionAlloc + 1) % ddsRegionSize;
+		if (regionAlloc < 0) return -1;
 
 		region = &transferRegions[regionAlloc];
 
@@ -587,6 +665,8 @@ struct ImageMemoryUpdateManager
 
 		linkCount--;
 
+		FreeSlot(link);
+
 		src->data = nullptr;
 		src->totalSize = 0;
 		src->textureIndex = 0;
@@ -599,8 +679,6 @@ struct ImageMemoryUpdateManager
 		src->mipStart = -1;
 		src->transferMask = 0;
 
-		regionLinks[link] = -1;
-
 		return linkRet;
 	}
 };
@@ -611,7 +689,7 @@ struct ShaderResourceUpdatePool
 	int* regionLinks;
 	int linkHead = -1;
 	int linkCount = 0;
-	int ddsRegionAlloc = 0;
+	int freeHead = -1;
 	int ddsRegionSize = 0;
 
 	int GetSize(int numberOfRegions)
@@ -621,20 +699,44 @@ struct ShaderResourceUpdatePool
 
 	void AllocateList(void* poolData, int poolSize)
 	{
-		ddsRegionSize = (int)((float)poolSize / (float)(sizeof(ShaderResourceUpdate) + sizeof(int)));
+		ddsRegionSize = (int)poolSize / (int)(sizeof(ShaderResourceUpdate) + sizeof(int));
 
 		transferRegions = (ShaderResourceUpdate*)poolData;
 
 		regionLinks = (int*)(transferRegions + ddsRegionSize);
+
+		for (int i = 0; i < ddsRegionSize; i++)
+			regionLinks[i] = (i + 1 < ddsRegionSize) ? i + 1 : -1;
+
+		freeHead = ddsRegionSize > 0 ? 0 : -1;
+		linkHead = -1;
+		linkCount = 0;
+	}
+
+	int AllocSlot()
+	{
+		int slot = freeHead;
+		if (slot >= 0)
+		{
+			freeHead = regionLinks[slot];
+			regionLinks[slot] = -1;
+		}
+		return slot;
+	}
+
+	void FreeSlot(int slot)
+	{
+		regionLinks[slot] = freeHead;
+		freeHead = slot;
 	}
 
 	int Create(ShaderResourceManagerIndex descriptorManagerIndex, DescriptorSetInstanceIndex descriptorid, int bindingindex, ShaderResourceType type, void* data, int cachedDataSize, int copies)
 	{
 		ShaderResourceUpdate* region = nullptr;
 
-		int regionAlloc = ddsRegionAlloc;
+		int regionAlloc = AllocSlot();
 
-		ddsRegionAlloc = (ddsRegionAlloc + 1) % (int)ddsRegionSize;
+		if (regionAlloc < 0) return -1;
 
 		region = &transferRegions[regionAlloc];
 
@@ -704,6 +806,7 @@ struct ShaderResourceUpdatePool
 		{
 			*(*popprev) = linkRet;
 			linkCount--;
+			FreeSlot(link);
 			region->bindingIndex = -1;
 			region->copyCount = -1;
 			region->data = nullptr;
@@ -711,7 +814,6 @@ struct ShaderResourceUpdatePool
 			region->type = ShaderResourceType::INVALID_SHADER_RESOURCE;
 			region->dataSize = -1;
 			region->descriptorManagerIndex = -1;
-			regionLinks[link] = -1;
 		}
 
 		return linkRet;

@@ -1920,7 +1920,6 @@ void RenderInstance::UploadImageMemoryTransfers(CommandRecorder* recorder)
 		);
 	}
 
-	imageMemoryUpdateManager.ddsRegionAlloc = 0;
 	imageMemoryUpdateManager.linkHead = -1;
 }
 

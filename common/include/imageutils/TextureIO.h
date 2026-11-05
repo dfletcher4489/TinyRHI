@@ -1,5 +1,6 @@
 #pragma once
 #include "CommonRenderTypes.h"
+#include "OSFile.h"
 
 namespace TexUtils
 {
@@ -161,3 +162,6 @@ void ReadBMPData(char* _fileData, int dataPointer, TextureDetails* details);
 int ReadDDSDetails(char* _fileData, TextureDetails* details);
 
 void ReadDDSData(char* _fileData, int dataPointer, TextureDetails* details);
+
+int ReadBMPDetailsFromFile(OSFileHandle* fileHandle, TextureDetails* details);
+int ReadDDSDetailsFromFile(OSFileHandle* fileHandle, TextureDetails* details);

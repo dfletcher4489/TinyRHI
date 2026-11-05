@@ -843,7 +843,9 @@ static int CreateBlendRange(int gpuBlendRangeID, int* blendIDs, int blendCount);
 static int CreateBlendDetails(int gpuBlendDescID, BlendMaterialType type, float constantAlpha);
 static int CreateBlendDetails(int gpuBlendDescID, BlendMaterialType type, int mapID);
 static TextureIndex ReadCubeImage(StringView* name, int textureCount, TextureIOType ioType);
+static TextureIndex ReadCubeImageUploadByFile(StringView* name, int textureCount, TextureIOType ioType);
 static int Read2DImage(StringView* name, int mipCounts, TextureIOType ioType);
+static int Read2DImageFromFile(StringView name, TextureIOType ioType);
 static void CreateUniformGrid();
 static SMBImageFormat ConvertAppImageFormatToSMBFormat(ImageFormat format);
 static ImageFormat ConvertSMBImageToAppImage(SMBImageFormat fmt);
@@ -2100,10 +2102,10 @@ void CreateCrateObject()
 
 	StringView albedomapname = STRING_VIEW_FROM_LITERAL("WNN.dds");
 
-	int albedoMapped = Read2DImage(&albedomapname, 1, DDS);
-	int normalMapped = Read2DImage(&normalmapname, 1, DDS);
-	int blendMapped = Read2DImage(&blendname, 1, DDS);
-	int skymapped = Read2DImage(&skyname, 1, DDS);
+	int albedoMapped = Read2DImageFromFile(albedomapname, DDS);
+	int normalMapped = Read2DImageFromFile(normalmapname, DDS);
+	int blendMapped = Read2DImageFromFile(blendname, DDS);
+	int skymapped = Read2DImageFromFile(skyname, DDS);
 
 	if (-1 == skymapped || -1 == albedoMapped || -1 == normalMapped  || -1 == blendMapped)
 	{
@@ -4032,22 +4034,10 @@ int CreateSkyBox()
 
 	GlobalRenderer::gRenderInstance.UpdateDriverMemory(BoxVerts, vertexAlloc, sizeof(BoxVerts), 0, TransferType::CACHED);
 	GlobalRenderer::gRenderInstance.UpdateDriverMemory(BoxIndices, indexAlloc, sizeof(BoxIndices), 0, TransferType::CACHED);
-	/*
-	StringView names[6] = {
-		STRING_VIEW_FROM_LITERAL("face4.bmp"),
-		STRING_VIEW_FROM_LITERAL("face1.bmp"),
-		STRING_VIEW_FROM_LITERAL("face5.bmp"),
-		STRING_VIEW_FROM_LITERAL("face2.bmp"),
-		STRING_VIEW_FROM_LITERAL("face6.bmp"),
-		STRING_VIEW_FROM_LITERAL("face3.bmp"),
-	};
-
-	skyboxCubeImage = ReadCubeImage(names, 6, BMP);
-	*/
 
 	StringView name = STRING_VIEW_FROM_LITERAL("skybox.dds");
 
-	skyboxCubeImage = ReadCubeImage(&name, 1, DDS);
+	skyboxCubeImage = ReadCubeImageUploadByFile(&name, 1, DDS);
 
 	static Matrix4f matrix = Identity4f();
 
@@ -5365,6 +5355,82 @@ TextureIndex ReadCubeImage(StringView* name, int textureCount, TextureIOType ioT
 	return cubeImageIndex;
 }
 
+TextureIndex ReadCubeImageUploadByFile(StringView* name, int textureCount, TextureIOType ioType)
+{
+	TextureDetails details{};
+
+	OSFileHandle outHandle{};
+
+	int nRet = OSOpenFile(name->stringData, name->charCount, READ, &outHandle);
+
+	if (nRet)
+	{
+		mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Cannot open cube image file"));
+		return -1;
+	}
+
+	if (ioType == TextureIOType::BMP)
+	{
+		return -1;
+	}
+	else if (ioType == TextureIOType::DDS)
+	{
+		int filePointer = ReadDDSDetailsFromFile(&outHandle, &details);
+	}
+
+	details.arrayLayers = (details.arrayLayers == 0 ? textureCount : details.arrayLayers);
+
+	DeviceSlabAllocator* perFormatAllocator = nullptr;
+
+	ImageMemoryIndex poolIndex = GetPoolIndexByFormat(details.type, &perFormatAllocator);
+
+	size_t actualMemorySize = 0, actualMemoryAlignment = 0, actualMemoryAddress = 0;
+
+	GlobalRenderer::gRenderInstance.GetGPURequestedImageSizeAndAlignment(mainLogicalDevice,
+		details.width, details.height, details.miplevels, details.arrayLayers, details.type, ImageUsageFlagBits::SAMPLED | ImageUsageFlagBits::TRANSFER_DEST, &actualMemorySize, &actualMemoryAlignment
+	);
+
+	actualMemoryAddress = perFormatAllocator->Allocate(actualMemorySize, actualMemoryAlignment);
+
+	TextureIndex cubeImageIndex =
+		GlobalRenderer::gRenderInstance.CreateImageHandle(
+			mainLogicalDevice,
+			actualMemoryAddress,
+			details.width,
+			details.height,
+			details.miplevels,
+			details.arrayLayers,
+			details.type,
+			ImageType::IMAGE_CUBE,
+			ImageUsageFlagBits::SAMPLED | ImageUsageFlagBits::TRANSFER_DEST,
+			poolIndex
+		);
+
+
+	if (TextureIndex() != cubeImageIndex)
+	{
+		int viewIndex = GlobalRenderer::gRenderInstance.CreateImageView(cubeImageIndex, 0, IMAGE_VIEW_ALL_MIPS, 0, IMAGE_VIEW_ALL_LAYERS, COLOR_IMAGE_ASPECT, ImageLayout::SHADERREADABLE);
+
+		GlobalRenderer::gRenderInstance.UpdateImageMemory(
+			cubeImageIndex,
+			outHandle,
+			details.width,
+			details.height,
+			details.miplevels,
+			0,
+			details.arrayLayers,
+			0,
+			COLOR_IMAGE_ASPECT
+		);
+	}
+	else
+	{
+		mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Failed to register image to renderer"));
+	}
+
+	return cubeImageIndex;
+}
+
 int Read2DImage(StringView* name, int mipCounts, TextureIOType ioType)
 {
 	TextureDetails* details;
@@ -5466,6 +5532,104 @@ int Read2DImage(StringView* name, int mipCounts, TextureIOType ioType)
 			details->data,
 			twoDimageIndex,
 			totalBlobSize,
+			details->width,
+			details->height,
+			details->miplevels,
+			0,
+			details->arrayLayers,
+			0,
+			COLOR_IMAGE_ASPECT
+		);
+
+		DeviceHandleArrayUpdateTextureView arrayUpdateStruct{};
+
+		arrayUpdateStruct.imageHandle = twoDimageIndex;
+		arrayUpdateStruct.viewIndex = viewIndex;
+
+		mainDictionary.textureHandles[textureStart] = twoDimageIndex;
+
+		DeviceHandleArrayUpdate update;
+
+		update.updateType = DeviceHandleArrayUpdateType::TEXTURE_VIEW_UPDATE;
+		update.resourceCount = 1;
+		update.resourceDstBegin = textureStart;
+		update.resourceHandles = &arrayUpdateStruct;
+
+		GlobalRenderer::gRenderInstance.UpdateShaderResourceArray(globalTexturesDescriptor, 5, ShaderResourceType::IMAGE2D, &update);
+	}
+	else
+	{
+		mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Failed to register 2d image to renderer"));
+
+		return -1;
+	}
+
+	return textureStart;
+}
+
+int Read2DImageFromFile(StringView name, TextureIOType ioType)
+{
+	TextureDetails* details;
+
+	int textureStart = mainDictionary.AllocateNTextureHandles(1, &details);
+
+	int totalBlobSize = 0;
+
+	TextureIndex twoDimageIndex{};
+
+	OSFileHandle outHandle{};
+
+	int nRet = OSOpenFile(name.stringData, name.charCount, READ, &outHandle);
+
+	if (nRet)
+	{
+		mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Cannot open 2d image file"));
+		return -1;
+	}
+
+	if (ioType == TextureIOType::BMP)
+	{
+		return -1;
+	}
+	else if (ioType == TextureIOType::DDS)
+	{
+		int filePointer = ReadDDSDetailsFromFile(&outHandle, details);
+	}
+	
+	details->miplevels = (details->miplevels == 0 ? 1 : details->miplevels);
+	details->arrayLayers = 1;
+
+	DeviceSlabAllocator* perFormatAllocator = nullptr;
+
+	ImageMemoryIndex poolIndex = GetPoolIndexByFormat(details->type, &perFormatAllocator);
+
+	size_t actualMemorySize = 0, actualMemoryAlignment = 0, actualMemoryAddress = 0;
+
+	GlobalRenderer::gRenderInstance.GetGPURequestedImageSizeAndAlignment(mainLogicalDevice,
+		details->width, details->height, details->miplevels, details->arrayLayers, details->type, ImageUsageFlagBits::SAMPLED | ImageUsageFlagBits::TRANSFER_DEST, &actualMemorySize, &actualMemoryAlignment
+	);
+
+	actualMemoryAddress = perFormatAllocator->Allocate(actualMemorySize, actualMemoryAlignment);
+
+	twoDimageIndex = GlobalRenderer::gRenderInstance.CreateImageHandle(mainLogicalDevice,
+		actualMemoryAddress,
+		details->width,
+		details->height,
+		details->miplevels,
+		details->arrayLayers,
+		details->type,
+		ImageType::IMAGE_2D,
+		ImageUsageFlagBits::SAMPLED | ImageUsageFlagBits::TRANSFER_DEST,
+		poolIndex
+	);
+
+	if (TextureIndex() != twoDimageIndex)
+	{
+		int viewIndex = GlobalRenderer::gRenderInstance.CreateImageView(twoDimageIndex, 0, IMAGE_VIEW_ALL_MIPS, 0, IMAGE_VIEW_ALL_LAYERS, COLOR_IMAGE_ASPECT, ImageLayout::SHADERREADABLE);
+
+		GlobalRenderer::gRenderInstance.UpdateImageMemory(
+			twoDimageIndex,
+			outHandle,
 			details->width,
 			details->height,
 			details->miplevels,

@@ -1945,6 +1945,8 @@ void RenderInstance::UploadImageMemoryTransfers(CommandRecorder* recorder)
 				&region->uploaderContext.imageFile.fileHandle, 
 				totalUploadSize, 
 				(char*)(((char*)stagingDataBuffer) + currentImageOffsetInUploadArena));
+
+			OSCloseFile(&region->uploaderContext.imageFile.fileHandle);
 		}
 
 		UploadImageDataToDeviceMemory(
@@ -4116,14 +4118,44 @@ int RenderInstance::UpdateImageMemory(void* data, TextureIndex textureIndex, siz
 		return -1;
 	}
 
-	rduci->data = data;
+	rduci->imageDataContext.cmdMemory.pad1 = COMMAND_IMAGE_FILE_TYPE;
+	rduci->imageDataContext.cmdMemory.data = data;
 	rduci->height = height;
 	rduci->mipLevels = mipLevels;
 	rduci->width = width;
 	rduci->layersCount = layerCount;
 	rduci->textureIndex = textureIndex;
 	rduci->updateType = DriverUpdateType::IMAGEMEMORYUPDATE;
-	rduci->totalSize = totalSize;
+	rduci->imageDataContext.cmdMemory.totalSize = totalSize;
+	rduci->mask = mask;
+	rduci->mipStart = mipStart;
+	rduci->layerStart = layerStart;
+
+	return 0;
+}
+
+int RenderInstance::UpdateImageMemory(TextureIndex textureIndex, OSFileHandle fileHandle, int width, int height, int mipLevels, int mipStart, int layerCount, int layerStart, ImageViewAspectMask mask)
+{
+	if (!textureResourceHandles.Get(textureIndex))
+	{
+		return -1;
+	}
+
+	RenderDriverUpdateCommandImage* rduci = (RenderDriverUpdateCommandImage*)updateCommandBuffers[currentUpdateCommandBuffer]->Allocate(sizeof(RenderDriverUpdateCommandImage));
+
+	if (!rduci)
+	{
+		return -1;
+	}
+
+	
+	rduci->imageDataContext.cmdFile.fileHandle = fileHandle;
+	rduci->height = height;
+	rduci->mipLevels = mipLevels;
+	rduci->width = width;
+	rduci->layersCount = layerCount;
+	rduci->textureIndex = textureIndex;
+	rduci->updateType = DriverUpdateType::IMAGEMEMORYUPDATE;
 	rduci->mask = mask;
 	rduci->mipStart = mipStart;
 	rduci->layerStart = layerStart;
@@ -4350,7 +4382,16 @@ void RenderInstance::SwapUpdateCommands()
 		case DriverUpdateType::IMAGEMEMORYUPDATE:
 		{
 			RenderDriverUpdateCommandImage* rduci = (RenderDriverUpdateCommandImage*)header;
-			imageMemoryUpdateManager.Create(rduci->data, rduci->textureIndex, rduci->totalSize, rduci->width, rduci->height, rduci->mipLevels, rduci->layersCount, rduci->mipStart, rduci->layerStart, rduci->mask);
+
+			if (rduci->imageDataContext.cmdMemory.pad1 == COMMAND_IMAGE_FILE_TYPE)
+			{
+				imageMemoryUpdateManager.Create(rduci->imageDataContext.cmdMemory.data, rduci->textureIndex, rduci->imageDataContext.cmdMemory.totalSize, rduci->width, rduci->height, rduci->mipLevels, rduci->layersCount, rduci->mipStart, rduci->layerStart, rduci->mask);
+			}
+			else
+			{
+				imageMemoryUpdateManager.Create(rduci->textureIndex, rduci->imageDataContext.cmdFile.fileHandle, rduci->width, rduci->height, rduci->mipLevels, rduci->layersCount, rduci->mipStart, rduci->layerStart, rduci->mask);
+			}
+
 			header = rduci->GetNext();
 			currentSize -= sizeof(RenderDriverUpdateCommandImage);
 			break;

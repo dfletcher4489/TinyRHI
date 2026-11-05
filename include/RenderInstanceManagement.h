@@ -248,6 +248,23 @@ struct RenderDriverUpdateCommandFill : public RenderDriverUpdateCommandHeader
 	}
 };
 
+#define COMMAND_IMAGE_FILE_TYPE 0x8000000000000000
+
+union CommandImageDriverType
+{
+	struct CommandFile
+	{
+		OSFileHandle fileHandle;
+	} cmdFile;
+
+	struct CommandMemory
+	{
+		size_t pad1;
+		void* data;
+		size_t totalSize;
+	} cmdMemory;
+};
+
 struct RenderDriverUpdateCommandImage : public RenderDriverUpdateCommandHeader
 {
 	int width; 
@@ -258,15 +275,12 @@ struct RenderDriverUpdateCommandImage : public RenderDriverUpdateCommandHeader
 	int mipStart;
 	int layerStart;
 	ImageViewAspectMask mask;
-	int pad1[2];
-	void* data;
-	size_t totalSize;
+	CommandImageDriverType imageDataContext;
 
 	RenderDriverUpdateCommandHeader* GetNext()
 	{
 		return (RenderDriverUpdateCommandHeader*)((uintptr_t)this + sizeof(RenderDriverUpdateCommandImage));
 	}
-
 };
 
 #define PACK_DESCRIPTOR_MANAGER_INDEX(x) ((x) << 20)
@@ -646,6 +660,37 @@ struct ImageMemoryUpdateManager
 		Insert(regionAlloc);
 		
 		return 0; 
+	}
+
+	int Create(TextureIndex textureIndex, OSFileHandle fileHandle, int width, int height, int mipLevels, int layerCount, int mipStart, int layerStart, ImageViewAspectMask mask)
+	{
+		int link = Find(textureIndex);
+		TextureMemoryRegion* region = nullptr;
+
+		if (link >= 0) return -1;
+
+		int regionAlloc = AllocSlot();
+
+		if (regionAlloc < 0) return -1;
+
+		region = &transferRegions[regionAlloc];
+
+		regionLinks[regionAlloc] = -1;
+
+		region->textureMemoryHandlingFlags = TEXTURE_FILE_MEMORY_TYPE;
+		region->uploaderContext.imageFile.fileHandle = fileHandle;
+		region->height = height;
+		region->width = width;
+		region->mipLevels = mipLevels;
+		region->textureIndex = textureIndex;
+		region->layerCount = layerCount;
+		region->mipStart = mipStart;
+		region->layerStart = layerStart;
+		region->transferMask = mask;
+
+		Insert(regionAlloc);
+
+		return 0;
 	}
 
 	void Insert(int newlink)

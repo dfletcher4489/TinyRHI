@@ -158,6 +158,8 @@ struct RenderInstance
 
 	int UpdateImageMemory(void* data, TextureIndex textureIndex, size_t totalSize, int width, int height, int mipLevels, int mipStart, int layerCount, int layerStart, ImageViewAspectMask mask);
 
+	int UpdateImageMemory(TextureIndex textureIndex, OSFileHandle fileHandle, int width, int height, int mipLevels, int mipStart, int layerCount, int layerStart, ImageViewAspectMask mask);
+
 	int InsertTransferCommand(AllocationInstanceIndex allocationIndex, int size, int allocOffset, uint32_t fillValue);
 
 	int UpdateShaderResourceArray(ShaderResourceSetHandle handle, int bindingindex, ShaderResourceType type, DeviceHandleArrayUpdate* resourceArrayData);

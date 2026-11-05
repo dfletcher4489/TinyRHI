@@ -192,3 +192,140 @@ void ReadDDSData(char* _fileData, int dataPointer, TextureDetails* details)
 {
 	memcpy(details->data, (_fileData + dataPointer), details->dataSize);	
 }
+
+int ReadBMPDetailsFromFile(OSFileHandle* fileHandle, TextureDetails* details)
+{
+	TexUtils::BMP::BitmapFileHeader fh;
+
+	int64_t fileReadBytes = OSReadFile(fileHandle, sizeof(fh), reinterpret_cast<char*>(&fh));
+
+	if (fh.bfType != 0x4D42)
+	{
+		return -1;
+	}
+
+	TexUtils::BMP::BitmapInfoHeader ih;
+
+	fileReadBytes = OSReadFile(fileHandle, sizeof(ih), reinterpret_cast<char*>(&ih));
+
+	uint32_t width = details->width = ih.biWidth;
+	uint32_t height = details->height = ih.biHeight;
+	uint32_t bitcount = details->bitcount = ih.biBitCount;
+
+	switch (bitcount)
+	{
+	case 32:
+		details->type = ImageFormat::B8G8R8A8;
+		break;
+	default:
+		return -1;
+	}
+
+	if (ih.biSizeImage)
+	{
+		details->dataSize = ih.biSizeImage;
+	}
+	else
+	{
+		details->dataSize = fh.bfSize - fh.bfOffBits;
+	}
+
+	details->miplevels = 1;
+
+	return fh.bfOffBits;
+}
+
+int ReadDDSDetailsFromFile(OSFileHandle* fileHandle, TextureDetails* details)
+{
+	TexUtils::DDS::DDS_HEADER header{};
+
+	int64_t fileReadBytes = OSReadFile(fileHandle, sizeof(header), (char*)&header);
+
+	if (fileReadBytes != sizeof(header) || header.magic != 0x20534444)
+	{
+		return -1;
+	}
+
+	details->width = header.width;
+	details->height = header.height;
+	details->miplevels = header.mipMapCount;
+
+	uint32_t dx10HeaderSize = 0;
+
+	if (header.ddspf.dwFlags & TexUtils::DDS::DDPF_FOURCC)
+	{
+		if (memcmp(&header.ddspf.dwFourCC, "DXT1", sizeof(uint32_t)) == 0)
+		{
+			details->type = ImageFormat::DXT1;
+		}
+		else if (memcmp(&header.ddspf.dwFourCC, "DXT3", sizeof(uint32_t)) == 0)
+		{
+			details->type = ImageFormat::DXT3;
+		}
+		else if (memcmp(&header.ddspf.dwFourCC, "DX10", sizeof(uint32_t)) == 0)
+		{
+			dx10HeaderSize = sizeof(TexUtils::DDS::DDS_HEADER_DXT10);
+
+			TexUtils::DDS::DDS_HEADER_DXT10 dx10header{};
+
+			fileReadBytes = OSReadFile(fileHandle, sizeof(dx10header), (char*)&dx10header);
+
+			details->type = DXGIToImageFormat(dx10header.dxgiFormat);
+		}
+	}
+
+	if (header.ddspf.dwFlags & TexUtils::DDS::DDPF_RGB)
+	{
+		details->bitcount = header.ddspf.dwRGBBitCount;
+
+		if (header.ddspf.dwFlags & TexUtils::DDS::DDPF_ALPHAPIXELS)
+		{
+			if ((header.ddspf.dwRBitMask == 255) && (header.ddspf.dwGBitMask == 65280) && (header.ddspf.dwBBitMask == 16711680) && (header.ddspf.dwABitMask == 4278190080))
+			{
+				details->type = ImageFormat::R8G8B8A8_UNORM;
+			}
+			else if ((header.ddspf.dwBBitMask == 255) && (header.ddspf.dwGBitMask == 65280) && (header.ddspf.dwRBitMask == 16711680) && (header.ddspf.dwABitMask == 4278190080))
+			{
+				details->type = ImageFormat::B8G8R8A8_UNORM;
+			}
+		}
+	}
+
+	details->arrayLayers = 1;
+
+	uint32_t caps2 = header.caps2;
+
+	if (caps2 & TexUtils::DDS::DDSCAPS2_CUBEMAP)
+	{
+		details->arrayLayers = 6;
+	}
+
+	if (details->type == ImageFormat::DXT1 || details->type == ImageFormat::DXT3)
+	{
+		details->dataSize = header.pitchOrLinearSize;
+
+		uint32_t originalWidth = header.width;
+		uint32_t originalHeight = header.height;
+
+		for (int i = 0; i < header.mipMapCount; i++)
+		{
+			originalHeight >>= 1;
+			originalWidth >>= 1;
+
+			if (details->type == ImageFormat::DXT1)
+			{
+				details->dataSize += DXTCompression::DXT1CompressedSize(originalWidth, originalHeight);
+			}
+			else if (details->type == ImageFormat::DXT3)
+			{
+				details->dataSize += DXTCompression::DXT3CompressedSize(originalWidth, originalHeight);
+			}
+		}
+	}
+	else if (details->type == ImageFormat::R8G8B8A8_UNORM || details->type == ImageFormat::B8G8R8A8_UNORM)
+	{
+		details->dataSize = (details->height * header.pitchOrLinearSize) * details->arrayLayers;
+	}
+
+	return header.size + 4 + dx10HeaderSize;
+}

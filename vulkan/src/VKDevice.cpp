@@ -3717,7 +3717,6 @@ int VKDevice::WriteToDeviceBuffer(
 	return 0;
 }
 
-
 int VKDevice::WriteToDeviceBufferBatch(EntryHandle deviceIndex, EntryHandle stagingBufferIndex, void** data, size_t* sizes, size_t* destOffsets, size_t cumulativesize, size_t* stagingOffsets, int entries, RecordingBufferObject* rbo)
 {
 	VkBufferCopy* bufferCopyObjects = (VkBufferCopy*)AllocFromDeviceCache(sizeof(VkBufferCopy) * entries);
@@ -3751,6 +3750,34 @@ int VKDevice::WriteToDeviceBufferBatch(EntryHandle deviceIndex, EntryHandle stag
 	}
 	
 	vkUnmapMemory(device, stagingMemory);
+
+	VK::Utils::MultiCommands::CopyBufferBatch(rbo->cbBufferHandler.buffer, stagingBuffer, outBuffer, bufferCopyObjects, entries);
+
+	return 0;
+}
+
+int VKDevice::WriteToDeviceBufferBatch(EntryHandle deviceIndex, EntryHandle stagingBufferIndex, size_t* sizes, size_t* destOffsets, size_t* stagingOffsets, int entries, RecordingBufferObject* rbo)
+{
+	VkBufferCopy* bufferCopyObjects = (VkBufferCopy*)AllocFromDeviceCache(sizeof(VkBufferCopy) * entries);
+
+	BufferAlloc* stagingBufferAlloc = GetBufferAlloc(stagingBufferIndex);
+
+	if (!stagingBufferAlloc)
+		return -1;
+
+	VkBuffer outBuffer = GetBufferHandle(deviceIndex);
+
+	if (!outBuffer)
+		return -1;
+
+	VkBuffer stagingBuffer = stagingBufferAlloc->buffer;
+
+	for (int i = 0; i < entries; i++)
+	{
+		bufferCopyObjects[i].srcOffset = stagingOffsets[i];
+		bufferCopyObjects[i].dstOffset = destOffsets[i];
+		bufferCopyObjects[i].size = sizes[i];
+	}
 
 	VK::Utils::MultiCommands::CopyBufferBatch(rbo->cbBufferHandler.buffer, stagingBuffer, outBuffer, bufferCopyObjects, entries);
 

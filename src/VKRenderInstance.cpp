@@ -1833,6 +1833,14 @@ int WriteDeviceBufferBatch(CommandRecorder* recorder, EntryHandle bufferHandle, 
 	return 0;
 }
 
+int WriteDeviceBufferBatch(CommandRecorder* recorder, EntryHandle bufferHandle, EntryHandle stagingBufferHandle, size_t* sizesOfDataLocations, size_t* offsetsIntoStagingMemory, size_t* offsetsIntoDeviceMemory, size_t numberOfCopies)
+{
+	recorder->device->device->WriteToDeviceBufferBatch(bufferHandle, stagingBufferHandle, sizesOfDataLocations, offsetsIntoDeviceMemory,
+		offsetsIntoStagingMemory, numberOfCopies, recorder->rbo);
+
+	return 0;
+}
+
 void FillBuffer(CommandRecorder* recorder, EntryHandle bufferHandle, size_t regionSize, size_t regionOffset, uint32_t fillVal)
 {
 	recorder->rbo->FillBuffer(bufferHandle, regionSize, regionOffset, fillVal);

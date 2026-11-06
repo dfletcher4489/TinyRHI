@@ -592,6 +592,12 @@ int UploadImageDataToDeviceMemory(
 	ImageFormat imageFormat, ImageViewAspectMask aspectMask
 );
 
+int WriteDeviceBufferBatch(CommandRecorder* recorder,
+	EntryHandle bufferHandle, EntryHandle stagingBufferHandle,
+	size_t* sizesOfDataLocations, size_t* offsetsIntoStagingMemory,
+	size_t* offsetsIntoDeviceMemory, size_t numberOfCopies
+);
+
 size_t GetDriverImageMemoryBarrierSize();
 size_t GetDriverBufferMemoryBarrierSize();
 size_t GetDriverImageMemoryBarrierAlign();

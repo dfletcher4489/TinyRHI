@@ -698,6 +698,8 @@ struct VKDevice
 
 	int WriteToDeviceBufferBatch(EntryHandle deviceIndex, EntryHandle stagingBufferIndex, void** data, size_t* sizes, size_t* destOffsets, size_t cumulativesize, size_t* stagingOffsets, int entries, RecordingBufferObject* rbo);
 	
+	int WriteToDeviceBufferBatch(EntryHandle deviceIndex, EntryHandle stagingBufferIndex, size_t* sizes, size_t* destOffsets, size_t* stagingOffsets, int entries, RecordingBufferObject* rbo);
+	
 	int ResetQueryPool(EntryHandle poolHandle, uint32_t firstQuery, uint32_t queryCount);
 
 	int ReadbackResultsFromQueries(EntryHandle poolIndex, uint32_t firstQuery, uint32_t queryCount, void* dataOut, size_t sizeOfDataOut, VkDeviceSize dataStride, VkQueryResultFlags flags);

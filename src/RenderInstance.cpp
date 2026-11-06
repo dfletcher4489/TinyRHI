@@ -1500,7 +1500,23 @@ void RenderInstance::UploadHostTransfers(CommandRecorder* recorder)
 		{
 			if (EntryHandle() != previousBuffer)
 			{
-				WriteHostBufferBatch(recorder->device, previousBuffer, batchAddresses, batchSizes, batchOffsets, batchCounter, previousMax - previousMin, previousMin);
+				void* hostBufferMapped;
+				int mappedHostRet = GetDriverMemoryMappedPointer(recorder->device, index, 0, previousMin + (previousMax - previousMin), &hostBufferMapped);
+
+				if (!mappedHostRet)
+				{
+					char* memPtr = (char*)hostBufferMapped;
+					for (size_t batchIter = 0; batchIter < batchCounter; batchIter++)
+					{
+						memcpy(memPtr + batchOffsets[batchIter], batchAddresses[batchIter], batchSizes[batchIter]);
+					}
+
+					UnmapDriverMemoryMappedPointer(recorder->device, index);
+				}
+				else
+				{
+					internalRendererLogger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Cannot map pointer of host buffer for host transfers"));
+				}
 			}
 
 			previousBuffer = index;
@@ -1519,7 +1535,23 @@ void RenderInstance::UploadHostTransfers(CommandRecorder* recorder)
 		previousMax = RENDER_MAX(intOffset + intSize, previousMax);
 	}
 
-	WriteHostBufferBatch(recorder->device, previousBuffer, batchAddresses, batchSizes, batchOffsets, batchCounter, previousMax - previousMin, previousMin);
+	void* hostBufferMapped;
+	int mappedHostRet = GetDriverMemoryMappedPointer(recorder->device, previousBuffer, 0, previousMin + (previousMax - previousMin) , &hostBufferMapped);
+
+	if (!mappedHostRet)
+	{
+		char* memPtr = (char*)hostBufferMapped;
+		for (size_t batchIter = 0; batchIter < batchCounter; batchIter++)
+		{
+			memcpy(memPtr + batchOffsets[batchIter], batchAddresses[batchIter], batchSizes[batchIter]);
+		}
+
+		UnmapDriverMemoryMappedPointer(recorder->device, previousBuffer);
+	}
+	else
+	{
+		internalRendererLogger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Cannot map pointer of host buffer for host transfers"));
+	}
 }
 
 void RenderInstance::UploadDescriptorsUpdates(CommandRecorder* recorder)
@@ -1905,6 +1937,8 @@ void RenderInstance::UploadImageMemoryTransfers(CommandRecorder* recorder)
 		internalRendererLogger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Cannot mapped staging buffer pointer in image memory transfer"));
 	}
 
+	char* memPtr = (char*)stagingDataBuffer;
+
 	for (int i = 0; i < regionCount; i++)
 	{
 		TextureMemoryRegion* region = &regions[i];
@@ -1928,7 +1962,7 @@ void RenderInstance::UploadImageMemoryTransfers(CommandRecorder* recorder)
 				continue;
 			}
 
-			memcpy(((char*)stagingDataBuffer) + currentImageOffsetInUploadArena, region->uploaderContext.imageMemory.data, totalUploadSize);
+			memcpy(memPtr + currentImageOffsetInUploadArena, region->uploaderContext.imageMemory.data, totalUploadSize);
 		}
 		else if (region->textureMemoryHandlingFlags & TEXTURE_FILE_MEMORY_TYPE)
 		{
@@ -1944,7 +1978,7 @@ void RenderInstance::UploadImageMemoryTransfers(CommandRecorder* recorder)
 			OSReadFile(
 				&region->uploaderContext.imageFile.fileHandle, 
 				totalUploadSize, 
-				(char*)(((char*)stagingDataBuffer) + currentImageOffsetInUploadArena));
+				memPtr + currentImageOffsetInUploadArena);
 
 			OSCloseFile(&region->uploaderContext.imageFile.fileHandle);
 		}
@@ -1988,17 +2022,30 @@ void RenderInstance::UploadDeviceLocalTransfers(CommandRecorder* recorder)
 
 	DeviceSlabAllocator* stagingAlloc = &recorder->device->container.stagingBufferAllocators[recorder->device->container.currentFrame];
 
+	void* hostBufferMapped;
+	int mappedHostRet = GetDriverMemoryMappedPointer(recorder->device, recorder->device->container.stagingBuffers[recorder->device->container.currentFrame], 0, stagingAlloc->dataSize, &hostBufferMapped);
+
+	if (mappedHostRet)
+	{
+		internalRendererLogger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Cannot map pointer of host buffer for host transfers"));
+		return;
+	}
+
+	char* memPtr = (char*)hostBufferMapped;
+
 	while (link >= 0)
 	{
 		link = driverDeviceMemoryUpdater.PopLink(&region, link, &linkprev);
 
-		size_t rsize = 0, intOffset = 0;
+		size_t rsize = 0, intOffset = 0, intSize = 0;
 
 		RenderAllocation* alloc = allocations.Get(region.allocationIndex);
 
 		GetAllocationDetails(alloc, &rsize, &intOffset, nullptr, recorder->device->container.currentFrame);
 
 		intOffset += region.allocoffset;
+
+		intSize = region.size;
 
 		EntryHandle index = bufferHandles[alloc->memIndex].bufferHandle;
 
@@ -2009,8 +2056,13 @@ void RenderInstance::UploadDeviceLocalTransfers(CommandRecorder* recorder)
 			if (previousBuffer != EntryHandle())
 			{
 				MakeAndBindDriverAccumulatedBarriers(recorder);
-				cumulativeSize = (uploadArenaOffset[batchCounter - 1] - uploadArenaOffset[0]) + batchSizes[batchCounter - 1];
-				WriteDeviceBufferBatch(recorder, previousBuffer, recorder->device->container.stagingBuffers[recorder->device->container.currentFrame], batchData, batchSizes, uploadArenaOffset, batchOffsets, batchCounter, cumulativeSize);
+				
+				for (size_t batchIter = 0; batchIter < batchCounter; batchIter++)
+				{
+					memcpy(memPtr + uploadArenaOffset[batchIter], batchData[batchIter], batchSizes[batchIter]);
+				}
+
+				WriteDeviceBufferBatch(recorder, previousBuffer, recorder->device->container.stagingBuffers[recorder->device->container.currentFrame], batchSizes, uploadArenaOffset, batchOffsets, batchCounter);
 			}
 
 			previousBuffer = index;
@@ -2018,19 +2070,24 @@ void RenderInstance::UploadDeviceLocalTransfers(CommandRecorder* recorder)
 			cumulativeSize = 0;
 		}
 
-		uploadArenaOffset[batchCounter] = stagingAlloc->Allocate(region.size, recorder->device->container.relatedPhysDeviceInfo->optimalImageCopyOffsetAlignment);
-		batchSizes[batchCounter] = region.size;
-		batchData[batchCounter] = region.data;
+		uploadArenaOffset[batchCounter] = stagingAlloc->Allocate(intSize, recorder->device->container.relatedPhysDeviceInfo->optimalImageCopyOffsetAlignment);
+		batchSizes[batchCounter] = intSize;
 		batchOffsets[batchCounter] = intOffset;
-
+		batchData[batchCounter] = region.data;
+	
 		batchCounter++;
 	}
 
 	MakeAndBindDriverAccumulatedBarriers(recorder);
 
-	cumulativeSize = (uploadArenaOffset[batchCounter - 1] - uploadArenaOffset[0]) + batchSizes[batchCounter - 1];
+	for (size_t batchIter = 0; batchIter < batchCounter; batchIter++)
+	{
+		memcpy(memPtr + uploadArenaOffset[batchIter], batchData[batchIter], batchSizes[batchIter]);
+	}
 
-	WriteDeviceBufferBatch(recorder, previousBuffer, recorder->device->container.stagingBuffers[recorder->device->container.currentFrame], batchData, batchSizes, uploadArenaOffset, batchOffsets, batchCounter, cumulativeSize);
+	UnmapDriverMemoryMappedPointer(recorder->device, recorder->device->container.stagingBuffers[recorder->device->container.currentFrame]);
+
+	WriteDeviceBufferBatch(recorder, previousBuffer, recorder->device->container.stagingBuffers[recorder->device->container.currentFrame], batchSizes, uploadArenaOffset, batchOffsets, batchCounter);
 }
 
 void RenderInstance::InvokeTransferCommands(CommandRecorder* recorder)

@@ -92,17 +92,23 @@ void main()
     uint meshOffsets =  texelFetch(globalMeshOffsets, int(gridIndex)).r;
     uint meshCounts =  texelFetch(globalMeshCounts, int(gridIndex)).r;
 
+    int lightMeshCount = -1;
+
+    uint ObjLightCopies[8]; 
+
+    uint index = 0, meshIndex = 0;
+
     if (meshCounts > lIndex)
     {
         uint dc = GET_LIGHT_TYPE_DIRECTIONAL_COUNT(lightCounts);
         uint poc = GET_LIGHT_TYPE_POINT_COUNT(lightCounts);
         uint sc = GET_LIGHT_TYPE_SPOT_COUNT(lightCounts);
 
-        uint index = texelFetch(globalMeshAllocations, int(meshOffsets+lIndex)).r;
+        index = texelFetch(globalMeshAllocations, int(meshOffsets+lIndex)).r;
 
         uint geomInstIndex = rends.renderables[index].geomInstIndex;
     
-        uint meshIndex = rends.renderables[index].meshIndex;
+        meshIndex = rends.renderables[index].meshIndex;
 
         vec4 sphere = perModelBuffer.objects[rends.renderables[index].meshIndex].sphere;
 
@@ -112,13 +118,11 @@ void main()
 
         vec3 sphereWPos = vec3(worldM * vec4(sphere.xyz, 1.0f));
 
-        uint lightMeshCount = 0;
-
-        uint lightStage = 0;
-
-        uint ObjLightCopies[8]; 
+        uint lightStage = 0; 
 
         uint light = 0;
+
+        lightMeshCount = 0;
 
         for (;light<dc; light++)
         {
@@ -210,37 +214,40 @@ void main()
 
                lightMeshCount++;  
            } 
-        } 
+        }  
+    }
 
-        uint wgVisibleCount = atomicAdd(visibleCount, (lightMeshCount > 0) ? 1u : 0u);
-        uint wgInvisibleCount = atomicAdd(invisibleCount, (lightMeshCount == 0) ? 1u : 0u);
-        uint smStartIndex = atomicAdd(allocIndex, lightMeshCount);
+    uint wgVisibleCount = atomicAdd(visibleCount, (lightMeshCount > 0) ? 1u : 0u);
+    uint wgInvisibleCount = atomicAdd(invisibleCount, (lightMeshCount == 0) ? 1u : 0u);
+    uint smStartIndex = atomicAdd(allocIndex, uint(max(lightMeshCount, 0)));
+    
+    barrier();
+    
+    if (gl_LocalInvocationID.x == 0)
+    {
+        visibleCount = atomicAdd(cCounts.visibleCount, visibleCount);
+        invisibleCount = atomicAdd(cCounts.invisibleCount, invisibleCount);
+        allocIndex = atomicAdd(cCounts.shadowMapDrawIndexOffset, allocIndex);
+    }
+    
+    barrier();
 
-        barrier();
-
-        if (gl_LocalInvocationID.x == 0)
-        {
-            visibleCount = atomicAdd(cCounts.visibleCount, visibleCount);
-            invisibleCount = atomicAdd(cCounts.invisibleCount, invisibleCount);
-            allocIndex = atomicAdd(cCounts.shadowMapDrawIndexOffset, allocIndex);
-        }
-
-        barrier();
-
+    if (meshCounts > lIndex)
+    {
         uint writeOutIndex = (lightMeshCount == 0) ? (gs.objCount-1)-(invisibleCount+wgInvisibleCount) : (visibleCount+wgVisibleCount);
-
+    
         smStartIndex += allocIndex;
-        
+    
         imageStore(globalSMRenderableIndices, int(writeOutIndex), uvec4(index, 0, 0, 0));
         imageStore(globalSMRenderableStart, int(index), uvec4(smStartIndex, 0, 0, 0));
         imageStore(globalSMRenderableCount, int(index), uvec4(lightMeshCount, 0, 0, 0));
-   
+    
         cmdBuffer.commands[writeOutIndex].instanceCount = lightMeshCount;
         cmdBuffer.commands[writeOutIndex].firstIndex = perModelBuffer.objects[meshIndex].firstIndex;
         cmdBuffer.commands[writeOutIndex].indexCount = perModelBuffer.objects[meshIndex].indexCount;
         cmdBuffer.commands[writeOutIndex].firstInstance = 0;
         cmdBuffer.commands[writeOutIndex].vertexOffset = 0;
-
+    
         for (uint lightIndex = 0; lightIndex<lightMeshCount; lightIndex++)
         { 
             imageStore(globalSMPerRendIndices, int(smStartIndex), uvec4(ObjLightCopies[lightIndex], 0, 0, 0));

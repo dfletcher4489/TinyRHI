@@ -2863,6 +2863,7 @@ int CreateDebugCommandBuffers(int count)
 	static DebugDrawType boxType = DebugDrawType::DEBUGBOX;
 
 	indirectCullBuilder.UploadConstant(&debugRSContext, &boxType, 0);
+	indirectCullBuilder.UploadConstant(&debugRSContext, &debugIndirectDrawData.commandBufferSize, 1);
 
 	if (debugRSContext.contextFailed)
 	{
@@ -2916,6 +2917,7 @@ int CreateDebugCommandBuffers(int count)
 	static DebugDrawType sphereType = DebugDrawType::DEBUGSPHERE;
 
 	indirectCullBuilder2.UploadConstant(&debugRSContext, &sphereType, 0);
+	indirectCullBuilder2.UploadConstant(&debugRSContext, &debugIndirectDrawData.commandBufferSize, 1);
 
 	if (debugRSContext.contextFailed)
 	{

@@ -458,7 +458,6 @@ static IndirectDrawData mainIndirectDrawData;
 static IndirectDrawData debugIndirectDrawData;
 
 static WorldSpaceGPUPartition worldSpaceAssignment;
-//static WorldSpaceGPUPartition lightAssignment;
 
 static AllocationInstanceIndex globalIndexBuffer;
 static int globalIndexBufferSize = 1024 * KiB;
@@ -1229,7 +1228,7 @@ void ApplicationLoop::Execute()
 				{
 					if (updateMainDebugCommand == framesInFlight)
 					{
-						GlobalRenderer::gRenderInstance.InsertTransferCommand(debugTypesCounts, 8, 0, 0);
+						GlobalRenderer::gRenderInstance.InsertTransferCommand(debugTypesCounts, sizeof(uint32_t) * 2, 0, 0);
 					}
 
 					GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, debugClassificationHandle);
@@ -1250,7 +1249,7 @@ void ApplicationLoop::Execute()
 				if (!updateMainDrawCommand) 
 				{
 					updateMainDrawCommand = framesInFlight;
-					GlobalRenderer::gRenderInstance.InsertTransferCommand(mainIndirectDrawData.commandBufferCountAlloc, 8, 0, 0);
+					GlobalRenderer::gRenderInstance.InsertTransferCommand(mainIndirectDrawData.commandBufferCountAlloc, sizeof(uint32_t) * 2, 0, 0);
 				}
 
 				if (mainDrawRenderableCount != mainIndirectDrawData.commandBufferCount)
@@ -1277,7 +1276,7 @@ void ApplicationLoop::Execute()
 				if (!updateShadowMap)
 				{
 					updateShadowMap = framesInFlight;
-					GlobalRenderer::gRenderInstance.InsertTransferCommand(mainShadowMapManager.shadowMapObjectCountAlloc, 8, 0, 0);
+					GlobalRenderer::gRenderInstance.InsertTransferCommand(mainShadowMapManager.shadowMapObjectCountAlloc, sizeof(uint32_t) * 3, 0, 0);
 				}
 
 				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, mainShadowMapManager.shadowClippingPipeline);
@@ -3779,7 +3778,7 @@ int CreateShadowMapManager(int maxShadowMapAssignment, int maxObjCount, int shad
 
 	mainShadowMapManager.shadowMapObjectIDsAllocSize = maxObjCount;
 	mainShadowMapManager.shadowMapObjectIDsAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(uint32_t), mainShadowMapManager.shadowMapObjectIDsAllocSize, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::R32_UINT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
-	mainShadowMapManager.shadowMapObjectCountAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(uint32_t), 2, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainDeviceAllocator);
+	mainShadowMapManager.shadowMapObjectCountAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, sizeof(uint32_t), 3, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainDeviceAllocator);
 	mainShadowMapManager.shadowMapIndirectBufferAllocSize = maxObjCount;
 	mainShadowMapManager.shadowMapIndirectBufferAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainDeviceBuffer, GetDriverIndexedIndirectDrawCommandSize(), mainShadowMapManager.shadowMapIndirectBufferAllocSize, GetDriverIndexedIndirectDrawCommandAlign(), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainDeviceAllocator); ;
 	

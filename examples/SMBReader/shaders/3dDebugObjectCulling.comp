@@ -190,11 +190,22 @@ uint GetCount(uint debugType)
     return count;
 }
 
+shared uint wgVisibleCount;
+shared uint wgInvisibleCount;
+
 layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
 
 void main()
 {
 	uint index = (gl_WorkGroupID.x * gl_WorkGroupSize.x) + gl_LocalInvocationID.x;
+
+    if (gl_LocalInvocationID.x == 0)
+    {
+        wgVisibleCount = 0;
+        wgInvisibleCount = 0;
+    }
+
+    barrier();
 
     uint typeCount = GetCount(gs.debugType);
 
@@ -207,30 +218,39 @@ void main()
 
     bool visible = CheckDebugDrawAgainstFrustrum(gs.debugType, debugIndex);
 
-    if (!visible)
+    uint invisibleIndex = atomicAdd(wgInvisibleCount, (visible == false) ? 1u : 0u);
+    uint visibleIndex = atomicAdd(wgVisibleCount, (visible == true) ? 1u : 0u);
+
+    barrier();
+
+    if (gl_LocalInvocationID.x == 0)
     {
-        return;
-    } 
+       wgVisibleCount = atomicAdd(cCounts.visibleCount, wgVisibleCount);
+       wgInvisibleCount = atomicAdd(cCounts.invisibleCount, wgInvisibleCount);
+    }
 
-    uint visibleIndex = atomicAdd(cCounts.visibleCount, 1u);
+    barrier();
 
-    imageStore(globalDebugIndices, int(visibleIndex), uvec4(debugIndex, 0, 0, 0));
+    uint writeOutIndex = (visible == true) ? (wgVisibleCount+visibleIndex) : ((tCounts.sphereCount + tCounts.boxCount)-1) - (wgInvisibleCount+invisibleIndex);
+    uint instanceCount = uint(visible);
+
+    imageStore(globalDebugIndices, int(writeOutIndex), uvec4(debugIndex, 0, 0, 0));
     
     if (gs.debugType == DEBUG_DRAW_TYPE_BOX)
     {
-        cmdBuffer.commands[visibleIndex].vertexCount = 24;
-        cmdBuffer.commands[visibleIndex].instanceCount = 1;
-        cmdBuffer.commands[visibleIndex].firstVertex = 0;
-        cmdBuffer.commands[visibleIndex].firstInstance = 0;
+        cmdBuffer.commands[writeOutIndex].vertexCount = 24;
+        cmdBuffer.commands[writeOutIndex].instanceCount = instanceCount;
+        cmdBuffer.commands[writeOutIndex].firstVertex = 0;
+        cmdBuffer.commands[writeOutIndex].firstInstance = 0;
 
     }
     else if (gs.debugType == DEBUG_DRAW_TYPE_SPHERE)
     {
         vec4 temp = ddsbuffer.objects[debugIndex].halfExtents;
         uint numSlices = floatBitsToUint(temp.y);
-        cmdBuffer.commands[visibleIndex].vertexCount = 2*numSlices;
-        cmdBuffer.commands[visibleIndex].instanceCount = 1;
-        cmdBuffer.commands[visibleIndex].firstVertex = 0;
-        cmdBuffer.commands[visibleIndex].firstInstance = 0;
+        cmdBuffer.commands[writeOutIndex].vertexCount = 2*numSlices;
+        cmdBuffer.commands[writeOutIndex].instanceCount = instanceCount;
+        cmdBuffer.commands[writeOutIndex].firstVertex = 0;
+        cmdBuffer.commands[writeOutIndex].firstInstance = 0;
     }
 }

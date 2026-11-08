@@ -47,6 +47,7 @@ layout(set = 0, binding = 14) writeonly buffer commandCounts
 {
     uint visibleCount;
     uint invisibleCount;
+    uint shadowMapDrawIndexOffset;
 } cCounts;
 
 layout(set = 0, binding = 15) writeonly buffer Commands 
@@ -55,6 +56,8 @@ layout(set = 0, binding = 15) writeonly buffer Commands
 } cmdBuffer;
 
 shared uint allocIndex;
+shared uint visibleCount;
+shared uint invisibleCount;
 
 layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
 
@@ -76,6 +79,8 @@ void main()
     if (lIndex == 0)
     {
         allocIndex = 0;
+        visibleCount = 0;
+        invisibleCount = 0;
     }
 
     barrier();
@@ -205,27 +210,36 @@ void main()
 
                lightMeshCount++;  
            } 
-        }
-
-        if (lightMeshCount == 0)
-        {
-            uint invisibleIndex = atomicAdd(cCounts.invisibleCount, 1u);
-            cmdBuffer.commands[gs.objCount-(1+invisibleIndex)].instanceCount = 0;
-            return;
         } 
 
-        uint visibleIndex = atomicAdd(cCounts.visibleCount, 1u);
+        uint wgVisibleCount = atomicAdd(visibleCount, (lightMeshCount > 0) ? 1u : 0u);
+        uint wgInvisibleCount = atomicAdd(invisibleCount, (lightMeshCount == 0) ? 1u : 0u);
         uint smStartIndex = atomicAdd(allocIndex, lightMeshCount);
 
-        imageStore(globalSMRenderableIndices, int(visibleIndex), uvec4(index, 0, 0, 0));
+        barrier();
+
+        if (gl_LocalInvocationID.x == 0)
+        {
+            visibleCount = atomicAdd(cCounts.visibleCount, visibleCount);
+            invisibleCount = atomicAdd(cCounts.invisibleCount, invisibleCount);
+            allocIndex = atomicAdd(cCounts.shadowMapDrawIndexOffset, allocIndex);
+        }
+
+        barrier();
+
+        uint writeOutIndex = (lightMeshCount == 0) ? (gs.objCount-1)-(invisibleCount+wgInvisibleCount) : (visibleCount+wgVisibleCount);
+
+        smStartIndex += allocIndex;
+        
+        imageStore(globalSMRenderableIndices, int(writeOutIndex), uvec4(index, 0, 0, 0));
         imageStore(globalSMRenderableStart, int(index), uvec4(smStartIndex, 0, 0, 0));
         imageStore(globalSMRenderableCount, int(index), uvec4(lightMeshCount, 0, 0, 0));
    
-        cmdBuffer.commands[visibleIndex].instanceCount = lightMeshCount;
-        cmdBuffer.commands[visibleIndex].firstIndex = perModelBuffer.objects[meshIndex].firstIndex;
-        cmdBuffer.commands[visibleIndex].indexCount = perModelBuffer.objects[meshIndex].indexCount;
-        cmdBuffer.commands[visibleIndex].firstInstance = 0;
-        cmdBuffer.commands[visibleIndex].vertexOffset = 0;
+        cmdBuffer.commands[writeOutIndex].instanceCount = lightMeshCount;
+        cmdBuffer.commands[writeOutIndex].firstIndex = perModelBuffer.objects[meshIndex].firstIndex;
+        cmdBuffer.commands[writeOutIndex].indexCount = perModelBuffer.objects[meshIndex].indexCount;
+        cmdBuffer.commands[writeOutIndex].firstInstance = 0;
+        cmdBuffer.commands[writeOutIndex].vertexOffset = 0;
 
         for (uint lightIndex = 0; lightIndex<lightMeshCount; lightIndex++)
         { 

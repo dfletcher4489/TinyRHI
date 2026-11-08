@@ -16,6 +16,7 @@ layout(set = 0, binding = 0) writeonly buffer commands
 
 layout(set = 0, binding = 1) writeonly buffer commandCounts {
     uint visibleCount;
+    uint invisibleCount;
 } cCounts;
 
 layout(set = 0, binding = 2) buffer UIContainers
@@ -28,7 +29,7 @@ layout(set = 0, binding = 3, r32ui) uniform uimageBuffer uiIndirectionHandles;
 layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
 
 shared uint groupVisibleCount;
-shared uint offsetIntoDrawList;
+shared uint groupInvisibleCount;
 
 void main()
 {
@@ -36,36 +37,43 @@ void main()
 
     if (gl_LocalInvocationID.x == 0)
     {
+        groupInvisibleCount = 0;
         groupVisibleCount = 0;
-        offsetIntoDrawList = 0;
     }
     barrier();
 
-    uint groupVisibleIndex = gl_WorkGroupSize.x;
+    uint groupVisibleIndex = 0;
+    bool visible = false;
 
     if (lIndex < gs.containerCount)
     {
         uint bitfield = conts.renderables[lIndex].bitfields.x;
 
         if ((GET_TYPE_SPECIFIC_DATA(bitfield) & INVISIBLE_CONTAINER) != INVISIBLE_CONTAINER)
+        {
             groupVisibleIndex = atomicAdd(groupVisibleCount, 1u);
+            visible = true;
+        }
+        else
+            groupVisibleIndex = atomicAdd(groupInvisibleCount, 1u);
     }
     barrier();
 
     if (gl_LocalInvocationID.x == 0)
     {
-        offsetIntoDrawList = atomicAdd(cCounts.visibleCount, groupVisibleCount);
+        groupVisibleCount = atomicAdd(cCounts.visibleCount, groupVisibleCount);
+        groupInvisibleCount = atomicAdd(cCounts.invisibleCount, groupInvisibleCount);
     }
     barrier();
 
-    if (lIndex < gs.containerCount && groupVisibleIndex < gl_WorkGroupSize.x)
+    if (lIndex < gs.containerCount)
     {
-        uint absoluteOffset = offsetIntoDrawList + groupVisibleIndex;
+        uint absoluteOffset = (visible == true) ? groupVisibleCount+groupVisibleIndex : (gs.containerCount-1) - (groupInvisibleCount+groupVisibleIndex);
 
         imageStore(uiIndirectionHandles, int(absoluteOffset), uvec4(lIndex, 0, 0, 0));
 
         comStructs.command[absoluteOffset].vertexCount = 4;
-        comStructs.command[absoluteOffset].instanceCount = 1;
+        comStructs.command[absoluteOffset].instanceCount = uint(visible);
         comStructs.command[absoluteOffset].firstInstance = 0;
         comStructs.command[absoluteOffset].firstVertex = 0;
     }

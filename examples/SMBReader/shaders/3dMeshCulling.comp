@@ -171,11 +171,22 @@ bool CheckAllPlanesAgainstSphere(mat4 worldMatrix, vec4 inSphere)
    return true; 
 }
 
+shared uint wgVisibleCount;
+shared uint wgInvisibleCount;
+
 layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
 
 void main()
 {
 	uint index = (gl_WorkGroupID.x * gl_WorkGroupSize.x) + gl_LocalInvocationID.x;
+
+    if (gl_LocalInvocationID.x == 0)
+    {
+        wgVisibleCount = 0;
+        wgInvisibleCount = 0;
+    }
+
+    barrier();
 
     uint maxCount = gs.grid.indirectDrawCount;
   
@@ -194,26 +205,32 @@ void main()
 
     vec4 sphere = perModelBuffer.objects[meshDetailsIndex].sphere;
 
-    bool visible = CheckAllPlanesAgainstAABB(lGeomDetails.minMaxBox, worldM);
-
-    if (!visible)
-    {
-        uint invisibleIndex = atomicAdd(cCounts.invisibleCount, 1u);
-        cmdBuffer.commands[maxCount-(1+invisibleIndex)].instanceCount = 0;
-        return;
-    } 
-
     rends.renderables[index].adjointMatrix = mat4(AdjointMatrix(worldM));
 
-    uint visibleIndex = atomicAdd(cCounts.visibleCount, 1u);
-   
-    imageStore(globalRenderableIndices, int(visibleIndex), uvec4(index, 0, 0, 0));
+    bool visible = CheckAllPlanesAgainstAABB(lGeomDetails.minMaxBox, worldM);
 
-    cmdBuffer.commands[visibleIndex].instanceCount = rends.renderables[index].instanceCount;
-    cmdBuffer.commands[visibleIndex].firstIndex = perModelBuffer.objects[meshDetailsIndex].firstIndex;
-    cmdBuffer.commands[visibleIndex].indexCount = perModelBuffer.objects[meshDetailsIndex].indexCount;
-    cmdBuffer.commands[visibleIndex].firstInstance = 0;
-    cmdBuffer.commands[visibleIndex].vertexOffset = 0;
+    uint invisibleIndex = atomicAdd(wgInvisibleCount, (visible == false) ? 1u : 0u);
+    uint visibleIndex = atomicAdd(wgVisibleCount, (visible == true) ? 1u : 0u);
+
+    barrier();
+
+    if (gl_LocalInvocationID.x == 0)
+    {
+       wgVisibleCount = atomicAdd(cCounts.visibleCount, wgVisibleCount);
+       wgInvisibleCount = atomicAdd(cCounts.invisibleCount, wgInvisibleCount);
+    }
+
+    barrier();
+
+    uint writeOutIndex = (visible == true) ? (wgVisibleCount+visibleIndex) : (maxCount-1) - (wgInvisibleCount+invisibleIndex);
+   
+    imageStore(globalRenderableIndices, int(writeOutIndex), uvec4(index, 0, 0, 0));
+
+    cmdBuffer.commands[writeOutIndex].instanceCount = rends.renderables[index].instanceCount;
+    cmdBuffer.commands[writeOutIndex].firstIndex = perModelBuffer.objects[meshDetailsIndex].firstIndex;
+    cmdBuffer.commands[writeOutIndex].indexCount = perModelBuffer.objects[meshDetailsIndex].indexCount;
+    cmdBuffer.commands[writeOutIndex].firstInstance = 0;
+    cmdBuffer.commands[writeOutIndex].vertexOffset = 0;
    
     return;
 }

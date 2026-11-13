@@ -516,7 +516,7 @@ void SegregateList(TLSFMain* tlsf_struct, unsigned int size, unsigned int* fli, 
 
 	*fli = (unsigned int)input;
 
-	unsigned int intermediary = (size - (1ull << (unsigned int)*fli));
+	unsigned int intermediary = (size - (1ull << *fli));
 
 	*sli = intermediary >> (*fli - tlsf_struct->sliBits);
 }

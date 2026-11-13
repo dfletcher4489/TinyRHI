@@ -3925,6 +3925,12 @@ void RecreateFrameGraphAttachments(uint32_t width, uint32_t height)
 		GlobalRenderer::gRenderInstance.UploadFrameAttachmentResource(MSAAShadowMapping, 1, viewIndex, globalTexturesDescriptor, 4, 0);
 		GlobalRenderer::gRenderInstance.UploadFrameAttachmentResource(MSAAShadowMapping, 1, viewIndex, smdpd.fullScreenDescriptorSet, 0, 0);
 	}
+
+	currentFrameGraphIndex = MSAAShadowMapping;
+
+	GlobalRenderer::gRenderInstance.ResetCommandList(mainCommandStreamIndex);
+	GlobalRenderer::gRenderInstance.AddComputeCommandQueue(mainCommandStreamIndex, mainComputeQueueIndex);
+	GlobalRenderer::gRenderInstance.AddAttachmentCommandQueue(mainCommandStreamIndex, currentFrameGraphIndex);
 }
 
 int CreateMSAAPostFullScreen()
@@ -4426,7 +4432,7 @@ int ApplicationLoop::InitializeRuntime()
 	mainShadowMapSampler = GlobalRenderer::gRenderInstance.CreateSampler(mainLogicalDevice,
 		0, 0,
 		SamplerFilterMode::FILTER_LINEAR, SamplerFilterMode::FILTER_LINEAR,
-		SamplerAddressMode::ADDRESS_CLAMP_TO_EDGE, SamplerMipmapMode::MIPMAP_MODE_NEAREST,
+		SamplerAddressMode::ADDRESS_CLAMP_TO_BORDER, SamplerMipmapMode::MIPMAP_MODE_NEAREST,
 		CompareOp::LESSEQUAL, false
 	);
 

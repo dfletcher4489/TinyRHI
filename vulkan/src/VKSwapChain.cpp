@@ -314,7 +314,7 @@ uint32_t VKSwapChain::AcquireNextSwapChainImage(uint64_t _timeout, VkSemaphore a
 
 	return imageIndex;
 }
-#include <cstdio>
+
 uint32_t VKSwapChain::AcquireNextSwapChainImage2(uint64_t _timeout, VkSemaphore acquireSemaphore, uint32_t currentFrameInFlight)
 {
 	uint32_t imageIndex;

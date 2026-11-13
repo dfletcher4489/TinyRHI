@@ -113,9 +113,14 @@ float ShadowContribution(uvec2 lightViewIndex, vec3 normal, vec3 lightingDir)
 
     vec3 projCoords = smTransCoords.xyz / smTransCoords.w;
 
-    if (any(lessThan(projCoords.xy, vec2(-1.0))) || any(greaterThan(projCoords.xy, vec2(1.0))) || projCoords.z < 0.0 || projCoords.z > 1.0)
+    if (projCoords.z < 0.0 || projCoords.z > 1.0)
     {
-        return 1.0;
+        return 1.0; // behind the shadow caster or too far away
+    }
+
+    if (any(lessThan(projCoords.xy, vec2(-1.0))) || any(greaterThan(projCoords.xy, vec2(1.0))) )
+    {
+        return 1.0; //outside the projection frustum (guard band is included in fovof projection matrix);
     }
 
     vec2 projCoordsPair = projCoords.xy * 0.5 + 0.5;
@@ -149,7 +154,9 @@ vec4 DoLights(vec3 normal, vec4 color, uint renderableIndex, vec3 specularBase, 
 
     vec3 range = sic.grid.max.xyz - sic.grid.min.xyz;
 
-    uvec3 inGridPos = uvec3(round(range/(worldPosition.xyz - sic.grid.min.xyz)));
+    vec3 cell = ((worldPosition.xyz - sic.grid.min.xyz) / range) * float(sic.grid.numberOfDivisions);
+
+    uvec3 inGridPos = uvec3(clamp(floor(cell), vec3(0.0), vec3(float(sic.grid.numberOfDivisions - 1))));
 
     uint gridIndex = (inGridPos.x * sic.grid.numberOfDivisions * sic.grid.numberOfDivisions) + (inGridPos.y * sic.grid.numberOfDivisions) + inGridPos.z;
   
@@ -174,8 +181,6 @@ vec4 DoLights(vec3 normal, vec4 color, uint renderableIndex, vec3 specularBase, 
 
         float diffuseIntensity = light.color.w;
 
-        float specularIntensity = light.direction.w;
-
         vec3 lightDirection = light.direction.xyz;
 
         uint lightViewIndex = floatBitsToUint(light.direction.w);
@@ -198,7 +203,7 @@ vec4 DoLights(vec3 normal, vec4 color, uint renderableIndex, vec3 specularBase, 
 
             AmbientColor += light.ancillary.xyz * shadowColor;
 
-            SpecularColor += lightColor * specularBase * specFactor * specularIntensity * shadowColor;
+            SpecularColor += lightColor * specularBase * specFactor * shadowColor;
         }
         else if (lType == LIGHT_TYPE_POINT)
         {
@@ -224,7 +229,7 @@ vec4 DoLights(vec3 normal, vec4 color, uint renderableIndex, vec3 specularBase, 
 
             DiffuseColor += lightColor * diffuse * diffuseIntensity * attenuation * shadowColor;
 
-            SpecularColor += lightColor * specularBase * specFactor * specularIntensity * attenuation * shadowColor;
+            SpecularColor += lightColor * specularBase * specFactor * attenuation * shadowColor;
         }
         else if (lType == LIGHT_TYPE_SPOT)
         {
@@ -254,7 +259,7 @@ vec4 DoLights(vec3 normal, vec4 color, uint renderableIndex, vec3 specularBase, 
 
             DiffuseColor += lightColor * diffuse * diffuseIntensity * spotFactor * (1.0/d2) * shadowColor;
 
-            SpecularColor += lightColor * specularBase * specFactor * specularIntensity * spotFactor * (1.0/d2) * shadowColor;
+            SpecularColor += lightColor * specularBase * specFactor * spotFactor * (1.0/d2) * shadowColor;
         }
     }
 

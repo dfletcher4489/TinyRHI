@@ -558,24 +558,24 @@ static PipelineHandleIndex debugSphereHandle;
 static GPULightSource mainPointLight = { 
 	.color = Vector4f(229, 211, 191, 15.0), 
 	.pos = Vector4f(-1.0f, 2.0f, 1.0f, 20.5f),
-	.direction= Vector4f(0.54,0.75,0.38,0.0), 
-	.ancillary= Vector4f(0.0,0.0,0.0,DegToRad(90))
+	.direction = Vector4f(0.54,0.75,0.38,0.0), 
+	.ancillary = Vector4f(0.0,0.0,0.0,DegToRad(90))
 };
 
 static GPULightSource mainDirectionalLight =
 {
-	Vector4f(229.0, 211.0, 191.0, 2.0),
-	Vector4f(0.0,0.0,0.0,0.0),
-	Vector4f(.75, -0.33, -.25, 1.0),
-	Vector4f(0.001,0.0018,0.0012,0.0),
+	.color = Vector4f(229.0, 211.0, 191.0, 2.0),
+	.pos = Vector4f(0.0,0.0,0.0,0.0),
+	.direction = Vector4f(.75, -0.33, -.25, 0.0),
+	.ancillary = Vector4f(0.001,0.0018,0.0012,0.0),
 };
 
 static GPULightSource mainSpotLight =
 {
-	Vector4f(229.0, 211.0, 191.0, 50.5),
-	Vector4f(-10.0,5.0, 5.0,50.0),
-	Vector4f(0.0, 0.0, -1.0, 0.0),
-	Vector4f(DegToRad(0.0),DegToRad(10.0),0.0,0.0),
+	.color = Vector4f(229.0, 211.0, 191.0, 50.5),
+	.pos = Vector4f(-10.0,5.0, 5.0,50.0),
+	.direction = Vector4f(0.0, 0.0, -1.0, 0.0),
+	.ancillary = Vector4f(DegToRad(0.0),DegToRad(10.0),0.0,0.0),
 };
 
 static PoolAllocator<MeshCPUData> meshCPUData{};
@@ -5766,7 +5766,7 @@ int AddLight(GPULightSource lightDesc, LightType type)
 
 		pos = Vector3f(lightDesc.pos.x, lightDesc.pos.y, lightDesc.pos.z);
 
-		float fov = lightDesc.ancillary.w;
+		float fov = MAX(lightDesc.ancillary.w, 2.0f * atanf((float)(mainShadowMapManager.avgShadowWidth) / (float)(mainShadowMapManager.avgShadowWidth - 8)));
 
 		Matrix4f projM = CreateProjectionMatrix(1.0f, 1.0, distance, fov);
 

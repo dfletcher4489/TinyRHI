@@ -287,9 +287,6 @@ struct GPULightPartition
 	PipelineHandleIndex worldSpacePrefixSumPipeline;
 };
 
-static int sizeOfLightTypeCount = sizeof(uint32_t) * 3;
-static int sizeOfLightOffsets = sizeof(uint32_t) * 10;
-
 enum class LightType : uint32_t
 {
 	DIRECTIONAL = 0,
@@ -525,7 +522,7 @@ static const int globalMeshCountMax = globalMeshSize / sizeof(GPUMeshDetails);
 static const int globalGeometryDescriptionsCountMax = globalGeometryDescriptionsSize / sizeof(GPUGeometryDetails);
 static const int globalGeometryRenderableCountMax = globalGeometryRenderableSize / sizeof(GPUGeometryRenderable);
 
-static int shadowMapIndex = 0;
+static bool showJoints = false;
 
 static DeviceSlabAllocator indexBufferAlloc(globalIndexBufferSize, STRING_VIEW_FROM_LITERAL("Global Index Buffer"), &mainAppLogger);
 
@@ -1350,9 +1347,12 @@ void ApplicationLoop::Execute()
 
 					GlobalRenderer::gRenderInstance.AddPipelineToRPGraphicsQueue(mainIndirectDrawData.indirectDrawPipeline, currentFrameGraphIndex, 2);
 
-					for (int jointPipeline = 0; jointPipeline < jointMeshPipelinesCount; jointPipeline++)
+					if (showJoints)
 					{
-					//	GlobalRenderer::gRenderInstance.AddPipelineToRPGraphicsQueue(jointMeshPipelines[jointPipeline], currentFrameGraphIndex, 2);
+						for (int jointPipeline = 0; jointPipeline < jointMeshPipelinesCount; jointPipeline++)
+						{
+							GlobalRenderer::gRenderInstance.AddPipelineToRPGraphicsQueue(jointMeshPipelines[jointPipeline], currentFrameGraphIndex, 2);
+						}
 					}
 
 					GlobalRenderer::gRenderInstance.AddPipelineToRPGraphicsQueue(globalUIGlobalIDPipeline, currentFrameGraphIndex, 1);
@@ -1383,20 +1383,6 @@ void ApplicationLoop::Execute()
 				running = false;
 
 			}	
-			
-			/*
-			std::array<int, 400> arr{}, arr2{};
-
-			//GlobalRenderer::gRenderInstance.ReadData(lightPartition.gridCountsAlloc, arr.data(), sizeof(arr), 0);
-			//GlobalRenderer::gRenderInstance.ReadData(lightPartition.gridOffsetsAlloc, arr.data(), sizeof(arr), 0);
-			//GlobalRenderer::gRenderInstance.ReadData(lightPartition.worldSpaceDivisionAlloc, arr.data(), sizeof(arr), 0);
-			//GlobalRenderer::gRenderInstance.ReadData(lightPartition.gridCountsAlloc, arr2.data(), sizeof(arr), 0);
-			//GlobalRenderer::gRenderInstance.ReadData(lightPartition.worldSpaceDivisionAlloc, arr2.data(), sizeof(arr), 0);
-			
-
-			//GlobalRenderer::gRenderInstance.ReadData(mainShadowMapManager.shadowMapAssignmentsAlloc, arr.data(), sizeof(arr), 0);
-			//GlobalRenderer::gRenderInstance.ReadData(mainShadowMapManager.shadowMapObjectIDsAlloc, arr.data(), sizeof(arr), 0);
-			*/
 
 			fps();
 
@@ -2980,7 +2966,6 @@ int CreateDebugCommandBuffers(int count)
 		.indirectCountAllocation = debugIndirectDrawData.commandBufferCountAlloc
 	};
 
-
 	debugIndirectDrawData.indirectDrawPipeline = GlobalRenderer::gRenderInstance.CreateGraphicsPipelineObject(&indirectDebugDrawPipelineCreate);
 
 	if (PipelineHandleIndex() == debugIndirectDrawData.indirectDrawPipeline)
@@ -3228,8 +3213,8 @@ int CreateMeshWorldAssignment(int count)
 		
 		worldSpaceAssignment.sumAfterDescriptors = sumAfterBuilder();
 
-		sumAfterBuilder.BindBufferToShaderResource(&genericMeshWorldRSContext, &worldSpaceAssignment.deviceSumsAlloc, 0, 1, 0);
-		sumAfterBuilder.BindBufferToShaderResource(&genericMeshWorldRSContext, &worldSpaceAssignment.deviceSumsAlloc, 0, 1, 1);
+		sumAfterBuilder.BindBufferToShaderResource(&genericMeshWorldRSContext, &worldSpaceAssignment.deviceCountsAlloc, 0, 1, 0);
+		sumAfterBuilder.BindBufferToShaderResource(&genericMeshWorldRSContext, &worldSpaceAssignment.deviceOffsetsAlloc, 0, 1, 1);
 		sumAfterBuilder.BindBufferToShaderResource(&genericMeshWorldRSContext, &worldSpaceAssignment.deviceSumsAlloc, 0, 1, 2);
 		sumAfterBuilder.UploadConstant(&genericMeshWorldRSContext, &worldSpaceAssignment.totalSumsNeeded, 0);
 
@@ -5171,15 +5156,16 @@ void ProcessKeys(GenericKeyAction keyActions[KC_COUNT])
 
 	camMovements[ROTATEYLEFT] = (keyActions[KC_LEFT].GetCurrentState() == HELD || keyActions[KC_LEFT].GetCurrentState() == PRESSED);
 
+	static bool jointClamped = false;
 
-	if (keyActions[KC_TWO].GetCurrentState() == PRESSED)
+	if (keyActions[KC_J].GetCurrentState() == PRESSED && !jointClamped)
 	{
-		GlobalRenderer::gRenderInstance.IncreaseMSAA(currentFrameGraphIndex, 0);
+		showJoints ^= true;
+		jointClamped = true;
 	}
-
-	if (keyActions[KC_ONE].GetCurrentState() == PRESSED)
+	else if (keyActions[KC_J].GetCurrentState() == RELEASED && jointClamped)
 	{
-		GlobalRenderer::gRenderInstance.DecreaseMSAA(currentFrameGraphIndex, 0);
+		jointClamped = false;
 	}
 
 	static int dir = -1;

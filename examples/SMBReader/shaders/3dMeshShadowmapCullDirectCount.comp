@@ -1,0 +1,69 @@
+#version 450
+
+#include "include/Math.iglsl"
+#include "include/Mesh.iglsl"
+#include "include/Lights.iglsl"
+
+layout(push_constant) uniform GlobalContext 
+{
+	uint objCount;
+	uint lightCount;
+} gs;
+
+
+layout(set = 0, binding = 0) uniform usamplerBuffer globalLightCounts;
+layout(set = 0, binding = 1) uniform usamplerBuffer globalMeshOffsets;
+layout(set = 0, binding = 2) uniform usamplerBuffer globalMeshCounts;
+layout(set = 0, binding = 3) uniform usamplerBuffer globalMeshAllocations;
+layout(set = 0, binding = 4, r32ui) uniform uimageBuffer globalMeshDirectCount; //count of all direct
+
+shared uint perMeshDirectCount[32];
+
+layout (local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
+
+void main()
+{
+    uint lIndex = gl_LocalInvocationID.x;
+    
+    uint lightIndex = gl_LocalInvocationID.y;
+
+    if (lIndex == 0 && lightIndex == 0)
+    {
+        for (uint i = 0; i<32; i++)
+        {
+            perMeshDirectCount[i] = 0;
+        }
+    }
+
+    barrier();
+    
+    uint gridIndex = gl_WorkGroupID.x;
+    
+    uint lightCounts =  texelFetch(globalLightCounts, int(gridIndex)).r;
+    uint meshCounts =  texelFetch(globalMeshCounts, int(gridIndex)).r;
+    uint meshOffsets =  texelFetch(globalMeshOffsets, int(gridIndex)).r;
+    uint dc = GET_LIGHT_TYPE_DIRECTIONAL_COUNT(lightCounts);
+    
+    if (meshCounts > lIndex)
+    {   
+        uint globalMeshIndex = texelFetch(globalMeshAllocations, int(meshOffsets+lIndex)).r;
+    
+        if (dc > lightIndex)
+        {
+            atomicAdd(perMeshDirectCount[lIndex], 1u);
+        }
+    }
+
+    barrier();
+
+    if (lIndex == 0 && lightIndex == 0)
+    {
+        for (uint i = 0; i<32; i++)
+        {
+            uint globalMeshIndex = texelFetch(globalMeshAllocations, int(meshOffsets+i)).r;
+            imageAtomicAdd(globalMeshDirectCount, int(globalMeshIndex), perMeshDirectCount[i]);
+        }
+    }
+
+    return;
+}

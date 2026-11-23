@@ -1,0 +1,105 @@
+#version 450
+
+#include "include/Math.iglsl"
+#include "include/Mesh.iglsl"
+#include "include/Lights.iglsl"
+
+layout(push_constant) uniform GlobalContext 
+{
+	uint objCount;
+	uint lightCount;
+} gs;
+
+layout(set = 0, binding = 0) uniform usamplerBuffer globalMeshDirectCounts;
+layout(set = 0, binding = 1) uniform usamplerBuffer globalMeshPointCounts;
+layout(set = 0, binding = 2) uniform usamplerBuffer globalMeshSpotCounts;
+layout(set = 0, binding = 3, r32ui) uniform uimageBuffer globalSMRenderableStart;
+layout(set = 0, binding = 4, r32ui) uniform uimageBuffer globalSMRenderableCount;
+layout(set = 0, binding = 5, r32ui) uniform uimageBuffer globalSMRenderableIndices;
+
+layout(set = 0, binding = 6) writeonly buffer commandCounts 
+{
+    uint visibleCount;
+    uint invisibleCount;
+    uint shadowMapDrawIndexOffset;
+} cCounts;
+
+layout(set = 0, binding = 7) writeonly buffer Commands 
+{
+	IndexedIndirectCommand commands[];
+} cmdBuffer;
+
+layout(set = 0, binding = 8) readonly buffer RENDBuffer
+{
+    MeshRenderable renderables[];
+} rends;
+
+layout(set = 0, binding = 9) readonly buffer PMBuffer 
+{
+    MeshDetails objects[];
+} perModelBuffer;
+
+shared uint allocIndex;
+shared uint visibleCount;
+shared uint invisibleCount;
+
+layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+void main()
+{
+	uint lIndex =  gl_GlobalInvocationID.x;
+
+    if (gl_LocalInvocationID.x == 0)
+    {
+        allocIndex = 0;
+        visibleCount = 0;
+        invisibleCount = 0;
+    }
+
+    uint lightMeshCount = 0;
+
+    if (gs.objCount > lIndex)
+    {
+        uint meshDirectCount = uint(texelFetch(globalMeshDirectCounts, int(lIndex)).r);
+        uint meshPointCount = uint(texelFetch(globalMeshPointCounts, int(lIndex)).r);
+        uint meshSpotCount = uint(texelFetch(globalMeshSpotCounts, int(lIndex)).r);
+
+        lightMeshCount = meshPointCount + meshSpotCount + meshDirectCount;
+    }
+
+    uint wgVisibleCount = atomicAdd(visibleCount, (lightMeshCount > 0) ? 1u : 0u);
+    uint wgInvisibleCount = atomicAdd(invisibleCount, (lightMeshCount == 0) ? 1u : 0u);
+    uint smStartIndex = atomicAdd(allocIndex, lightMeshCount);
+
+    barrier();
+
+    if (gl_LocalInvocationID.x == 0)
+    {
+        visibleCount = atomicAdd(cCounts.visibleCount, visibleCount);
+        invisibleCount = atomicAdd(cCounts.invisibleCount, invisibleCount);
+        allocIndex = atomicAdd(cCounts.shadowMapDrawIndexOffset, allocIndex);
+    }
+
+    barrier();
+
+    if (gs.objCount > lIndex)
+    {
+        uint writeOutIndex = (lightMeshCount == 0) ? (gs.objCount-1)-(invisibleCount+wgInvisibleCount) : (visibleCount+wgVisibleCount);
+    
+        smStartIndex += allocIndex;
+
+        uint meshIndex = rends.renderables[lIndex].meshIndex;
+    
+        imageStore(globalSMRenderableIndices, int(writeOutIndex), uvec4(lIndex, 0, 0, 0));
+        imageStore(globalSMRenderableStart, int(lIndex), uvec4(smStartIndex, 0, 0, 0));
+        imageStore(globalSMRenderableCount, int(lIndex), uvec4(lightMeshCount, 0, 0, 0));
+    
+        cmdBuffer.commands[writeOutIndex].instanceCount = lightMeshCount;
+        cmdBuffer.commands[writeOutIndex].firstIndex = perModelBuffer.objects[meshIndex].firstIndex;
+        cmdBuffer.commands[writeOutIndex].indexCount = perModelBuffer.objects[meshIndex].indexCount;
+        cmdBuffer.commands[writeOutIndex].firstInstance = 0;
+        cmdBuffer.commands[writeOutIndex].vertexOffset = 0;
+    }
+
+	return;
+}

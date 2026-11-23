@@ -37,11 +37,24 @@ layout(set = 0, binding = 3) buffer GridCounts
 	uint count[];
 } gridCounts;
 
-layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+shared uint perGridCount[32];
+
+layout (local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
 
 void main()
 {
-	uint lIndex =  (gl_WorkGroupID.x * gl_WorkGroupSize.x) + gl_LocalInvocationID.x;
+    if (gl_LocalInvocationID.x == 0 && gl_LocalInvocationID.y == 0)
+    {
+        for (uint i = 0; i<32; i++)
+        {
+            perGridCount[i] = 0;
+        }
+    }
+
+    barrier();
+
+    uint lIndex = (gl_WorkGroupID.x * gl_WorkGroupSize.x) + gl_LocalInvocationID.x;
+    uint lightIndex = (gl_WorkGroupID.y * gl_WorkGroupSize.y) + gl_LocalInvocationID.y;
 
     uint x = lIndex / (gs.grid.numberOfDivisions*gs.grid.numberOfDivisions);
     uint y = (lIndex%(gs.grid.numberOfDivisions*gs.grid.numberOfDivisions)) / gs.grid.numberOfDivisions;
@@ -55,25 +68,31 @@ void main()
 
     if (lIndex < (gs.grid.numberOfDivisions*gs.grid.numberOfDivisions*gs.grid.numberOfDivisions))
     {
-        uint lightCounter = 0;
-
-        for (uint i = 0; i<lightCounts.count[LIGHT_TYPE_SPOT]; i++)
+        if (lightIndex < lightCounts.count[LIGHT_TYPE_POINT])
         {
-            uint lightIndex = lightAssigns[LIGHT_TYPE_SPOT].indices[i];
+            uint globalLightIndex = lightAssigns[LIGHT_TYPE_SPOT].indices[lightIndex];
 
-            vec4 posLoad = lightBuffer.objects[lightIndex].pos;
-            vec3 posReal = posLoad.xyz;
-            float r = posLoad.w;
+            vec4 posLoad = lightBuffer.objects[globalLightIndex].pos;
 
-            vec3 lightDir = lightBuffer.objects[lightIndex].direction.xyz;
+            vec3 lightDir = lightBuffer.objects[globalLightIndex].direction.xyz;
 
-            if (RayIntersectAABB(posReal, lightDir, gridMinPoints, gridMaxPoints, r)) 
+            if (RayIntersectAABB(posLoad.xyz, lightDir, gridMinPoints, gridMaxPoints, posLoad.w)) 
             {
-                lightCounter++;
+                atomicAdd(perGridCount[gl_LocalInvocationID.x], 1u);
             }
         }
+    }
 
-        atomicAdd(gridCounts.count[lIndex], lightCounter * LIGHT_TYPE_SPOT_COUNT_MULTIPLIER);
+    barrier();
+
+    if (gl_LocalInvocationID.x == 0 && gl_LocalInvocationID.y == 0)
+    {
+        uint lOffset = (gl_WorkGroupID.x * gl_WorkGroupSize.x);
+
+        for (uint i = 0; i<32; i++)
+        {
+            atomicAdd(gridCounts.count[lOffset + i], perGridCount[i] * LIGHT_TYPE_SPOT_COUNT_MULTIPLIER);
+        }
     }
   
 	return;

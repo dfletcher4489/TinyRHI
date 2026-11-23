@@ -2813,7 +2813,7 @@ int CreateDebugCommandBuffers(int count)
 	ShaderComputeLayout* debugClassDescriptorLayout = GlobalRenderer::gRenderInstance.GetComputeLayout(shaderGraphHandles[DEBUGCLASSIFICATION]);
 
 	ComputeIntermediaryPipelineInfo debugClassPipelineCreate = {
-			.x = count / debugClassDescriptorLayout->x,
+			.x = COUNTBYSIZE(count, debugClassDescriptorLayout->x),
 			.y = 1,
 			.z = 1,
 			.pipelinename = pipelineHandles[DEBUGCLASSIFICATION],
@@ -2864,7 +2864,7 @@ int CreateDebugCommandBuffers(int count)
 	ShaderComputeLayout* debugCullDescriptorLayout = GlobalRenderer::gRenderInstance.GetComputeLayout(shaderGraphHandles[DEBUGCULL]);
 
 	ComputeIntermediaryPipelineInfo debugCullPipelineCreate = {
-			.x = count / debugCullDescriptorLayout->x,
+			.x = COUNTBYSIZE(count, debugClassDescriptorLayout->x),
 			.y = 1,
 			.z = 1,
 			.pipelinename = pipelineHandles[DEBUGCULL],
@@ -2914,7 +2914,7 @@ int CreateDebugCommandBuffers(int count)
 	debugCullDescriptors = { indirectCullDescriptor2 };
 
 	ComputeIntermediaryPipelineInfo debugCullPipelineCreate2 = {
-			.x = count / debugCullDescriptorLayout->x,
+			.x = COUNTBYSIZE(count, debugClassDescriptorLayout->x),
 			.y = 1,
 			.z = 1,
 			.pipelinename = pipelineHandles[DEBUGCULL],
@@ -3073,7 +3073,7 @@ int CreateGenericMeshCommandBuffers(int count)
 	std::array<ShaderResourceSetHandle, 2> computeDescriptors = { mainIndirectDrawData.indirectCullDescriptor };
 
 	ComputeIntermediaryPipelineInfo mainCullComputeSetup = {
-			.x = count / layout->x,
+			.x = COUNTBYSIZE(count, layout->x),
 			.y = 1,
 			.z = 1,
 			.pipelinename = pipelineHandles[RENDEROBJCULL],
@@ -3153,9 +3153,9 @@ int CreateMeshWorldAssignment(int count)
 	ShaderComputeLayout* prefixLayout = GlobalRenderer::gRenderInstance.GetComputeLayout(shaderGraphHandles[PREFIXSUM]);
 
 	worldSpaceAssignment.totalElementsCount = count;
-	worldSpaceAssignment.totalSumsNeeded = (int)floor(worldSpaceAssignment.totalElementsCount / (float)prefixLayout->x);
+	worldSpaceAssignment.totalSumsNeeded = (int)(worldSpaceAssignment.totalElementsCount / (float)prefixLayout->x);
 
-	uint32_t prefixCount = (uint32_t)ceil(worldSpaceAssignment.totalElementsCount / (float)prefixLayout->x);
+	uint32_t prefixCount = COUNTBYSIZE(worldSpaceAssignment.totalElementsCount, prefixLayout->x); 
 
 	ShaderResourceSetBuilder prefixSumBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[PREFIXSUM], 0, MAX_FRAMES_IN_FLIGHT);
 
@@ -3302,7 +3302,7 @@ int CreateMeshWorldAssignment(int count)
 	}
 
 	ComputeIntermediaryPipelineInfo preWorldDivComputePipeline = {
-			.x = 4,
+			.x = (uint32_t)COUNTBYSIZE(count, 32),
 			.y = 1,
 			.z = 1,
 			.pipelinename = pipelineHandles[WORLDORGANIZE],
@@ -3341,7 +3341,7 @@ int CreateMeshWorldAssignment(int count)
 	}
 
 	ComputeIntermediaryPipelineInfo postWorldDivComputePipeline = {
-			.x = 4,
+			.x = (uint32_t)COUNTBYSIZE(count, 32),
 			.y = 1,
 			.z = 1,
 			.pipelinename = pipelineHandles[WORLDASSIGN],
@@ -3520,7 +3520,7 @@ int CreateLightAssignments(int lightCount, int gridCount)
 		ShaderResourceSetHandle descriptorHandle = builder();
 
 		ComputeIntermediaryPipelineInfo pipeinfo = {
-				.x = (partitionCount + 31) / 32,
+				.x = COUNTBYSIZE(partitionCount, 32),
 				.y = 1,
 				.z = 1,
 				.pipelinename = pipelineHandles[LIGHTDIRECTCOUNT],
@@ -3562,7 +3562,7 @@ int CreateLightAssignments(int lightCount, int gridCount)
 		ShaderResourceSetHandle descriptorHandle = builder();
 
 		ComputeIntermediaryPipelineInfo pipeinfo = {
-				.x = (partitionCount + 31) / 32,
+				.x = COUNTBYSIZE(partitionCount, 32),
 				.y = 1,
 				.z = 1,
 				.pipelinename = pipelineHandles[LIGHTDIRECTASSIGN],
@@ -3602,7 +3602,7 @@ int CreateLightAssignments(int lightCount, int gridCount)
 		ShaderResourceSetHandle descriptorHandle = builder();
 
 		ComputeIntermediaryPipelineInfo pipeinfo = {
-				.x = (partitionCount + 31) / 32,
+				.x = COUNTBYSIZE(partitionCount, 32),
 				.y = 1,
 				.z = 1,
 				.pipelinename = pipelineHandles[LIGHTSPOTCOUNT],
@@ -3642,7 +3642,7 @@ int CreateLightAssignments(int lightCount, int gridCount)
 		ShaderResourceSetHandle descriptorHandle = builder();
 
 		ComputeIntermediaryPipelineInfo pipeinfo = {
-				.x = (partitionCount + 31) / 32,
+				.x = COUNTBYSIZE(partitionCount, 32),
 				.y = 1,
 				.z = 1,
 				.pipelinename = pipelineHandles[LIGHTSPOTASSIGN],
@@ -3682,7 +3682,7 @@ int CreateLightAssignments(int lightCount, int gridCount)
 		ShaderResourceSetHandle descriptorHandle = builder();
 
 		ComputeIntermediaryPipelineInfo pipeinfo = {
-				.x = (partitionCount + 31) / 32,
+				.x = COUNTBYSIZE(partitionCount, 32),
 				.y = 1,
 				.z = 1,
 				.pipelinename = pipelineHandles[LIGHTPOINTCOUNT],
@@ -3722,7 +3722,7 @@ int CreateLightAssignments(int lightCount, int gridCount)
 		ShaderResourceSetHandle descriptorHandle = builder();
 
 		ComputeIntermediaryPipelineInfo pipeinfo = {
-				.x = (partitionCount + 31) / 32,
+				.x = COUNTBYSIZE(partitionCount, 32),
 				.y = 1,
 				.z = 1,
 				.pipelinename = pipelineHandles[LIGHTPOINTASSIGN],
@@ -6280,7 +6280,7 @@ int CreateUITools(int maxUIContainers)
 		ShaderComputeLayout* computeLayout = GlobalRenderer::gRenderInstance.GetComputeLayout(shaderGraphHandles[UICULLING]);
 
 		ComputeIntermediaryPipelineInfo pipelineCreateInfo = {
-				.x = (uint32_t)std::ceil((float)globalUICount / (float)computeLayout->x),
+				.x = COUNTBYSIZE(globalUICount, computeLayout->x),
 				.y = 1,
 				.z = 1,
 				.pipelinename = pipelineHandles[UICULLING],
@@ -6355,7 +6355,7 @@ int CreateUITools(int maxUIContainers)
 		std::array<ShaderResourceSetHandle, 1> descriptors = { descriptorBuilder() };
 
 		ComputeIntermediaryPipelineInfo pipelineCreateInfo = {
-			.x = (uint32_t)std::ceil((float)globalUICount / (float)computeLayout->x),
+			.x = COUNTBYSIZE(globalUICount, computeLayout->x),
 			.y = 1,
 			.z = 1,
 			.pipelinename = pipelineHandles[UIDEPTHCOUNT],

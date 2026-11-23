@@ -17,9 +17,10 @@
 #define PIHALF 1.5707963267948966192313216916398f
 #define PIDIV4 0.78539816339744830961566084581988f
 
-
 #define MAX(a, b) (((a) >= (b)) ? (a) : (b))
 #define MIN(a, b) (((a) <= (b)) ? (a) : (b))
+
+#define COUNTBYSIZE(count, size) ((((count) + (size)-1)) / (size))
 
 inline float DegToRad(float Deg)
 {

@@ -1,7 +1,7 @@
 <ShaderGraph>
 	<GLSLShader type="compute">
 		LightSpotWorldAssign.comp
-		<ComputeLayout x="32" y="1" z="1">
+		<ComputeLayout x="32" y="32" z="1">
 		</ComputeLayout>
 	</GLSLShader>
 	<ShaderResourceSet>

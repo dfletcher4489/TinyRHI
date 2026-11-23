@@ -3423,7 +3423,7 @@ void RenderInstance::DrawScene(RenderDeviceIndex deviceSelection, GPUCommandStre
 
 	GetDriverCommandBufferObject(&recorder, rhiDevice->container.currentCommandBufferIndex[rhiDevice->container.currentFrame]);
 
-	ResetCommandPool(&recorder);
+	ResetCommandPool(rhiDevice, rhiDevice->container.currentCommandPool[rhiDevice->container.currentFrame]);
 
 	SwapUpdateCommands();
 

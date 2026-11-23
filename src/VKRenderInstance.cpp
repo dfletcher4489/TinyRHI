@@ -1072,7 +1072,10 @@ int RenderInstance::SubmitFrame(SwapChainIndex swapChainIndex, uint32_t imageInd
 
 	if (EntryHandle() == rhiDevice->container.deviceTimelineSyncObject.driverTimelineObject)
 	{
-		res = dev->SubmitCommandBuffer(&swcData->rendererWaitSemaphores[currentFrame], &waitStages[0], &swcData->rendererFinishedSemaphores[imageIndex], 1, 1, rhiDevice->container.currentCommandBufferIndex[currentFrame]);
+		res = dev->SubmitCommandBuffer(
+			&swcData->rendererWaitSemaphores[currentFrame], &waitStages[0], 
+			&swcData->rendererFinishedSemaphores[imageIndex], 1, 1, 
+			rhiDevice->container.currentCommandBufferIndex[currentFrame], rhiDevice->container.graphicsComputeTransfer, rhiDevice->container.currentQueueIndex[currentFrame]);
 	}
 	else
 	{
@@ -1087,7 +1090,8 @@ int RenderInstance::SubmitFrame(SwapChainIndex swapChainIndex, uint32_t imageInd
 			&rhiDevice->container.deviceTimelineSyncObject.driverTimelineObject,
 			1,
 			signalCount,
-			rhiDevice->container.currentCommandBufferIndex[currentFrame]
+			rhiDevice->container.currentCommandBufferIndex[currentFrame],
+			rhiDevice->container.graphicsComputeTransfer, rhiDevice->container.currentQueueIndex[currentFrame]
 		);
 	}
 
@@ -1101,11 +1105,15 @@ int RenderInstance::SubmitFrame(SwapChainIndex swapChainIndex, uint32_t imageInd
 
 	if (rhiDevice->container.presentQueue != rhiDevice->container.graphicsComputeTransfer)
 	{
-		res = dev->PresentSwapChainSeparatePresentQueue(swcData->swapChainIdx, &swcData->rendererFinishedSemaphores[imageIndex], 1, imageIndex, currentFrame, rhiDevice->container.presentQueue);
+		//res = dev->PresentSwapChainSeparatePresentQueue(swcData->swapChainIdx, &swcData->rendererFinishedSemaphores[imageIndex], 1, imageIndex, currentFrame, rhiDevice->container.presentQueue);
 	}
 	else
 	{
-		res = dev->PresentSwapChainCommandBufferInline(swcData->swapChainIdx, &swcData->rendererFinishedSemaphores[imageIndex], 1, imageIndex, currentFrame, rhiDevice->container.currentCommandBufferIndex[currentFrame]);
+		res = dev->PresentSwapChain(
+			swcData->swapChainIdx,
+			&swcData->rendererFinishedSemaphores[imageIndex], 1,
+			imageIndex, currentFrame,
+			rhiDevice->container.presentQueue, rhiDevice->container.currentQueueIndex[currentFrame]);
 	}
 
 	if (res)
@@ -1267,12 +1275,32 @@ RenderDeviceIndex RenderInstance::CreateLogicalDevice(LogicalDeviceCreateInfo* c
 		rhiDevice->container.presentQueue = rhiDevice->container.graphicsComputeTransfer;
 	}
 
-	
-
 	for (int i = 0; i < rhiDevice->container.maxFramesInFlight; i++)
 	{
-		EntryHandle* lprimaryCommandBuffers = majorDevice->CreateReusableCommandBuffers(rhiDevice->container.graphicsComputeTransfer, 1, true, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
-		rhiDevice->container.currentCommandBufferIndex[i] = lprimaryCommandBuffers[0];
+		EntryHandle lPrimaryCommandPool = majorDevice->CreateCommandPool(rhiDevice->container.graphicsComputeTransfer);
+
+		EntryHandle lPrimaryCommandBuffer = majorDevice->CreateReusableCommandBuffersWithCommandPool(lPrimaryCommandPool, true, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+
+		rhiDevice->container.currentCommandPool[i] = lPrimaryCommandPool;
+
+		rhiDevice->container.currentCommandBufferIndex[i] = lPrimaryCommandBuffer;
+	}
+
+	if (createInfo->separateQueues && queueCounts[0] >= createInfo->maxFramesInFlight)
+	{
+		for (int i = 0; i < rhiDevice->container.maxFramesInFlight; i++)
+		{
+			rhiDevice->container.currentQueueIndex[i] = majorDevice->GetQueueHandle(rhiDevice->container.graphicsComputeTransfer);
+		}
+	}
+	else
+	{
+		uint32_t queueIndex = majorDevice->GetQueueHandle(rhiDevice->container.graphicsComputeTransfer);
+
+		for (int i = 0; i < rhiDevice->container.maxFramesInFlight; i++)
+		{
+			rhiDevice->container.currentQueueIndex[i] = queueIndex;
+		}
 	}
 
 	if (createInfo->maxQueries)
@@ -1652,11 +1680,6 @@ int DestroyDescriptorSet(RHIDevice* device, EntryHandle handle)
 	}
 	device->device->DestroyDescriptorSet(handle);
 	return 0;
-}
-
-void ResetCommandPool(CommandRecorder* recorder)
-{
-	recorder->rbo->ResetCommandPoolForBuffer();
 }
 
 void BeginCommandRecording(CommandRecorder* recorder)
@@ -2844,4 +2867,9 @@ int GetDriverMemoryMappedPointer(RHIDevice* device, EntryHandle bufferHandle, si
 int UnmapDriverMemoryMappedPointer(RHIDevice* device, EntryHandle bufferHandle)
 {
 	return device->device->UnmapMappedHostPointer(bufferHandle);
+}
+
+int ResetCommandPool(RHIDevice* device, EntryHandle commandPoolIndex)
+{
+	return device->device->ResetCommandPool(commandPoolIndex);
 }

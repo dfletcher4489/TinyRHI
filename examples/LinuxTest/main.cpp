@@ -195,6 +195,7 @@ int InitGraphicsRuntime()
     lDeviceCreateInfo.maxConcurrentRecordings = 1;
     lDeviceCreateInfo.maxAllocations = 10;
     lDeviceCreateInfo.maxTextureHandles = 15;
+    lDeviceCreateInfo.separateQueues = true;
 
     mainLogicalDevice = GlobalRenderer::gRenderInstance.CreateLogicalDevice(&lDeviceCreateInfo);
 

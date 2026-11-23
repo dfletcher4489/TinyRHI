@@ -1265,9 +1265,12 @@ struct RenderLogicalDeviceContainer
 	EntryHandle queryPoolIndex;
 	RenderTimelineSync deviceTimelineSyncObject;
 	EntryHandle currentCommandBufferIndex[MAX_INSTANCE_FRAME_IN_FLIGHT];
+	EntryHandle currentCommandPool[MAX_INSTANCE_FRAME_IN_FLIGHT];
 	EntryHandle stagingBuffers[MAX_INSTANCE_FRAME_IN_FLIGHT];
 	RenderPhysicalDeviceInformation* relatedPhysDeviceInfo;
 	DeviceSlabAllocator stagingBufferAllocators[MAX_INSTANCE_FRAME_IN_FLIGHT];
+	uint32_t* barriersQueue;
+	BarrierAccumulator* barrierAccumulators;
 	uint32_t queryResults[MAX_QUERY_RESULTS];
 	uint32_t queryCounts[MAX_INSTANCE_FRAME_IN_FLIGHT];
 	int maxQueryResults;
@@ -1276,8 +1279,7 @@ struct RenderLogicalDeviceContainer
 	uint32_t currentFrame;
 	uint32_t previousFrame;
 	uint32_t maxFramesInFlight;
-	uint32_t* barriersQueue;
-	BarrierAccumulator* barrierAccumulators;
 	uint32_t maxBarrierAccumulationCount;
 	uint32_t currentBarrierAccumulationTop;
+	uint32_t currentQueueIndex[MAX_INSTANCE_FRAME_IN_FLIGHT];
 };

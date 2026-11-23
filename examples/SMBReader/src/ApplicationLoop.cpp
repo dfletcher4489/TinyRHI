@@ -4214,6 +4214,7 @@ int ApplicationLoop::InitializeRuntime()
 	lDeviceCreateInfo.maxConcurrentRecordings = 1;
 	lDeviceCreateInfo.maxAllocations = 150;
 	lDeviceCreateInfo.maxTextureHandles = 100;
+	lDeviceCreateInfo.separateQueues = false;
 
 	mainLogicalDevice = GlobalRenderer::gRenderInstance.CreateLogicalDevice(&lDeviceCreateInfo);
 

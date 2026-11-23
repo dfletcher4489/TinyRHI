@@ -59,6 +59,7 @@ struct LogicalDeviceCreateInfo
 	uint32_t maxConcurrentRecordings;
 	uint32_t maxTextureHandles;
 	uint32_t maxAllocations;
+	uint32_t separateQueues;
 };
 
 struct RenderInstance
@@ -439,9 +440,6 @@ int DestoryDriverBufferView(RHIDevice* device, EntryHandle handle);
 int DestroyDriverSemaphore(RHIDevice* device, EntryHandle handle);
 int DestroyDescriptorSet(RHIDevice* device, EntryHandle handle);
 
-
-void ResetCommandPool(CommandRecorder* recorder);
-
 void BeginCommandRecording(CommandRecorder* recorder);
 
 void EndCommandRecording(CommandRecorder* recorder);
@@ -597,6 +595,8 @@ int WriteDeviceBufferBatch(CommandRecorder* recorder,
 	size_t* sizesOfDataLocations, size_t* offsetsIntoStagingMemory,
 	size_t* offsetsIntoDeviceMemory, size_t numberOfCopies
 );
+
+int ResetCommandPool(RHIDevice* device, EntryHandle commandPoolIndex);
 
 size_t GetDriverImageMemoryBarrierSize();
 size_t GetDriverBufferMemoryBarrierSize();

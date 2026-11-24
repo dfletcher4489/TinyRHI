@@ -47,7 +47,7 @@ layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
 
 void main()
 {
-	uint lIndex =  gl_GlobalInvocationID.x;
+	uint lIndex = gl_GlobalInvocationID.x;
 
     if (gl_LocalInvocationID.x == 0)
     {
@@ -56,7 +56,7 @@ void main()
         invisibleCount = 0;
     }
 
-    uint lightMeshCount = 0;
+    int lightMeshCount = -1;
 
     if (gs.objCount > lIndex)
     {
@@ -64,12 +64,12 @@ void main()
         uint meshPointCount = uint(texelFetch(globalMeshPointCounts, int(lIndex)).r);
         uint meshSpotCount = uint(texelFetch(globalMeshSpotCounts, int(lIndex)).r);
 
-        lightMeshCount = meshPointCount + meshSpotCount + meshDirectCount;
+        lightMeshCount = int(meshPointCount + meshSpotCount + meshDirectCount);
     }
 
     uint wgVisibleCount = atomicAdd(visibleCount, (lightMeshCount > 0) ? 1u : 0u);
     uint wgInvisibleCount = atomicAdd(invisibleCount, (lightMeshCount == 0) ? 1u : 0u);
-    uint smStartIndex = atomicAdd(allocIndex, lightMeshCount);
+    uint smStartIndex = atomicAdd(allocIndex, uint(max(lightMeshCount, 0)));
 
     barrier();
 
@@ -92,9 +92,9 @@ void main()
     
         imageStore(globalSMRenderableIndices, int(writeOutIndex), uvec4(lIndex, 0, 0, 0));
         imageStore(globalSMRenderableStart, int(lIndex), uvec4(smStartIndex, 0, 0, 0));
-        imageStore(globalSMRenderableCount, int(lIndex), uvec4(lightMeshCount, 0, 0, 0));
+        imageStore(globalSMRenderableCount, int(lIndex), uvec4(uint(lightMeshCount), 0, 0, 0));
     
-        cmdBuffer.commands[writeOutIndex].instanceCount = lightMeshCount;
+        cmdBuffer.commands[writeOutIndex].instanceCount = uint(lightMeshCount);
         cmdBuffer.commands[writeOutIndex].firstIndex = perModelBuffer.objects[meshIndex].firstIndex;
         cmdBuffer.commands[writeOutIndex].indexCount = perModelBuffer.objects[meshIndex].indexCount;
         cmdBuffer.commands[writeOutIndex].firstInstance = 0;

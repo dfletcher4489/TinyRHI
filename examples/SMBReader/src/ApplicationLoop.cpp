@@ -86,6 +86,13 @@ enum ShaderResourceLayoutIdentifiers
 	LIGHTTYPECOUNTASSIGN,
 	LIGHTGRIDPREFIX,
 	DEBUGCLASSIFICATION,
+	LIGHTSHADOWMAPWORLDDIRECTCNT,
+	LIGHTSHADOWMAPWORLDPOINTCNT,
+	LIGHTSHADOWMAPWORLDSPOTCNT,
+	SHADOWMAPREDUCEANDCOMMAND,
+	LIGHTSHADOWMAPWORLDDIRECTASSIGN,
+	LIGHTSHADOWMAPWORLDPOINTASSIGN,
+	LIGHTSHADOWMAPWORLDSPOTASSIGN,
 	SHADERRESOURCECOUNT
 };
 
@@ -147,7 +154,14 @@ static std::array<StringView, SHADERRESOURCECOUNT> layouts = {
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("LightSpotWorldAssign.sgr"),
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("LightTypeCountAssign.sgr"),
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("LightGridPrefixSum.sgr"),
-	STRING_VIEW_FROM_LITERAL_INIT_LIST("3dDebugClassification.sgr")
+	STRING_VIEW_FROM_LITERAL_INIT_LIST("3dDebugClassification.sgr"),
+	STRING_VIEW_FROM_LITERAL_INIT_LIST("ShadowMapCullDirectCount.sgr"),
+	STRING_VIEW_FROM_LITERAL_INIT_LIST("ShadowMapCullPointCount.sgr"),
+	STRING_VIEW_FROM_LITERAL_INIT_LIST("ShadowMapCullSpotCount.sgr"),
+	STRING_VIEW_FROM_LITERAL_INIT_LIST("ShadowMapCullReduceAndCommand.sgr"),
+	STRING_VIEW_FROM_LITERAL_INIT_LIST("ShadowMapCullDirectAssign.sgr"),
+	STRING_VIEW_FROM_LITERAL_INIT_LIST("ShadowMapCullPointAssign.sgr"),
+	STRING_VIEW_FROM_LITERAL_INIT_LIST("ShadowMapCullSpotAssign.sgr"),
 };
 
 static std::array<StringView, 2> mainLayoutAttachments =
@@ -4466,6 +4480,14 @@ int ApplicationLoop::InitializeRuntime()
 	pipelineHandles[LIGHTTYPECOUNTASSIGN] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[LIGHTTYPECOUNTASSIGN]);
 	pipelineHandles[LIGHTGRIDPREFIX] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[LIGHTGRIDPREFIX]);
 	pipelineHandles[DEBUGCLASSIFICATION] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[DEBUGCLASSIFICATION]);
+
+	pipelineHandles[LIGHTSHADOWMAPWORLDDIRECTCNT] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[LIGHTSHADOWMAPWORLDDIRECTCNT]);
+	pipelineHandles[LIGHTSHADOWMAPWORLDPOINTCNT] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[LIGHTSHADOWMAPWORLDPOINTCNT]);
+	pipelineHandles[LIGHTSHADOWMAPWORLDSPOTCNT] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[LIGHTSHADOWMAPWORLDSPOTCNT]);
+	pipelineHandles[SHADOWMAPREDUCEANDCOMMAND] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[SHADOWMAPREDUCEANDCOMMAND]);
+	pipelineHandles[LIGHTSHADOWMAPWORLDDIRECTASSIGN] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[LIGHTSHADOWMAPWORLDDIRECTASSIGN]);
+	pipelineHandles[LIGHTSHADOWMAPWORLDPOINTASSIGN] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[LIGHTSHADOWMAPWORLDPOINTASSIGN]);
+	pipelineHandles[LIGHTSHADOWMAPWORLDSPOTASSIGN] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[LIGHTSHADOWMAPWORLDSPOTASSIGN]);
 
 	for (int i = 0; i < pipelineHandles.size(); i++)
 	{

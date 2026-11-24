@@ -10,250 +10,46 @@ layout(push_constant) uniform GlobalContext
 	uint lightCount;
 } gs;
 
+
 layout(set = 0, binding = 0) uniform usamplerBuffer globalLightOffsets;
 layout(set = 0, binding = 1) uniform usamplerBuffer globalLightCounts;
 layout(set = 0, binding = 2) uniform usamplerBuffer globalLightAllocations;
-
-layout(set = 0, binding = 3) uniform usamplerBuffer globalMeshCounts;
-layout(set = 0, binding = 4) uniform usamplerBuffer globalMeshOffsets;
+layout(set = 0, binding = 3) uniform usamplerBuffer globalMeshOffsets;
+layout(set = 0, binding = 4) uniform usamplerBuffer globalMeshCounts;
 layout(set = 0, binding = 5) uniform usamplerBuffer globalMeshAllocations;
+layout(set = 0, binding = 6) uniform usamplerBuffer globalSMRenderableStart;
+layout(set = 0, binding = 7, r32ui) uniform uimageBuffer globalMeshDirectCount; //count of all direct
+layout(set = 0, binding = 8, r32ui) uniform uimageBuffer globalSMPerRendIndices;
+layout(set = 0, binding = 9, r32ui) uniform uimageBuffer globalMeshWriteOffsets;
 
-layout(set = 0, binding = 6) readonly buffer RENDBuffer
-{
-    MeshRenderable renderables[];
-} rends;
-
-layout(set = 0, binding = 7) readonly buffer PMBuffer 
-{
-    MeshDetails objects[];
-} perModelBuffer;
-
-layout(set = 0, binding = 8) readonly buffer GeomInstBuffer
-{
-    GeometryRenderable geomRenderables[];
-} geomRends;
-
-layout(set = 0, binding = 9) readonly buffer GLBuffer 
-{
-    LightSource objects[];
-} lightBuffer;
-
-layout(set = 0, binding = 10, r32ui) uniform uimageBuffer globalSMRenderableStart;
-layout(set = 0, binding = 11, r32ui) uniform uimageBuffer globalSMRenderableCount;
-layout(set = 0, binding = 12, r32ui) uniform uimageBuffer globalSMPerRendIndices;
-layout(set = 0, binding = 13, r32ui) uniform uimageBuffer globalSMRenderableIndices;
-
-layout(set = 0, binding = 14) writeonly buffer commandCounts 
-{
-    uint visibleCount;
-    uint invisibleCount;
-    uint shadowMapDrawIndexOffset;
-} cCounts;
-
-layout(set = 0, binding = 15) writeonly buffer Commands 
-{
-	IndexedIndirectCommand commands[];
-} cmdBuffer;
-
-shared uint allocIndex;
-shared uint visibleCount;
-shared uint invisibleCount;
-
-layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
-
-bool SphereVsFaceFrustum(vec3 distVector, float objRadius, vec3 forward, vec3 up, vec3 right, float angle)
-{
-    float df = dot(distVector, forward);
-    float du = dot(distVector, up);
-    float dr = dot(distVector, right);
-
-    float k = objRadius * sqrt(1.0 + (angle * angle));
-
-    return (angle * df + du >= -k) && (angle * df - du >= -k) && (angle * df + dr >= -k) && (angle * df - dr >= -k);
-}
+layout (local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
 
 void main()
 {
-	uint lIndex =  gl_LocalInvocationID.x;
-
-    if (lIndex == 0)
-    {
-        allocIndex = 0;
-        visibleCount = 0;
-        invisibleCount = 0;
-    }
-
-    barrier();
-
-	uint gridIndex = gl_WorkGroupID.x;
-
+    uint lIndex = gl_LocalInvocationID.x;
+    
+    uint lightIndex = gl_LocalInvocationID.y;
+    
+    uint gridIndex = gl_WorkGroupID.x;
+   
     uint lightOffsets =  texelFetch(globalLightOffsets, int(gridIndex)).r;
     uint lightCounts =  texelFetch(globalLightCounts, int(gridIndex)).r;
     uint meshOffsets =  texelFetch(globalMeshOffsets, int(gridIndex)).r;
     uint meshCounts =  texelFetch(globalMeshCounts, int(gridIndex)).r;
 
-    int lightMeshCount = -1;
-
-    uint ObjLightCopies[8]; 
-
-    uint index = 0, meshIndex = 0;
-
+    uint dc = GET_LIGHT_TYPE_DIRECTIONAL_COUNT(lightCounts);
+    
     if (meshCounts > lIndex)
-    {
-        uint dc = GET_LIGHT_TYPE_DIRECTIONAL_COUNT(lightCounts);
-        uint poc = GET_LIGHT_TYPE_POINT_COUNT(lightCounts);
-        uint sc = GET_LIGHT_TYPE_SPOT_COUNT(lightCounts);
-
-        index = texelFetch(globalMeshAllocations, int(meshOffsets+lIndex)).r;
-
-        uint geomInstIndex = rends.renderables[index].geomInstIndex;
-    
-        meshIndex = rends.renderables[index].meshIndex;
-
-        vec4 sphere = perModelBuffer.objects[rends.renderables[index].meshIndex].sphere;
-
-        mat4 worldM = geomRends.geomRenderables[geomInstIndex].transform * rends.renderables[index].transform;
-
-        float r = sphere.w;
-
-        vec3 sphereWPos = vec3(worldM * vec4(sphere.xyz, 1.0f));
-
-        uint lightStage = 0; 
-
-        uint light = 0;
-
-        lightMeshCount = 0;
-
-        for (;light<dc; light++)
+    {   
+        if (dc > lightIndex)
         {
-           uint lightIndex = texelFetch(globalLightAllocations, int(lightOffsets+light)).r;
-
-           ObjLightCopies[lightMeshCount] = lightIndex;
-
-           lightMeshCount++;
-        }
-            
-        for (;light<dc+poc; light++)
-        {
-           uint lightIndex = texelFetch(globalLightAllocations, int(lightOffsets+light)).r;
-        
-           vec4 posLoad = lightBuffer.objects[lightIndex].pos;
-        
-           float lR = posLoad.w;
-        
-           vec3 posTest = posLoad.xyz;
-
-           float perspectiveAngle = lightBuffer.objects[lightIndex].ancillary.w;
-        
-           vec3 pointToPointTest = sphereWPos - posTest;
-        
-           float totalRadius = lR + r;
-        
-           float d = dot(pointToPointTest, pointToPointTest);
-
-           if (d <= totalRadius * totalRadius)
-           {
-                float t = tan(perspectiveAngle * 0.5);
-
-                if (SphereVsFaceFrustum(pointToPointTest, r, vec3(1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0), t))
-                {
-                    ObjLightCopies[lightMeshCount] = (0 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (lightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
-
-                    lightMeshCount++;
-                }
-                
-                if (SphereVsFaceFrustum(pointToPointTest, r, vec3(-1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0), t))
-                {
-                    ObjLightCopies[lightMeshCount] = (1 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (lightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
-
-                    lightMeshCount++;
-                }
-
-                if (SphereVsFaceFrustum(pointToPointTest, r, vec3(0.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), t))
-                {
-                    ObjLightCopies[lightMeshCount] = (2 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (lightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
-
-                    lightMeshCount++;
-                }
-
-                if (SphereVsFaceFrustum(pointToPointTest, r, vec3(0.0, -1.0, 0.0), vec3(1.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), t))
-                {
-                    ObjLightCopies[lightMeshCount] = (3 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (lightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
-
-                    lightMeshCount++;
-                }
-
-                if (SphereVsFaceFrustum(pointToPointTest, r, vec3(0.0, 0.0, 1.0), vec3(0.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), t))
-                {
-                    ObjLightCopies[lightMeshCount] = (4 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (lightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
-
-                    lightMeshCount++;
-                }
-
-                if (SphereVsFaceFrustum(pointToPointTest, r, vec3(0.0, 0.0, -1.0), vec3(0.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), t))
-                {
-                    ObjLightCopies[lightMeshCount] = (5 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (lightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
-
-                    lightMeshCount++;
-                }
-           }
-        }
-        
-        for (;light<dc+poc+sc; light++)
-        {
-           uint lightIndex = texelFetch(globalLightAllocations, int(lightOffsets+light)).r;
-        
-           vec4 posLoad = lightBuffer.objects[lightIndex].pos;
-           vec3 dirLoad = lightBuffer.objects[lightIndex].direction.xyz;
-        
-           bool addToLights = ConeIntersectSphere(posLoad.xyz, dirLoad, sphereWPos, r, posLoad.w, lightBuffer.objects[lightIndex].ancillary.y);
-        
-           if (addToLights)
-           {
-               ObjLightCopies[lightMeshCount] = lightIndex;
-
-               lightMeshCount++;  
-           } 
-        }  
-    }
-
-    uint wgVisibleCount = atomicAdd(visibleCount, (lightMeshCount > 0) ? 1u : 0u);
-    uint wgInvisibleCount = atomicAdd(invisibleCount, (lightMeshCount == 0) ? 1u : 0u);
-    uint smStartIndex = atomicAdd(allocIndex, uint(max(lightMeshCount, 0)));
-    
-    barrier();
-    
-    if (gl_LocalInvocationID.x == 0)
-    {
-        visibleCount = atomicAdd(cCounts.visibleCount, visibleCount);
-        invisibleCount = atomicAdd(cCounts.invisibleCount, invisibleCount);
-        allocIndex = atomicAdd(cCounts.shadowMapDrawIndexOffset, allocIndex);
-    }
-    
-    barrier();
-
-    if (meshCounts > lIndex)
-    {
-        uint writeOutIndex = (lightMeshCount == 0) ? (gs.objCount-1)-(invisibleCount+wgInvisibleCount) : (visibleCount+wgVisibleCount);
-    
-        smStartIndex += allocIndex;
-    
-        imageStore(globalSMRenderableIndices, int(writeOutIndex), uvec4(index, 0, 0, 0));
-        imageStore(globalSMRenderableStart, int(index), uvec4(smStartIndex, 0, 0, 0));
-        imageStore(globalSMRenderableCount, int(index), uvec4(lightMeshCount, 0, 0, 0));
-    
-        cmdBuffer.commands[writeOutIndex].instanceCount = lightMeshCount;
-        cmdBuffer.commands[writeOutIndex].firstIndex = perModelBuffer.objects[meshIndex].firstIndex;
-        cmdBuffer.commands[writeOutIndex].indexCount = perModelBuffer.objects[meshIndex].indexCount;
-        cmdBuffer.commands[writeOutIndex].firstInstance = 0;
-        cmdBuffer.commands[writeOutIndex].vertexOffset = 0;
-    
-        for (uint lightIndex = 0; lightIndex<lightMeshCount; lightIndex++)
-        { 
-            imageStore(globalSMPerRendIndices, int(smStartIndex), uvec4(ObjLightCopies[lightIndex], 0, 0, 0));
-            smStartIndex += 1;   
+            uint globalMeshIndex = texelFetch(globalMeshAllocations, int(meshOffsets+lIndex)).r;
+            uint globalLightIndex = texelFetch(globalLightAllocations, int(lightOffsets+lightIndex)).r;
+            uint perMeshLightWriteStart = texelFetch(globalSMRenderableStart, int(globalMeshIndex)).r;
+            uint writeIndex = imageAtomicAdd(globalMeshWriteOffsets, int(globalMeshIndex), 1u);
+            imageStore(globalSMPerRendIndices, int(perMeshLightWriteStart+writeIndex), uvec4(globalLightIndex, 0, 0, 0));
         }
     }
 
-	return;
+    return;
 }

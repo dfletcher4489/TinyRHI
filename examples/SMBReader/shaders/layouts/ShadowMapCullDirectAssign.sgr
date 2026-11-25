@@ -27,7 +27,5 @@
 		</ShaderResourceItem>
 		<ShaderResourceItem type="bufferView" used="c" rw="write">
 		</ShaderResourceItem>
-		<ShaderResourceItem type="bufferView" used="c" rw="write">
-		</ShaderResourceItem>
 	</ShaderResourceSet>
 </ShaderGraph>

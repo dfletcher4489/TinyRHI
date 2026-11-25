@@ -27,6 +27,8 @@ void main()
     
     uint lightIndex = gl_LocalInvocationID.y;
 
+    uint gridIndex = gl_WorkGroupID.x;
+
     if (lIndex == 0 && lightIndex == 0)
     {
         for (uint i = 0; i<32; i++)
@@ -37,19 +39,16 @@ void main()
 
     barrier();
     
-    uint gridIndex = gl_WorkGroupID.x;
-    
     uint lightCounts =  texelFetch(globalLightCounts, int(gridIndex)).r;
     uint meshCounts =  texelFetch(globalMeshCounts, int(gridIndex)).r;
     uint meshOffsets =  texelFetch(globalMeshOffsets, int(gridIndex)).r;
     uint dc = GET_LIGHT_TYPE_DIRECTIONAL_COUNT(lightCounts);
     
     if (meshCounts > lIndex)
-    {   
-        uint globalMeshIndex = texelFetch(globalMeshAllocations, int(meshOffsets+lIndex)).r;
-    
+    {  
         if (dc > lightIndex)
         {
+            uint globalMeshIndex = texelFetch(globalMeshAllocations, int(meshOffsets+lIndex)).r;
             atomicAdd(perMeshDirectCount[lIndex], 1u);
         }
     }
@@ -58,7 +57,7 @@ void main()
 
     if (lIndex == 0 && lightIndex == 0)
     {
-        for (uint i = 0; i<32; i++)
+        for (uint i = 0; i<meshCounts; i++)
         {
             uint globalMeshIndex = texelFetch(globalMeshAllocations, int(meshOffsets+i)).r;
             imageAtomicAdd(globalMeshDirectCount, int(globalMeshIndex), perMeshDirectCount[i]);

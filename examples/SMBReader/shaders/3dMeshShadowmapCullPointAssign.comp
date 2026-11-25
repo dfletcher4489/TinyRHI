@@ -115,42 +115,42 @@ void main()
 
                 if (SphereVsFaceFrustum(pointToPointTest, r, vec3(1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0), t))
                 {
-                    ObjLightCopies[lightMeshCount] = (0 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (lightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
+                    ObjLightCopies[lightMeshCount] = (0 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (globalLightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
 
                     lightMeshCount++;
                 }
                 
                 if (SphereVsFaceFrustum(pointToPointTest, r, vec3(-1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0), t))
                 {
-                    ObjLightCopies[lightMeshCount] = (1 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (lightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
+                    ObjLightCopies[lightMeshCount] = (1 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (globalLightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
 
                     lightMeshCount++;
                 }
 
                 if (SphereVsFaceFrustum(pointToPointTest, r, vec3(0.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), t))
                 {
-                    ObjLightCopies[lightMeshCount] = (2 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (lightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
+                    ObjLightCopies[lightMeshCount] = (2 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (globalLightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
 
                     lightMeshCount++;
                 }
 
                 if (SphereVsFaceFrustum(pointToPointTest, r, vec3(0.0, -1.0, 0.0), vec3(1.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), t))
                 {
-                    ObjLightCopies[lightMeshCount] = (3 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (lightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
+                    ObjLightCopies[lightMeshCount] = (3 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (globalLightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
 
                     lightMeshCount++;
                 }
 
                 if (SphereVsFaceFrustum(pointToPointTest, r, vec3(0.0, 0.0, 1.0), vec3(0.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), t))
                 {
-                    ObjLightCopies[lightMeshCount] = (4 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (lightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
+                    ObjLightCopies[lightMeshCount] = (4 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (globalLightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
 
                     lightMeshCount++;
                 }
 
                 if (SphereVsFaceFrustum(pointToPointTest, r, vec3(0.0, 0.0, -1.0), vec3(0.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), t))
                 {
-                    ObjLightCopies[lightMeshCount] = (5 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (lightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
+                    ObjLightCopies[lightMeshCount] = (5 << LIGHT_SHADOW_MAP_CASCADE_OR_POINT_LIGHT_SLICE_OFF) | (globalLightIndex & LIGHT_SHADOW_MAP_LIGHT_INDEX_MASK);
 
                     lightMeshCount++;
                 }

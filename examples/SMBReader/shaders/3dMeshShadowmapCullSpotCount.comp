@@ -54,7 +54,7 @@ void main()
 
     if (lightIndex == 0)
     { 
-       perMeshDirectCount[lIndex] = 0;   
+       perMeshSpotCount[lIndex] = 0;   
     }
 
     barrier();

@@ -92,6 +92,7 @@ enum ShaderResourceLayoutIdentifiers
 	LIGHTSHADOWMAPWORLDDIRECTASSIGN,
 	LIGHTSHADOWMAPWORLDPOINTASSIGN,
 	LIGHTSHADOWMAPWORLDSPOTASSIGN,
+	SHADOWMAPGRIDCULLING,
 	SHADERRESOURCECOUNT
 };
 
@@ -160,6 +161,7 @@ static std::array<StringView, SHADERRESOURCECOUNT> layouts = {
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("ShadowMapCullDirectAssign.sgr"),
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("ShadowMapCullPointAssign.sgr"),
 	STRING_VIEW_FROM_LITERAL_INIT_LIST("ShadowMapCullSpotAssign.sgr"),
+	STRING_VIEW_FROM_LITERAL_INIT_LIST("ShadowMapGridCulling.sgr"),
 };
 
 static std::array<StringView, 2> mainLayoutAttachments =
@@ -358,6 +360,8 @@ struct ShadowMapBase
 	AllocationInstanceIndex shadowMapCullDirectLightCount;
 	AllocationInstanceIndex shadowMapCullSpotLightCount;
 	AllocationInstanceIndex shadowMapCullMeshWriteOffsets;
+	AllocationInstanceIndex shadowMapCullGridIdentifiers;
+	AllocationInstanceIndex shadowMapCullIndirectArgs;
 
 	PipelineHandleIndex shadowClippingDirectCountPipeline;
 	PipelineHandleIndex shadowClippingPointCountPipeline;
@@ -366,6 +370,7 @@ struct ShadowMapBase
 	PipelineHandleIndex shadowClippingPointAssignPipeline;
 	PipelineHandleIndex shadowClippingSpotAssignPipeline;
 	PipelineHandleIndex shadowClippingReduceCommandPipeline;
+	PipelineHandleIndex shadowClippingGridPipeline;
 };
 
 struct ShadowMapDebugPipelineData
@@ -1197,7 +1202,7 @@ void ApplicationLoop::Execute()
 				checkCursor = false;
 
 				GlobalRenderer::gRenderInstance.RecreateSwapChain(mainPresentationSwapChain, (uint32_t)width, (uint32_t)height);
-				c.CreateProjectionMatrix(GlobalRenderer::gRenderInstance.GetSwapChainWidth(mainPresentationSwapChain) / (float)GlobalRenderer::gRenderInstance.GetSwapChainHeight(mainPresentationSwapChain), 0.1f, 10000.0f, DegToRad(45.0f));
+				c.CreateProjectionMatrix(GlobalRenderer::gRenderInstance.GetSwapChainWidth(mainPresentationSwapChain) / (float)GlobalRenderer::gRenderInstance.GetSwapChainHeight(mainPresentationSwapChain), 1.0f, 10000.0f, DegToRad(45.0f));
 				UpdateCameraMatrix();
 				RecreateFrameGraphAttachments(GlobalRenderer::gRenderInstance.GetSwapChainWidth(mainPresentationSwapChain), GlobalRenderer::gRenderInstance.GetSwapChainHeight(mainPresentationSwapChain));
 				continue;
@@ -1298,8 +1303,11 @@ void ApplicationLoop::Execute()
 					GlobalRenderer::gRenderInstance.InsertTransferCommand(mainShadowMapManager.shadowMapCullDirectLightCount, sizeof(uint32_t) * mainIndirectDrawData.commandBufferCount, 0, 0);
 					GlobalRenderer::gRenderInstance.InsertTransferCommand(mainShadowMapManager.shadowMapCullPointLightCount, sizeof(uint32_t) * mainIndirectDrawData.commandBufferCount, 0, 0);
 					GlobalRenderer::gRenderInstance.InsertTransferCommand(mainShadowMapManager.shadowMapCullSpotLightCount, sizeof(uint32_t) * mainIndirectDrawData.commandBufferCount, 0, 0);
+					GlobalRenderer::gRenderInstance.InsertTransferCommand(mainShadowMapManager.shadowMapCullIndirectArgs, sizeof(uint32_t) * 3, 0, 0);
+					GlobalRenderer::gRenderInstance.InsertTransferCommand(mainShadowMapManager.shadowMapCullGridIdentifiers, sizeof(uint32_t) * (mainGrid.numberOfDivision * mainGrid.numberOfDivision * mainGrid.numberOfDivision), 0, 0);
 				}
 
+				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, mainShadowMapManager.shadowClippingGridPipeline);
 				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, mainShadowMapManager.shadowClippingDirectCountPipeline);
 				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, mainShadowMapManager.shadowClippingPointCountPipeline);
 				GlobalRenderer::gRenderInstance.AddPipelineToComputeQueue(mainComputeQueueIndex, mainShadowMapManager.shadowClippingSpotCountPipeline);
@@ -3435,6 +3443,9 @@ int CreateLightsAndShadowMapManager(
 	mainShadowMapManager.shadowMapCullPointLightCount = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(uint32_t), lightCount, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::R32_UINT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
 	mainShadowMapManager.shadowMapCullSpotLightCount = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(uint32_t), lightCount, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::R32_UINT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
 
+	mainShadowMapManager.shadowMapCullGridIdentifiers = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(uint32_t), gridCount, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::R32_UINT, BufferAlignmentType::NO_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
+	mainShadowMapManager.shadowMapCullIndirectArgs = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(uint32_t), 3, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
+
 	lightPartition.typeCountAlloc = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(uint32_t), 3, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
 
 	lightPartition.directLightOffset = GlobalRenderer::gRenderInstance.GetAllocFromBuffer(mainHostBuffer, sizeof(uint32_t), lightCount, alignof(uint32_t), AllocationType::PERFRAME, ComponentFormatType::NO_BUFFER_FORMAT, BufferAlignmentType::STORAGE_BUFFER_ALIGNMENT, -1, &mainHostAllocator);
@@ -4193,6 +4204,42 @@ int CreateLightsAndShadowMapManager(
 		}
 	}
 
+	{
+		ShaderResourceSetBuilder builder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[SHADOWMAPGRIDCULLING], 0, MAX_FRAMES_IN_FLIGHT);
+
+		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &globalBufferLocation, 0, 1, 0);
+		builder.BindBufferView(&genericLightWorldRSContext, &mainShadowMapManager.shadowMapCullGridIdentifiers, 0, 1, 1);
+		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &mainShadowMapManager.shadowMapCullIndirectArgs, 0, 1, 2);
+
+		builder.UploadConstant(&genericLightWorldRSContext, &mainGrid, 0);
+
+		std::array<ShaderResourceSetHandle, 1> descriptor = { builder() };
+
+		if (genericLightWorldRSContext.contextFailed)
+		{
+			genericLightWorldRSContext.contextLogger->ProcessMessage();
+			return -1;
+		}
+
+		ComputeIntermediaryPipelineInfo pipeInfo = {
+				.x = COUNTBYSIZE(partitionCount, 32),
+				.y = 1,
+				.z = 1,
+				.pipelinename = pipelineHandles[SHADOWMAPGRIDCULLING],
+				.descCount = 1,
+				.indirectDispatchAllocation = -1,
+				.descriptorsetid = descriptor.data()
+		};
+
+		mainShadowMapManager.shadowClippingGridPipeline = GlobalRenderer::gRenderInstance.CreateComputePipelineObject(&pipeInfo);
+
+		if (PipelineHandleIndex() == mainShadowMapManager.shadowClippingGridPipeline)
+		{
+			mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Shadow Map Grid Culling failed creation"));
+			return -1;
+		}
+	}
+
 	return 0;
 }
 
@@ -4774,7 +4821,6 @@ int ApplicationLoop::InitializeRuntime()
 	pipelineHandles[LIGHTTYPECOUNTASSIGN] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[LIGHTTYPECOUNTASSIGN]);
 	pipelineHandles[LIGHTGRIDPREFIX] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[LIGHTGRIDPREFIX]);
 	pipelineHandles[DEBUGCLASSIFICATION] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[DEBUGCLASSIFICATION]);
-
 	pipelineHandles[LIGHTSHADOWMAPWORLDDIRECTCNT] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[LIGHTSHADOWMAPWORLDDIRECTCNT]);
 	pipelineHandles[LIGHTSHADOWMAPWORLDPOINTCNT] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[LIGHTSHADOWMAPWORLDPOINTCNT]);
 	pipelineHandles[LIGHTSHADOWMAPWORLDSPOTCNT] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[LIGHTSHADOWMAPWORLDSPOTCNT]);
@@ -4782,6 +4828,7 @@ int ApplicationLoop::InitializeRuntime()
 	pipelineHandles[LIGHTSHADOWMAPWORLDDIRECTASSIGN] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[LIGHTSHADOWMAPWORLDDIRECTASSIGN]);
 	pipelineHandles[LIGHTSHADOWMAPWORLDPOINTASSIGN] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[LIGHTSHADOWMAPWORLDPOINTASSIGN]);
 	pipelineHandles[LIGHTSHADOWMAPWORLDSPOTASSIGN] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[LIGHTSHADOWMAPWORLDSPOTASSIGN]);
+	pipelineHandles[SHADOWMAPGRIDCULLING] = GlobalRenderer::gRenderInstance.CreateComputePipelineStateObject(shaderGraphHandles[SHADOWMAPGRIDCULLING]);
 
 	for (int i = 0; i < pipelineHandles.size(); i++)
 	{
@@ -4886,7 +4933,7 @@ int ApplicationLoop::InitializeRuntime()
 	
 	c.CamLookAt(Vector3f(25.0 * -mainDirectionalLight.direction.x, 25.0 * -mainDirectionalLight.direction.y,  25.0 * -mainDirectionalLight.direction.z), Vector3f(0.0f, 0.0f, 0.0f), Vector3f(0.0f, 1.0f, 0.0f));
 
-	c.CreateProjectionMatrix(GlobalRenderer::gRenderInstance.GetSwapChainWidth(mainPresentationSwapChain) / (float)GlobalRenderer::gRenderInstance.GetSwapChainHeight(mainPresentationSwapChain), 0.1f, 10000.0f, DegToRad(45.0f));
+	c.CreateProjectionMatrix(GlobalRenderer::gRenderInstance.GetSwapChainWidth(mainPresentationSwapChain) / (float)GlobalRenderer::gRenderInstance.GetSwapChainHeight(mainPresentationSwapChain), 1.0f, 10000.0f, DegToRad(45.0f));
 
 	UpdateCameraMatrix();
 
@@ -5514,7 +5561,6 @@ void ProcessKeys(GenericKeyAction keyActions[KC_COUNT])
 		clamped = false;
 	}
 }
-
 
 void UpdateLight(GPULightSource& lightDesc, int lightIndex)
 {

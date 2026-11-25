@@ -1,0 +1,148 @@
+#version 450
+
+#extension GL_GOOGLE_include_directive: require
+
+#include "include/Math.iglsl"
+#include "include/Mesh.iglsl"
+#include "include/Lights.iglsl"
+
+struct UniformGrid
+{
+    vec4 max;
+    vec4 min;
+	uint numberOfDivisions;
+};
+
+layout(push_constant) uniform GlobalContext 
+{
+    UniformGrid grid;    
+} gs;
+
+
+layout(set = 0, binding = 0) uniform CameraData 
+{
+     mat4 view;
+     mat4 proj;
+     mat4 world;
+     Frustum f;
+} cData;
+
+layout(set = 0, binding = 1, r32ui) uniform uimageBuffer cullingGridIndices;
+
+layout(set = 0, binding = 2) writeonly buffer indirectDispatchArgs
+{
+    uint x;
+    uint y;
+    uint z;
+} idArgs;
+
+bool CheckAllPlanesAgainstAABB(vec3 min, vec3 max)
+{
+    vec4 AABBMin = vec4(min, 1.0);
+    vec4 AABBMax = vec4(max, 1.0);
+
+    Frustum testFrustrum = cData.f;
+
+    bool check = CheckAABB(AABBMin, AABBMax, testFrustrum.nearplane.planeEquation);
+
+    if (!check)
+    {
+        return false;
+    }
+
+    check = CheckAABB(AABBMin, AABBMax, testFrustrum.farplane.planeEquation);
+
+    if (!check)
+    {
+        return false;
+    }
+    
+    check = CheckAABB(AABBMin, AABBMax, testFrustrum.topplane.planeEquation);
+
+    if (!check)
+    {
+        return false;
+    }
+    
+    check = CheckAABB(AABBMin, AABBMax, testFrustrum.bottomplane.planeEquation);
+
+    if (!check)
+    {
+        return false;
+    }
+    
+    check = CheckAABB(AABBMin, AABBMax, testFrustrum.rightplane.planeEquation);
+
+    if (!check)
+    {
+        return false;
+    }
+    
+    check = CheckAABB(AABBMin, AABBMax, testFrustrum.leftplane.planeEquation);
+
+    if (!check)
+    {
+        return false;
+    }
+    
+    return true;
+}
+
+shared uint visibleCount;
+shared uint groupOffsetStart; 
+
+layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+void main()
+{
+    if (gl_LocalInvocationID.x == 0)
+    {
+        visibleCount = 0;
+    }
+
+    barrier();
+
+	uint gridIndex = (gl_WorkGroupID.x * gl_WorkGroupSize.x) + gl_LocalInvocationID.x;
+
+    uint maxCount = gs.grid.numberOfDivisions * gs.grid.numberOfDivisions * gs.grid.numberOfDivisions;
+
+    uint x = gridIndex / (gs.grid.numberOfDivisions*gs.grid.numberOfDivisions);
+    uint y = (gridIndex % (gs.grid.numberOfDivisions*gs.grid.numberOfDivisions)) / gs.grid.numberOfDivisions;
+    uint z = gridIndex % gs.grid.numberOfDivisions;
+
+    vec4 range = gs.grid.max - gs.grid.min;
+    vec3 cellDiv = range.xyz / float(gs.grid.numberOfDivisions);
+
+    vec3 gridMinPoints = (vec3(x, y, z) * cellDiv) + gs.grid.min.xyz;
+    vec3 gridMaxPoints = gridMinPoints + cellDiv;
+
+    uint writeOutIndex = 0;
+
+    bool visible = false;
+
+    if (gridIndex < maxCount)  
+    {
+        visible = CheckAllPlanesAgainstAABB(gridMinPoints, gridMaxPoints);
+    }
+
+    if (visible)
+    {
+        writeOutIndex = atomicAdd(visibleCount, 1u);
+    }
+
+    barrier();
+
+    if (gl_LocalInvocationID.x == 0)
+    {
+        groupOffsetStart = atomicAdd(idArgs.x, visibleCount);
+    }
+
+    barrier();
+
+    if (visible)
+    {
+        imageStore(cullingGridIndices, int(groupOffsetStart+writeOutIndex), uvec4(gridIndex, 0, 0, 0));
+    }
+   
+    return;
+}

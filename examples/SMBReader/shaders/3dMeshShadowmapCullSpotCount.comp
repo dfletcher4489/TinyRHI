@@ -52,12 +52,9 @@ void main()
 
     uint gridIndex = gl_WorkGroupID.x;
 
-    if (lIndex == 0 && lightIndex == 0)
-    {
-        for (uint i = 0; i<32; i++)
-        {
-            perMeshSpotCount[i] = 0;
-        }
+    if (lightIndex == 0)
+    { 
+       perMeshDirectCount[lIndex] = 0;   
     }
 
     barrier();
@@ -105,12 +102,12 @@ void main()
     
     barrier();
     
-    if (lIndex == 0 && lightIndex == 0)
+    if (lightIndex == 0)
     {
-        for (uint i = 0; i<meshCounts; i++)
+        if (meshCounts > lIndex)
         {
-            uint globalMeshIndex = texelFetch(globalMeshAllocations, int(meshOffsets+i)).r;
-            imageAtomicAdd(globalMeshSpotCount, int(globalMeshIndex), perMeshSpotCount[i]);
+            uint globalMeshIndex = texelFetch(globalMeshAllocations, int(meshOffsets+lIndex)).r;
+            imageAtomicAdd(globalMeshSpotCount, int(globalMeshIndex), perMeshSpotCount[lIndex]);
         }
     }
    

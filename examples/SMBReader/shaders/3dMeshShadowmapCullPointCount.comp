@@ -44,17 +44,6 @@ shared uint perMeshPointCount[32];
 
 layout (local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
 
-bool SphereVsFaceFrustum(vec3 distVector, float objRadius, vec3 forward, vec3 up, vec3 right, float angle)
-{
-    float df = dot(distVector, forward);
-    float du = dot(distVector, up);
-    float dr = dot(distVector, right);
-
-    float k = objRadius * sqrt(1.0 + (angle * angle));
-
-    return (angle * df + du >= -k) && (angle * df - du >= -k) && (angle * df + dr >= -k) && (angle * df - dr >= -k);
-}
-
 void main()
 {
 	uint lIndex = gl_LocalInvocationID.x;
@@ -63,12 +52,9 @@ void main()
 
     uint gridIndex = gl_WorkGroupID.x;
 
-    if (lIndex == 0 && lightIndex == 0)
-    {
-        for (uint i = 0; i<32; i++)
-        {
-            perMeshPointCount[i] = 0;
-        }
+    if (lightIndex == 0)
+    { 
+       perMeshDirectCount[lIndex] = 0;   
     }
 
     barrier();
@@ -158,12 +144,12 @@ void main()
     
     barrier();
     
-    if (lIndex == 0 && lightIndex == 0)
+    if (lightIndex == 0)
     {
-        for (uint i = 0; i<meshCounts; i++)
-        {
-            uint globalMeshIndex = texelFetch(globalMeshAllocations, int(meshOffsets+i)).r;
-            imageAtomicAdd(globalMeshPointCount, int(globalMeshIndex), perMeshPointCount[i]);
+        if (meshCounts > lIndex)
+        { 
+            uint globalMeshIndex = texelFetch(globalMeshAllocations, int(meshOffsets+lIndex)).r;
+            imageAtomicAdd(globalMeshPointCount, int(globalMeshIndex), perMeshPointCount[lIndex]);
         }
     }
     

@@ -42,17 +42,6 @@ layout(set = 0, binding = 10) uniform usamplerBuffer globalSMRenderableStart;
 layout(set = 0, binding = 11, r32ui) uniform uimageBuffer globalSMPerRendIndices;
 layout(set = 0, binding = 12, r32ui) uniform uimageBuffer globalMeshWriteOffsets;
 
-bool SphereVsFaceFrustum(vec3 distVector, float objRadius, vec3 forward, vec3 up, vec3 right, float angle)
-{
-    float df = dot(distVector, forward);
-    float du = dot(distVector, up);
-    float dr = dot(distVector, right);
-
-    float k = objRadius * sqrt(1.0 + (angle * angle));
-
-    return (angle * df + du >= -k) && (angle * df - du >= -k) && (angle * df + dr >= -k) && (angle * df - dr >= -k);
-}
-
 layout (local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
 
 void main()

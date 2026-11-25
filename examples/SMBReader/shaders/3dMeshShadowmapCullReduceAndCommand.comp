@@ -56,6 +56,8 @@ void main()
         invisibleCount = 0;
     }
 
+    barrier();
+
     int lightMeshCount = -1;
 
     if (gs.objCount > lIndex)

@@ -8,19 +8,31 @@
 </AttachmentResource>
 <AttachmentResource imageType="static" format="r32u">
 </AttachmentResource>
-<Attachments>
-	<DepthAttachment resource="1" loadOp="clear" storeOp="store" srcLayout="undefined" dstLayout="shader">
-	</DepthAttachment>
-</Attachments>
-<Attachments>
-	<ColorAttachment resource = "4" loadOp="clear" storeOp="store" srcLayout="undefined" dstLayout="shader">
-	</ColorAttachment>
-</Attachments>
-<Attachments>
-	<ResolveAttachment resource="0" loadOp="nocare" storeOp="store" srcLayout="undefined" dstLayout="present">
-	</ResolveAttachment>
-	<ColorAttachment resource = "2" loadOp="clear" storeOp="discard" srcLayout="undefined" dstLayout="rtv">
-	</ColorAttachment>
-	<DepthAttachment resource = "3" loadOp="clear" storeOp="discard" srcLayout="undefined" dstLayout="dsv">
-	</DepthAttachment>
-</Attachments>
+<AttachmentGraph>
+	<Pass>
+		<DepthAttachment resource="1" loadOp="clear" storeOp="store" srcLayout="undefined" dstLayout="shader">
+		</DepthAttachment>
+	</Pass>
+	<Pass>
+		<ColorAttachment resource = "4" loadOp="clear" storeOp="store" srcLayout="undefined" dstLayout="shader">
+		</ColorAttachment>
+	</Pass>
+	<Pass>
+		<ResolveAttachment resource="0" loadOp="nocare" storeOp="store" srcLayout="undefined" dstLayout="present">
+		</ResolveAttachment>
+		<ColorAttachment resource = "2" loadOp="clear" storeOp="discard" srcLayout="undefined" dstLayout="rtv">
+		</ColorAttachment>
+		<DepthAttachment resource = "3" loadOp="clear" storeOp="discard" srcLayout="undefined" dstLayout="dsv">
+		</DepthAttachment>
+	</Pass>
+</AttachmentGraph>
+<AttachmentGraph>
+	<Pass>
+		<DepthAttachment resource="1" loadOp="clear" storeOp="store" srcLayout="undefined" dstLayout="shader">
+		</DepthAttachment>
+	</Pass>
+	<Pass>
+		<ColorAttachment resource="0" loadOp="clear" storeOp="store" srcLayout="undefined" dstLayout="present">
+		</ColorAttachment>
+	</Pass>
+</AttachmentGraph>

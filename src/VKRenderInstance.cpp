@@ -1346,7 +1346,7 @@ int RenderInstance::CreateRenderPass(AttachmentGraphInstance* graphInstance)
 
 	AttachmentGraph* graph = graphInstance->graphLayout;
 
-	AttachmentResource* resources = graph->resources;
+	AttachmentResource* resources = graph->descriptor->resources;
 
 	int totalRenderPassesCreated = 0;
 
@@ -1388,7 +1388,7 @@ int RenderInstance::CreateRenderPass(AttachmentGraphInstance* graphInstance)
 		{
 			AttachmentDescription* desc = &currentPassDesc->descs[c];
 
-			AttachmentResource* resDesc = &graph->resources[desc->resourceIndex];
+			AttachmentResource* resDesc = &graph->descriptor->resources[desc->resourceIndex];
 
 			VkFormat attachFormat = API::ConvertImageFormatToVulkanFormat(resources[desc->resourceIndex].format);
 
@@ -1397,6 +1397,8 @@ int RenderInstance::CreateRenderPass(AttachmentGraphInstance* graphInstance)
 			sampLo = RENDER_MAX((int)vkSampleCountLo, sampLo);
 
 			AttachmentResourceInstance* currResource = &graphInstance->resources[desc->resourceIndex];
+
+			currResource->resourceIndex = desc->resourceIndex;
 
 			VkImageLayout referenceLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
@@ -1480,7 +1482,7 @@ int RenderInstance::CreateRenderPass(AttachmentGraphInstance* graphInstance)
 			{
 				AttachmentDescription* desc = &currentPassDesc->descs[c];
 
-				AttachmentResource* resDesc = &graph->resources[desc->resourceIndex];
+				AttachmentResource* resDesc = &graph->descriptor->resources[desc->resourceIndex];
 
 				VkSampleCountFlags sampleCount = VK_SAMPLE_COUNT_1_BIT;
 

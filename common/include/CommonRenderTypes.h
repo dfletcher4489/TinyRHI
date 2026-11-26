@@ -340,14 +340,23 @@ enum class RenderPassType
 	PER_FRAME_IMAGE_COUNT = 2
 };
 
+struct AttachmentGraphsDescriptor;
+struct AttachmentRenderPass;
+struct AttachmentGraph;
+
+#define MAX_ATTACHMENT_GRAPHS 4
 #define MAX_RENDER_PASS_DESCRIPTIONS 8
 #define MAX_GRAPH_RENDER_PASSES 4
 #define MAX_GRAPH_RESOURCES 12
 #define MAX_SAMPLE_COUNT_LEVEL 4
 #define MAX_SAMPLE_COUNT (1 << MAX_SAMPLE_COUNT_LEVEL)
 
+#define RENDERPASSFLAGSISSEPARATERENDERPASS 0x1
+#define RENDERPASSFLAGSISSEPARATESUBPASS 0x2
+
 struct AttachmentRenderPass
 {
+	int renderPassFlags;
 	int attachmentCount;
 	int resolveCount;
 	int depthStencilCount;
@@ -357,10 +366,18 @@ struct AttachmentRenderPass
 
 struct AttachmentGraph
 {
+	AttachmentGraphsDescriptor* descriptor;
+	int perGraphResourceCount;
 	int passesCount;
-	int resourceCount;
 	AttachmentRenderPass holders[MAX_GRAPH_RENDER_PASSES];
+};
+
+struct AttachmentGraphsDescriptor
+{
+	int attachmentGraphsCount;
+	int resourceCount;
 	AttachmentResource resources[MAX_GRAPH_RESOURCES];
+	AttachmentGraph graphs[MAX_ATTACHMENT_GRAPHS];
 };
 
 enum RPClearType

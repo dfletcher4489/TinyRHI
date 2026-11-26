@@ -255,7 +255,7 @@ int InitGraphicsRuntime()
         return -1;
     }
 
-    basicGraphInstance = GlobalRenderer::gRenderInstance.CreateAttachmentGraphInstance(mainLogicalDevice, basicLayout);
+    basicGraphInstance = GlobalRenderer::gRenderInstance.CreateAttachmentGraphInstance(mainLogicalDevice, basicLayout, 0);
 
     if (AttachmentGraphInstanceIndex() == basicGraphInstance)
     {

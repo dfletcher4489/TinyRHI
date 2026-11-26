@@ -1,7 +1,6 @@
 #include "ShaderResourceSet.h"
 #include <ctype.h>
 
-
 #define INPUT_MANAGEMENT_MAX(a, b) ((a) < (b) ? (b) : (a))
 
 #define MAX_ATTRIBUTE_LEN 50
@@ -2203,7 +2202,7 @@ static int HandleBlendAttachment(char* fileData, int size, int currentLocation, 
 	return charStride;
 }
 
-int CreateAttachmentGraphFromFile(StringView filename, AttachmentGraph* graph, Allocator* inputScratchAllocator, Logger* outputLogger)
+int CreateAttachmentGraphFromFile(StringView filename, AttachmentGraphsDescriptor* graph, Allocator* inputScratchAllocator, Logger* outputLogger)
 {
 	int retCode = 0;
 
@@ -2221,6 +2220,7 @@ int CreateAttachmentGraphFromFile(StringView filename, AttachmentGraph* graph, A
 
 	char* dataStart = (char*)data;
 
+	int graphCounter = 0;
 	int attachmentCounter = 0;
 	int resourceCounter = 0;
 	int holderCounter = 0;
@@ -2234,7 +2234,10 @@ int CreateAttachmentGraphFromFile(StringView filename, AttachmentGraph* graph, A
 
 	int stride = 0;
 
-	AttachmentRenderPass* currentHolder = &graph->holders[0];
+	AttachmentGraph* currentGraph = &graph->graphs[0];
+	AttachmentRenderPass* currentHolder = &currentGraph->holders[0];
+
+	int perGraphResourceMask[MAX_GRAPH_RESOURCES] = {};
 
 	while (curr < dataSize)
 	{
@@ -2259,37 +2262,50 @@ int CreateAttachmentGraphFromFile(StringView filename, AttachmentGraph* graph, A
 		{
 			switch (hashl)
 			{
-			case hash("Attachments"):
-				currentHolder = &graph->holders[holderCounter++];
+			case hash("Pass"):
+				currentHolder = &currentGraph->holders[holderCounter++];
+				currentHolder->renderPassFlags |= RENDERPASSFLAGSISSEPARATERENDERPASS;
 				break;
 			case hash("ColorAttachment"):
 				stride = HandleAttachment(dataStart, dataSize, curr, ImageUsageFlagBits::COLOR_ATTACHMENT, &currentHolder->descs[attachmentCounter], outputLogger);
+				
+				perGraphResourceMask[currentHolder->descs[attachmentCounter].resourceIndex] = 1;
+				
 				attachmentCounter++;
 				colorCount++;
+
+				
 				break;
 			case hash("DepthAttachment"):
 				stride = HandleAttachment(dataStart, dataSize, curr, ImageUsageFlagBits::DEPTH_ATTACHMENT, &currentHolder->descs[attachmentCounter], outputLogger);
+				perGraphResourceMask[currentHolder->descs[attachmentCounter].resourceIndex] = 1;
 				attachmentCounter++;
 				depthStencilCount++;
 				break;
 			case hash("ResolveAttachment"):
 				stride = HandleAttachment(dataStart, dataSize, curr, ImageUsageFlagBits::RESOLVE_ATTACHMENT, &currentHolder->descs[attachmentCounter], outputLogger);
+				perGraphResourceMask[currentHolder->descs[attachmentCounter].resourceIndex] = 1;
 				attachmentCounter++;
 				resolveCount++;
 				break;
 			case hash("StencilAttachment"):
 				stride = HandleAttachment(dataStart, dataSize, curr, ImageUsageFlagBits::STENCIL_ATTACHMENT, &currentHolder->descs[attachmentCounter], outputLogger);
+				perGraphResourceMask[currentHolder->descs[attachmentCounter].resourceIndex] = 1;
 				attachmentCounter++;
 				depthStencilCount++;
 				break;
 			case hash("DepthStencilAttachment"):
 				stride = HandleAttachment(dataStart, dataSize, curr, ImageUsageFlagBits::DEPTH_ATTACHMENT | ImageUsageFlagBits::STENCIL_ATTACHMENT, &currentHolder->descs[attachmentCounter], outputLogger);
+				perGraphResourceMask[currentHolder->descs[attachmentCounter].resourceIndex] = 1;
 				attachmentCounter++;
 				depthStencilCount++;
 				break;
 			case hash("AttachmentResource"):
 				stride = HandleAttachmentResource(dataStart, dataSize, curr, &graph->resources[resourceCounter], outputLogger);
 				resourceCounter++;
+				break;
+			case hash("AttachmentGraph"):
+				currentGraph = &graph->graphs[graphCounter++];
 				break;
 			default:
 				outputLogger->AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Invalid attachment tag type"));
@@ -2301,7 +2317,8 @@ int CreateAttachmentGraphFromFile(StringView filename, AttachmentGraph* graph, A
 		{
 			switch (hashl)
 			{
-			case hash("Attachments"):
+			case hash("Pass"):
+			{
 				if (currentHolder)
 				{
 					currentHolder->attachmentCount = attachmentCounter;
@@ -2317,6 +2334,32 @@ int CreateAttachmentGraphFromFile(StringView filename, AttachmentGraph* graph, A
 				currentHolder = nullptr;
 				break;
 			}
+			case hash("AttachmentGraph"):
+			{
+				if (currentGraph)
+				{
+					currentGraph->passesCount = holderCounter;
+
+					currentGraph->descriptor = graph;
+
+					int rescCount = 0;
+
+					for (int rescIter = 0; rescIter < MAX_GRAPH_RESOURCES; rescIter++)
+					{
+						if (perGraphResourceMask[rescIter])
+						{
+							rescCount++;
+						}
+					}
+
+					currentGraph->perGraphResourceCount = rescCount;
+				}
+
+				currentGraph = nullptr;
+				holderCounter = 0;
+				break;
+			}
+			}
 		}
 
 		if (stride < 0)
@@ -2330,7 +2373,7 @@ int CreateAttachmentGraphFromFile(StringView filename, AttachmentGraph* graph, A
 
 	graph->resourceCount = resourceCounter;
 
-	graph->passesCount = holderCounter;
+	graph->attachmentGraphsCount = graphCounter;
 
 	return retCode;
 }

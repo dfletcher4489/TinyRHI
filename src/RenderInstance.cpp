@@ -319,12 +319,12 @@ void RenderInstance::DestroySwapChainAttachments()
 		RHIDevice* rhiDevice = GetDeviceHandle(graph->deviceIndex);
 
 		AttachmentResourceInstance* rescs = graph->resources;
-		AttachmentResource* descs = graph->graphLayout->resources;
+		AttachmentResource* descs = graph->graphLayout->descriptor->resources;
 
-		for (uint32_t c = 0; c < graph->graphLayout->resourceCount; c++)
+		for (uint32_t c = 0; c < graph->graphLayout->perGraphResourceCount; c++)
 		{
 			AttachmentResourceInstance* inst = &rescs[c];
-			AttachmentResource* desc = &descs[c];
+			AttachmentResource* desc = &descs[inst->resourceIndex];
 
 			if (desc->viewType == AttachmentViewType::SWAPCHAIN)
 				continue;
@@ -433,7 +433,7 @@ AttachmentGraphInstanceIndex RenderInstance::CreateAttachmentGraphInstance(Rende
 		{
 			AttachmentDescription* desc = &currentPassDesc->descs[c];
 
-			AttachmentResource* resDesc = &graph->resources[desc->resourceIndex];
+			AttachmentResource* resDesc = &graph->descriptor->resources[desc->resourceIndex];
 
 			int sampleCountHi = (resDesc->msaa ? (1 << (rhiDevice->container.relatedPhysDeviceInfo->maxMSAALevels)) : 1);
 
@@ -489,7 +489,7 @@ AttachmentGraphInstanceIndex RenderInstance::CreateAttachmentGraphInstance(Rende
 		{
 			AttachmentDescription* desc = &currentPassDesc->descs[c];
 
-			AttachmentResource* resDesc = &graph->resources[desc->resourceIndex];
+			AttachmentResource* resDesc = &graph->descriptor->resources[desc->resourceIndex];
 
 			AttachmentResourceInstance* currResource = &graphInstance->resources[desc->resourceIndex];
 
@@ -835,7 +835,7 @@ int RenderInstance::CreateAttachmentResources(
 
 		AttachmentResourceInstance* resourceInst = &graphInstance->resources[resourceIndex];
 		
-		AttachmentResource* resourceTempl = &graphInstance->graphLayout->resources[resourceIndex];
+		AttachmentResource* resourceTempl = &graphInstance->graphLayout->descriptor->resources[resourceIndex];
 
 		int sampHi = resourceInst->sampHi;
 		int sampLo = resourceInst->sampLo;
@@ -2626,7 +2626,7 @@ AttachmentGraphLayoutIndex RenderInstance::CreateAttachmentGraph(StringView atta
 		return attachmentGraphTemplateIndex;
 	}
 
-	AttachmentGraph* graph = attachmentGraphs.Get(attachmentGraphTemplateIndex);
+	AttachmentGraphsDescriptor* graph = attachmentGraphs.Get(attachmentGraphTemplateIndex);
 
 	CleanInitializeAttachmentGraph(graph);
 
@@ -2642,20 +2642,24 @@ AttachmentGraphLayoutIndex RenderInstance::CreateAttachmentGraph(StringView atta
 	return attachmentGraphTemplateIndex;
 }
 
-AttachmentGraphInstanceIndex RenderInstance::CreateAttachmentGraphInstance(RenderDeviceIndex deviceSelection, AttachmentGraphLayoutIndex attachmentLayout)
+AttachmentGraphInstanceIndex RenderInstance::CreateAttachmentGraphInstance(RenderDeviceIndex deviceSelection, AttachmentGraphLayoutIndex attachmentLayout, int graphIndex)
 {
-	AttachmentGraph* graph = attachmentGraphs.Get(attachmentLayout);
+	AttachmentGraphsDescriptor* graph = attachmentGraphs.Get(attachmentLayout);
 
 	if (!graph)
 	{
 		return {};
 	}
 
-	AttachmentGraphInstanceIndex currentGraphInstance = CreateAttachmentGraphInstance(deviceSelection, graph);
+	AttachmentGraphInstanceIndex currentGraphInstance = CreateAttachmentGraphInstance(deviceSelection, &graph->graphs[graphIndex]);
 
 	if (AttachmentGraphInstanceIndex() != currentGraphInstance)
 	{
-		int currentRenderPassCount = CreateRenderPass(attachmentGraphsInstances.Get(currentGraphInstance));
+		AttachmentGraphInstance* graphInstance = attachmentGraphsInstances.Get(currentGraphInstance);
+
+		graphInstance->graphIndex = graphIndex;
+
+		int currentRenderPassCount = CreateRenderPass(graphInstance);
 
 		if (currentRenderPassCount < 0)
 		{
@@ -4488,7 +4492,7 @@ int RenderInstance::UploadFrameAttachmentResource(AttachmentGraphInstanceIndex f
 
 	if (currentGraphInstance)
 	{
-		if (resourceIndex < currentGraphInstance->graphLayout->resourceCount)
+		if (resourceIndex < currentGraphInstance->graphLayout->perGraphResourceCount)
 		{
 			int imageCount = currentGraphInstance->resources[resourceIndex].imageCount;
 
@@ -5381,7 +5385,7 @@ void RenderInstance::DestroyPipelineHandle(PipelineHandleIndex handle)
 
 void RenderInstance::DestroyAttachmentGraph(AttachmentGraphLayoutIndex handle)
 {
-	AttachmentGraph* attachmentGraph = attachmentGraphs.Get(handle);
+	AttachmentGraphsDescriptor* attachmentGraph = attachmentGraphs.Get(handle);
 	
 	if (!attachmentGraph)
 	{
@@ -5405,7 +5409,7 @@ void RenderInstance::DestroyAttachmentGraphInstance(AttachmentGraphInstanceIndex
 
 	RHIDevice* container = GetDeviceHandle(attachmentGraphInstance->deviceIndex);
 
-	int resourceCount = attachmentGraphInstance->graphLayout->resourceCount;
+	int resourceCount = attachmentGraphInstance->graphLayout->perGraphResourceCount;
 
 	int passesCount = attachmentGraphInstance->graphLayout->passesCount;
 
@@ -5920,9 +5924,9 @@ void RenderInstance::CleanInitializePipelineHandle(PipelineHandle* pipelineHandl
 	}
 }
 
-void RenderInstance::CleanInitializeAttachmentGraph(AttachmentGraph* attachmentGraph)
+void RenderInstance::CleanInitializeAttachmentGraph(AttachmentGraphsDescriptor* attachmentGraph)
 {
-	attachmentGraph->passesCount = 0;
+	attachmentGraph->attachmentGraphsCount = 0;
 	attachmentGraph->resourceCount = 0;
 
 	for (int i = 0; i < MAX_GRAPH_RESOURCES; i++)
@@ -5932,21 +5936,24 @@ void RenderInstance::CleanInitializeAttachmentGraph(AttachmentGraph* attachmentG
 		attachmentGraph->resources[i].viewType = AttachmentViewType::STATIC;
 	}
 
-	for (int i = 0; i < MAX_GRAPH_RENDER_PASSES; i++)
+	for (int g = 0; g < MAX_ATTACHMENT_GRAPHS; g++)
 	{
-		attachmentGraph->holders[i].attachmentCount = 0;
-		attachmentGraph->holders[i].colorCount = 0;
-		attachmentGraph->holders[i].depthStencilCount = 0;
-		attachmentGraph->holders[i].resolveCount = 0;
-
-		for (int j = 0; j < MAX_RENDER_PASS_DESCRIPTIONS; j++)
+		for (int i = 0; i < MAX_GRAPH_RENDER_PASSES; i++)
 		{
-			attachmentGraph->holders[i].descs[j].attachType = 0;
-			attachmentGraph->holders[i].descs[j].dstLayout = ImageLayout::UNDEFINED;
-			attachmentGraph->holders[i].descs[j].srcLayout = ImageLayout::UNDEFINED;
-			attachmentGraph->holders[i].descs[j].resourceIndex = -1;
-			attachmentGraph->holders[i].descs[j].loadOp = AttachmentLoadUsage::ATTACHNOCARE;
-			attachmentGraph->holders[i].descs[j].storeOp = AttachmentStoreUsage::ATTACHDISCARD;
+			attachmentGraph->graphs[g].holders[i].attachmentCount = 0;
+			attachmentGraph->graphs[g].holders[i].colorCount = 0;
+			attachmentGraph->graphs[g].holders[i].depthStencilCount = 0;
+			attachmentGraph->graphs[g].holders[i].resolveCount = 0;
+
+			for (int j = 0; j < MAX_RENDER_PASS_DESCRIPTIONS; j++)
+			{
+				attachmentGraph->graphs[g].holders[i].descs[j].attachType = 0;
+				attachmentGraph->graphs[g].holders[i].descs[j].dstLayout = ImageLayout::UNDEFINED;
+				attachmentGraph->graphs[g].holders[i].descs[j].srcLayout = ImageLayout::UNDEFINED;
+				attachmentGraph->graphs[g].holders[i].descs[j].resourceIndex = -1;
+				attachmentGraph->graphs[g].holders[i].descs[j].loadOp = AttachmentLoadUsage::ATTACHNOCARE;
+				attachmentGraph->graphs[g].holders[i].descs[j].storeOp = AttachmentStoreUsage::ATTACHDISCARD;
+			}
 		}
 	}
 }

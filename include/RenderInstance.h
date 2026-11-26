@@ -181,7 +181,7 @@ struct RenderInstance
 
 	AttachmentGraphLayoutIndex CreateAttachmentGraph(StringView attachmentLayout);
 
-	AttachmentGraphInstanceIndex CreateAttachmentGraphInstance(RenderDeviceIndex deviceSelection, AttachmentGraphLayoutIndex attachmentLayout);
+	AttachmentGraphInstanceIndex CreateAttachmentGraphInstance(RenderDeviceIndex deviceSelection, AttachmentGraphLayoutIndex attachmentLayout, int graphIndex);
 
 	SwapChainIndex CreateSwapChainHandle(RenderDeviceIndex deviceSelection, WindowIndex surfaceIndex, ImageFormat mainBackBufferColorFormat, uint32_t width, uint32_t height);
 
@@ -320,7 +320,7 @@ struct RenderInstance
 	void CleanInitializeBufferHandle(RenderBufferDescription* bufferHandle);
 	void CleanInitializeImagePool(ImagePoolDescription* imagePool);
 	void CleanInitializePipelineHandle(PipelineHandle* pipelineHandle);
-	void CleanInitializeAttachmentGraph(AttachmentGraph* attachmentGraph);
+	void CleanInitializeAttachmentGraph(AttachmentGraphsDescriptor* attachmentGraph);
 	void CleanInitializeAttachmentGraphsInstance(AttachmentGraphInstance* attachmentGraphsInstance);
 	void CleanInitializeRenderTargetQueue(RenderQueue* renderTargetQueue);
 	void CleanInitializeComputeQueue(ComputeQueue* computeQueue);
@@ -354,7 +354,7 @@ struct RenderInstance
 
 	TypedPoolAllocator<PipelineHandle, PipelineHandleIndex> pipelineHandles{};
 	
-	TypedPoolAllocator<AttachmentGraph, AttachmentGraphLayoutIndex> attachmentGraphs{};
+	TypedPoolAllocator<AttachmentGraphsDescriptor, AttachmentGraphLayoutIndex> attachmentGraphs{};
 
 	TypedPoolAllocator<AttachmentGraphInstance, AttachmentGraphInstanceIndex> attachmentGraphsInstances{};
 

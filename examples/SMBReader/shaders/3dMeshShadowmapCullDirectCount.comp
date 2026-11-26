@@ -16,6 +16,7 @@ layout(set = 0, binding = 1) uniform usamplerBuffer globalMeshOffsets;
 layout(set = 0, binding = 2) uniform usamplerBuffer globalMeshCounts;
 layout(set = 0, binding = 3) uniform usamplerBuffer globalMeshAllocations;
 layout(set = 0, binding = 4, r32ui) uniform uimageBuffer globalMeshDirectCount; //count of all direct
+layout(set = 0, binding = 5) uniform usamplerBuffer globalGridIndices;
 
 shared uint perMeshDirectCount[32];
 
@@ -27,7 +28,7 @@ void main()
     
     uint lightIndex = gl_LocalInvocationID.y;
 
-    uint gridIndex = gl_WorkGroupID.x;
+    uint gridIndex = uint(texelFetch(globalGridIndices, int(gl_WorkGroupID.x)).r);
 
     if (lightIndex == 0)
     { 

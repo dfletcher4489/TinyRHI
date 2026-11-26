@@ -39,6 +39,7 @@ layout(set = 0, binding = 9) readonly buffer GLBuffer
 } lightBuffer;
 
 layout(set = 0, binding = 10, r32ui) uniform uimageBuffer globalMeshSpotCount;
+layout(set = 0, binding = 11) uniform usamplerBuffer globalGridIndices;
 
 shared uint perMeshSpotCount[32];
 
@@ -50,7 +51,7 @@ void main()
     
     uint lightIndex = gl_LocalInvocationID.y;
 
-    uint gridIndex = gl_WorkGroupID.x;
+    uint gridIndex = uint(texelFetch(globalGridIndices, int(gl_WorkGroupID.x)).r);
 
     if (lightIndex == 0)
     { 

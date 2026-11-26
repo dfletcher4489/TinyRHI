@@ -41,6 +41,7 @@ layout(set = 0, binding = 9) readonly buffer GLBuffer
 layout(set = 0, binding = 10) uniform usamplerBuffer globalSMRenderableStart;
 layout(set = 0, binding = 11, r32ui) uniform uimageBuffer globalSMPerRendIndices;
 layout(set = 0, binding = 12, r32ui) uniform uimageBuffer globalMeshWriteOffsets;
+layout(set = 0, binding = 13) uniform usamplerBuffer globalGridIndices;
 
 layout (local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
 
@@ -50,7 +51,7 @@ void main()
     
     uint lightIndex = gl_LocalInvocationID.y;
 
-	uint gridIndex = gl_WorkGroupID.x;
+	uint gridIndex = uint(texelFetch(globalGridIndices, int(gl_WorkGroupID.x)).r);
 
     uint lightOffsets = texelFetch(globalLightOffsets, int(gridIndex)).r;
     uint lightCounts = texelFetch(globalLightCounts, int(gridIndex)).r;

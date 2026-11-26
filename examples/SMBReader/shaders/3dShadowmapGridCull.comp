@@ -135,6 +135,11 @@ void main()
     if (gl_LocalInvocationID.x == 0)
     {
         groupOffsetStart = atomicAdd(idArgs.x, visibleCount);
+        if (gl_WorkGroupID.x == 0)
+        {
+            idArgs.y = 1;
+            idArgs.z = 1;
+        }
     }
 
     barrier();

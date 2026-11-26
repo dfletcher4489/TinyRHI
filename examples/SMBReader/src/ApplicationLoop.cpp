@@ -2851,7 +2851,7 @@ int CreateDebugCommandBuffers(int count)
 	ShaderComputeLayout* debugClassDescriptorLayout = GlobalRenderer::gRenderInstance.GetComputeLayout(shaderGraphHandles[DEBUGCLASSIFICATION]);
 
 	ComputeIntermediaryPipelineInfo debugClassPipelineCreate = {
-			.x = COUNTBYSIZE(count, debugClassDescriptorLayout->x),
+			.x = COUNTHOWMANYSTRIDESNEEDED(count, debugClassDescriptorLayout->x),
 			.y = 1,
 			.z = 1,
 			.pipelinename = pipelineHandles[DEBUGCLASSIFICATION],
@@ -2902,7 +2902,7 @@ int CreateDebugCommandBuffers(int count)
 	ShaderComputeLayout* debugCullDescriptorLayout = GlobalRenderer::gRenderInstance.GetComputeLayout(shaderGraphHandles[DEBUGCULL]);
 
 	ComputeIntermediaryPipelineInfo debugCullPipelineCreate = {
-			.x = COUNTBYSIZE(count, debugClassDescriptorLayout->x),
+			.x = COUNTHOWMANYSTRIDESNEEDED(count, debugClassDescriptorLayout->x),
 			.y = 1,
 			.z = 1,
 			.pipelinename = pipelineHandles[DEBUGCULL],
@@ -2952,7 +2952,7 @@ int CreateDebugCommandBuffers(int count)
 	debugCullDescriptors = { indirectCullDescriptor2 };
 
 	ComputeIntermediaryPipelineInfo debugCullPipelineCreate2 = {
-			.x = COUNTBYSIZE(count, debugClassDescriptorLayout->x),
+			.x = COUNTHOWMANYSTRIDESNEEDED(count, debugClassDescriptorLayout->x),
 			.y = 1,
 			.z = 1,
 			.pipelinename = pipelineHandles[DEBUGCULL],
@@ -3111,7 +3111,7 @@ int CreateGenericMeshCommandBuffers(int count)
 	std::array<ShaderResourceSetHandle, 2> computeDescriptors = { mainIndirectDrawData.indirectCullDescriptor };
 
 	ComputeIntermediaryPipelineInfo mainCullComputeSetup = {
-			.x = COUNTBYSIZE(count, layout->x),
+			.x = COUNTHOWMANYSTRIDESNEEDED(count, layout->x),
 			.y = 1,
 			.z = 1,
 			.pipelinename = pipelineHandles[RENDEROBJCULL],
@@ -3193,7 +3193,7 @@ int CreateMeshWorldAssignment(int count)
 	worldSpaceAssignment.totalElementsCount = count;
 	worldSpaceAssignment.totalSumsNeeded = (int)(worldSpaceAssignment.totalElementsCount / (float)prefixLayout->x);
 
-	uint32_t prefixCount = COUNTBYSIZE(worldSpaceAssignment.totalElementsCount, prefixLayout->x); 
+	uint32_t prefixCount = COUNTHOWMANYSTRIDESNEEDED(worldSpaceAssignment.totalElementsCount, prefixLayout->x); 
 
 	ShaderResourceSetBuilder prefixSumBuilder = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[PREFIXSUM], 0, MAX_FRAMES_IN_FLIGHT);
 
@@ -3340,7 +3340,7 @@ int CreateMeshWorldAssignment(int count)
 	}
 
 	ComputeIntermediaryPipelineInfo preWorldDivComputePipeline = {
-			.x = (uint32_t)COUNTBYSIZE(count, 32),
+			.x = (uint32_t)COUNTHOWMANYSTRIDESNEEDED(count, 32),
 			.y = 1,
 			.z = 1,
 			.pipelinename = pipelineHandles[WORLDORGANIZE],
@@ -3379,7 +3379,7 @@ int CreateMeshWorldAssignment(int count)
 	}
 
 	ComputeIntermediaryPipelineInfo postWorldDivComputePipeline = {
-			.x = (uint32_t)COUNTBYSIZE(count, 32),
+			.x = (uint32_t)COUNTHOWMANYSTRIDESNEEDED(count, 32),
 			.y = 1,
 			.z = 1,
 			.pipelinename = pipelineHandles[WORLDASSIGN],
@@ -3660,7 +3660,7 @@ int CreateLightsAndShadowMapManager(
 		ShaderResourceSetHandle descriptorHandle = builder();
 
 		ComputeIntermediaryPipelineInfo pipeinfo = {
-				.x = COUNTBYSIZE(partitionCount, 32),
+				.x = COUNTHOWMANYSTRIDESNEEDED(partitionCount, 32),
 				.y = 1,
 				.z = 1,
 				.pipelinename = pipelineHandles[LIGHTDIRECTCOUNT],
@@ -3702,7 +3702,7 @@ int CreateLightsAndShadowMapManager(
 		ShaderResourceSetHandle descriptorHandle = builder();
 
 		ComputeIntermediaryPipelineInfo pipeinfo = {
-				.x = COUNTBYSIZE(partitionCount, 32),
+				.x = COUNTHOWMANYSTRIDESNEEDED(partitionCount, 32),
 				.y = 1,
 				.z = 1,
 				.pipelinename = pipelineHandles[LIGHTDIRECTASSIGN],
@@ -3742,7 +3742,7 @@ int CreateLightsAndShadowMapManager(
 		ShaderResourceSetHandle descriptorHandle = builder();
 
 		ComputeIntermediaryPipelineInfo pipeinfo = {
-				.x = COUNTBYSIZE(partitionCount, 32),
+				.x = COUNTHOWMANYSTRIDESNEEDED(partitionCount, 32),
 				.y = 1,
 				.z = 1,
 				.pipelinename = pipelineHandles[LIGHTSPOTCOUNT],
@@ -3782,7 +3782,7 @@ int CreateLightsAndShadowMapManager(
 		ShaderResourceSetHandle descriptorHandle = builder();
 
 		ComputeIntermediaryPipelineInfo pipeinfo = {
-				.x = COUNTBYSIZE(partitionCount, 32),
+				.x = COUNTHOWMANYSTRIDESNEEDED(partitionCount, 32),
 				.y = 1,
 				.z = 1,
 				.pipelinename = pipelineHandles[LIGHTSPOTASSIGN],
@@ -3822,7 +3822,7 @@ int CreateLightsAndShadowMapManager(
 		ShaderResourceSetHandle descriptorHandle = builder();
 
 		ComputeIntermediaryPipelineInfo pipeinfo = {
-				.x = COUNTBYSIZE(partitionCount, 32),
+				.x = COUNTHOWMANYSTRIDESNEEDED(partitionCount, 32),
 				.y = 1,
 				.z = 1,
 				.pipelinename = pipelineHandles[LIGHTPOINTCOUNT],
@@ -3862,7 +3862,7 @@ int CreateLightsAndShadowMapManager(
 		ShaderResourceSetHandle descriptorHandle = builder();
 
 		ComputeIntermediaryPipelineInfo pipeinfo = {
-				.x = COUNTBYSIZE(partitionCount, 32),
+				.x = COUNTHOWMANYSTRIDESNEEDED(partitionCount, 32),
 				.y = 1,
 				.z = 1,
 				.pipelinename = pipelineHandles[LIGHTPOINTASSIGN],
@@ -3897,6 +3897,8 @@ int CreateLightsAndShadowMapManager(
 		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &globalLightBuffer, 0, 1, 9);
 
 		builder.BindBufferView(&genericLightWorldRSContext, &mainShadowMapManager.shadowMapCullPointLightCount, 0, 1, 10);
+		builder.BindBufferView(&genericLightWorldRSContext, &mainShadowMapManager.shadowMapCullGridIdentifiers, 0, 1, 11);
+
 
 		builder.UploadConstant(&genericLightWorldRSContext, &mainIndirectDrawData.commandBufferCount, 0);
 		builder.UploadConstant(&genericLightWorldRSContext, &globalLightCount, 1);
@@ -3915,7 +3917,7 @@ int CreateLightsAndShadowMapManager(
 				.z = 1,
 				.pipelinename = pipelineHandles[LIGHTSHADOWMAPWORLDPOINTCNT],
 				.descCount = 1,
-				.indirectDispatchAllocation = -1,
+				.indirectDispatchAllocation = mainShadowMapManager.shadowMapCullIndirectArgs,
 				.descriptorsetid = descriptor.data()
 		};
 
@@ -3947,6 +3949,7 @@ int CreateLightsAndShadowMapManager(
 		builder.BindBufferView(&genericLightWorldRSContext, &mainShadowMapManager.shadowMapOffsetsAlloc, 0, 1, 10);
 		builder.BindBufferView(&genericLightWorldRSContext, &mainShadowMapManager.shadowMapAssignmentsAlloc, 0, 1, 11);
 		builder.BindBufferView(&genericLightWorldRSContext, &mainShadowMapManager.shadowMapCullMeshWriteOffsets, 0, 1, 12);
+		builder.BindBufferView(&genericLightWorldRSContext, &mainShadowMapManager.shadowMapCullGridIdentifiers, 0, 1, 13);
 
 		builder.UploadConstant(&genericLightWorldRSContext, &mainIndirectDrawData.commandBufferCount, 0);
 		builder.UploadConstant(&genericLightWorldRSContext, &globalLightCount, 1);
@@ -3965,7 +3968,7 @@ int CreateLightsAndShadowMapManager(
 				.z = 1,
 				.pipelinename = pipelineHandles[LIGHTSHADOWMAPWORLDPOINTASSIGN],
 				.descCount = 1,
-				.indirectDispatchAllocation = -1,
+				.indirectDispatchAllocation = mainShadowMapManager.shadowMapCullIndirectArgs,
 				.descriptorsetid = descriptor.data()
 		};
 
@@ -3995,6 +3998,7 @@ int CreateLightsAndShadowMapManager(
 		builder.BindBufferToShaderResource(&genericLightWorldRSContext, &globalLightBuffer, 0, 1, 9);
 
 		builder.BindBufferView(&genericLightWorldRSContext, &mainShadowMapManager.shadowMapCullSpotLightCount, 0, 1, 10);
+		builder.BindBufferView(&genericLightWorldRSContext, &mainShadowMapManager.shadowMapCullGridIdentifiers, 0, 1, 11);
 
 		builder.UploadConstant(&genericLightWorldRSContext, &mainIndirectDrawData.commandBufferCount, 0);
 		builder.UploadConstant(&genericLightWorldRSContext, &globalLightCount, 1);
@@ -4013,7 +4017,7 @@ int CreateLightsAndShadowMapManager(
 				.z = 1,
 				.pipelinename = pipelineHandles[LIGHTSHADOWMAPWORLDSPOTCNT],
 				.descCount = 1,
-				.indirectDispatchAllocation = -1,
+				.indirectDispatchAllocation = mainShadowMapManager.shadowMapCullIndirectArgs,
 				.descriptorsetid = descriptor.data()
 		};
 
@@ -4045,6 +4049,7 @@ int CreateLightsAndShadowMapManager(
 		builder.BindBufferView(&genericLightWorldRSContext, &mainShadowMapManager.shadowMapOffsetsAlloc, 0, 1, 10);
 		builder.BindBufferView(&genericLightWorldRSContext, &mainShadowMapManager.shadowMapAssignmentsAlloc, 0, 1, 11);
 		builder.BindBufferView(&genericLightWorldRSContext, &mainShadowMapManager.shadowMapCullMeshWriteOffsets, 0, 1, 12);
+		builder.BindBufferView(&genericLightWorldRSContext, &mainShadowMapManager.shadowMapCullGridIdentifiers, 0, 1, 13);
 
 		builder.UploadConstant(&genericLightWorldRSContext, &mainIndirectDrawData.commandBufferCount, 0);
 		builder.UploadConstant(&genericLightWorldRSContext, &globalLightCount, 1);
@@ -4063,7 +4068,7 @@ int CreateLightsAndShadowMapManager(
 				.z = 1,
 				.pipelinename = pipelineHandles[LIGHTSHADOWMAPWORLDSPOTASSIGN],
 				.descCount = 1,
-				.indirectDispatchAllocation = -1,
+				.indirectDispatchAllocation = mainShadowMapManager.shadowMapCullIndirectArgs,
 				.descriptorsetid = descriptor.data()
 		};
 
@@ -4084,6 +4089,7 @@ int CreateLightsAndShadowMapManager(
 		builder.BindBufferView(&genericLightWorldRSContext, &worldSpaceAssignment.deviceOffsetsAlloc, 0, 1, 2);
 		builder.BindBufferView(&genericLightWorldRSContext, &worldSpaceAssignment.worldSpaceDivisionAlloc, 0, 1, 3);
 		builder.BindBufferView(&genericLightWorldRSContext, &mainShadowMapManager.shadowMapCullDirectLightCount, 0, 1, 4);
+		builder.BindBufferView(&genericLightWorldRSContext, &mainShadowMapManager.shadowMapCullGridIdentifiers, 0, 1, 5);
 
 		builder.UploadConstant(&genericLightWorldRSContext, &mainIndirectDrawData.commandBufferCount, 0);
 		builder.UploadConstant(&genericLightWorldRSContext, &globalLightCount, 1);
@@ -4102,7 +4108,7 @@ int CreateLightsAndShadowMapManager(
 				.z = 1,
 				.pipelinename = pipelineHandles[LIGHTSHADOWMAPWORLDDIRECTCNT],
 				.descCount = 1,
-				.indirectDispatchAllocation = -1,
+				.indirectDispatchAllocation = mainShadowMapManager.shadowMapCullIndirectArgs,
 				.descriptorsetid = descriptor.data()
 		};
 
@@ -4127,6 +4133,7 @@ int CreateLightsAndShadowMapManager(
 		builder.BindBufferView(&genericLightWorldRSContext, &mainShadowMapManager.shadowMapOffsetsAlloc, 0, 1, 6);
 		builder.BindBufferView(&genericLightWorldRSContext, &mainShadowMapManager.shadowMapAssignmentsAlloc, 0, 1, 7);
 		builder.BindBufferView(&genericLightWorldRSContext, &mainShadowMapManager.shadowMapCullMeshWriteOffsets, 0, 1, 8);
+		builder.BindBufferView(&genericLightWorldRSContext, &mainShadowMapManager.shadowMapCullGridIdentifiers, 0, 1, 9);
 
 		builder.UploadConstant(&genericLightWorldRSContext, &mainIndirectDrawData.commandBufferCount, 0);
 		builder.UploadConstant(&genericLightWorldRSContext, &globalLightCount, 1);
@@ -4145,7 +4152,7 @@ int CreateLightsAndShadowMapManager(
 				.z = 1,
 				.pipelinename = pipelineHandles[LIGHTSHADOWMAPWORLDDIRECTASSIGN],
 				.descCount = 1,
-				.indirectDispatchAllocation = -1,
+				.indirectDispatchAllocation = mainShadowMapManager.shadowMapCullIndirectArgs,
 				.descriptorsetid = descriptor.data()
 		};
 
@@ -4186,7 +4193,7 @@ int CreateLightsAndShadowMapManager(
 		}
 
 		ComputeIntermediaryPipelineInfo pipeInfo = {
-				.x = 1, //COUNTBYSIZE(maxObjCount, 32)
+				.x = 1, //COUNTHOWMANYSTRIDESNEEDED(maxObjCount, 32)
 				.y = 1,
 				.z = 1,
 				.pipelinename = pipelineHandles[SHADOWMAPREDUCEANDCOMMAND],
@@ -4222,7 +4229,7 @@ int CreateLightsAndShadowMapManager(
 		}
 
 		ComputeIntermediaryPipelineInfo pipeInfo = {
-				.x = COUNTBYSIZE(partitionCount, 32),
+				.x = COUNTHOWMANYSTRIDESNEEDED(partitionCount, 32),
 				.y = 1,
 				.z = 1,
 				.pipelinename = pipelineHandles[SHADOWMAPGRIDCULLING],
@@ -6638,7 +6645,7 @@ int CreateUITools(int maxUIContainers)
 		ShaderComputeLayout* computeLayout = GlobalRenderer::gRenderInstance.GetComputeLayout(shaderGraphHandles[UICULLING]);
 
 		ComputeIntermediaryPipelineInfo pipelineCreateInfo = {
-				.x = COUNTBYSIZE(globalUICount, computeLayout->x),
+				.x = COUNTHOWMANYSTRIDESNEEDED(globalUICount, computeLayout->x),
 				.y = 1,
 				.z = 1,
 				.pipelinename = pipelineHandles[UICULLING],
@@ -6713,7 +6720,7 @@ int CreateUITools(int maxUIContainers)
 		std::array<ShaderResourceSetHandle, 1> descriptors = { descriptorBuilder() };
 
 		ComputeIntermediaryPipelineInfo pipelineCreateInfo = {
-			.x = COUNTBYSIZE(globalUICount, computeLayout->x),
+			.x = COUNTHOWMANYSTRIDESNEEDED(globalUICount, computeLayout->x),
 			.y = 1,
 			.z = 1,
 			.pipelinename = pipelineHandles[UIDEPTHCOUNT],

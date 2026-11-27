@@ -558,7 +558,6 @@ static OSThreadHandle threadHandle;
 
 static AttachmentGraphInstanceIndex currentFrameGraphIndex{};
 static PipelineQueueIndex mainComputeQueueIndex;
-static PipelineHandleIndex mainFullScreenPipeline = 0;
 
 static PipelineHandleIndex jointMeshPipelines[MAX_JOINT_VISUALIZERS];
 static uint32_t jointMeshStaringLocations[MAX_JOINT_VISUALIZERS];
@@ -638,7 +637,7 @@ size_t mainRTVSize = 800 * MiB, mainDSVSize = 800 * MiB;
 static DeviceSlabAllocator mainRTVSlab(mainRTVSize, STRING_VIEW_FROM_LITERAL("Main RTV Slab Allocator"), &mainAppLogger);
 static DeviceSlabAllocator mainDSVSlab(mainDSVSize, STRING_VIEW_FROM_LITERAL("Main DSV Slab Allocator"), &mainAppLogger);
 
-static AttachmentGraphInstanceIndex MSAAPost{};
+static AttachmentGraphLayoutIndex mssaShadowLay{};
 static AttachmentGraphInstanceIndex BasicShadow{};
 static AttachmentGraphInstanceIndex MSAAShadowMapping{};
 static int frameGraphsCount = 0;
@@ -4255,93 +4254,47 @@ void RecreateFrameGraphAttachments(uint32_t width, uint32_t height)
 	mainRTVSlab.dataAllocator = 0;
 	mainDSVSlab.dataAllocator = 0;
 
-	if (AttachmentGraphInstanceIndex() != BasicShadow)
-	{
-		GlobalRenderer::gRenderInstance.CreateSwapChainAttachment(BasicShadow, 1, mainPresentationSwapChain, nullptr, &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
+	GlobalRenderer::gRenderInstance.CreateSwapChainAttachment(mssaShadowLay, 0, mainPresentationSwapChain, nullptr, ImageMemoryIndex());
 
-		GlobalRenderer::gRenderInstance.CreatePerFrameAttachment(BasicShadow, 0, MAX_FRAMES_IN_FLIGHT, mainShadowWidth, mainShadowHeight, nullptr, &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
+	GlobalRenderer::gRenderInstance.CreatePerFrameAttachment(mssaShadowLay, 1, MAX_FRAMES_IN_FLIGHT, mainShadowWidth, mainShadowHeight, &mainDSVSlab, mainDSVIndex);
 
-		int viewIndex = GlobalRenderer::gRenderInstance.CreateAttachmentImageView(BasicShadow, 1, 0, 1, 0, 1, DEPTH_IMAGE_ASPECT, ImageLayout::SHADERREADABLE);
+	GlobalRenderer::gRenderInstance.CreateSwapChainAttachment(mssaShadowLay, 2, mainPresentationSwapChain, &mainRTVSlab, mainRTVIndex);
 
-		GlobalRenderer::gRenderInstance.UploadFrameAttachmentResource(BasicShadow, 1, viewIndex, smdpd.fullScreenDescriptorSet, 0, 0);
-	}
+	GlobalRenderer::gRenderInstance.CreateSwapChainAttachment(mssaShadowLay, 3, mainPresentationSwapChain, &mainDSVSlab, mainDSVIndex);
+
+	GlobalRenderer::gRenderInstance.CreatePerFrameAttachment(mssaShadowLay, 4, MAX_FRAMES_IN_FLIGHT, width, height, &mainRTVSlab, mainRTVIndex);
+
+	GlobalRenderer::gRenderInstance.BindResourceToAttachmnent(BasicShadow, 0, 1, { CLEARDEPTH, {1.0, 0} });
+	GlobalRenderer::gRenderInstance.BindResourceToAttachmnent(BasicShadow, 1, 0, { CLEARCOLOR, {0.0, 0.0, 0.0, 0.0} });
+
+	GlobalRenderer::gRenderInstance.BindResourceToAttachmnent(MSAAShadowMapping, 0, 1, { CLEARDEPTH, {1.0, 0} });
+	GlobalRenderer::gRenderInstance.BindResourceToAttachmnent(MSAAShadowMapping, 1, 4, { CLEARCOLOR, {0.0, 0.0, 0.0, 0.0} });
+	GlobalRenderer::gRenderInstance.BindResourceToAttachmnent(MSAAShadowMapping, 2, 0, { CLEARCOLOR, {0.0, 0.0, 0.0, 0.0} });
+	GlobalRenderer::gRenderInstance.BindResourceToAttachmnent(MSAAShadowMapping, 2, 2, { CLEARCOLOR, {0.0, 0.0, 0.0, 0.0} });
+	GlobalRenderer::gRenderInstance.BindResourceToAttachmnent(MSAAShadowMapping, 2, 3, { CLEARDEPTH, {1.0, 0} });
+
+	GlobalRenderer::gRenderInstance.CreateFrameBuffer(BasicShadow, 0, RenderPassType::PER_FRAME_IMAGE_COUNT);
+	GlobalRenderer::gRenderInstance.CreateFrameBuffer(BasicShadow, 1, RenderPassType::SWAPCHAIN_IMAGE_COUNT);
+
+	GlobalRenderer::gRenderInstance.CreateFrameBuffer(MSAAShadowMapping, 0, RenderPassType::PER_FRAME_IMAGE_COUNT);
+	GlobalRenderer::gRenderInstance.CreateFrameBuffer(MSAAShadowMapping, 1, RenderPassType::PER_FRAME_IMAGE_COUNT);
+	GlobalRenderer::gRenderInstance.CreateFrameBuffer(MSAAShadowMapping, 2, RenderPassType::SWAPCHAIN_IMAGE_COUNT);
+
+	int viewIndex = GlobalRenderer::gRenderInstance.CreateAttachmentImageView(BasicShadow, 1, 0, 1, 0, 1, DEPTH_IMAGE_ASPECT, ImageLayout::SHADERREADABLE);
+
+	GlobalRenderer::gRenderInstance.UploadFrameAttachmentResource(BasicShadow, 1, viewIndex, smdpd.fullScreenDescriptorSet, 0, 0);
 	
-	if (AttachmentGraphInstanceIndex() != MSAAShadowMapping)
-	{
-		GlobalRenderer::gRenderInstance.CreatePerFrameAttachment(MSAAShadowMapping, 0, MAX_FRAMES_IN_FLIGHT, 4096, 4096, nullptr, &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
-		GlobalRenderer::gRenderInstance.CreatePerFrameAttachment(MSAAShadowMapping, 1, MAX_FRAMES_IN_FLIGHT, width, height, nullptr, &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
-		GlobalRenderer::gRenderInstance.CreateSwapChainAttachment(MSAAShadowMapping, 2, mainPresentationSwapChain, nullptr, &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
+	viewIndex = GlobalRenderer::gRenderInstance.CreateAttachmentImageView(MSAAShadowMapping, 4, 0, 1, 0, 1, COLOR_IMAGE_ASPECT, ImageLayout::SHADERREADABLE);
+	
+	GlobalRenderer::gRenderInstance.UploadFrameAttachmentResource(MSAAShadowMapping, 4, viewIndex, globalUIIDResourceHandle, 2, 0);
 
-		int viewIndex = GlobalRenderer::gRenderInstance.CreateAttachmentImageView(MSAAShadowMapping, 1, 0, 1, 0, 1, DEPTH_IMAGE_ASPECT, ImageLayout::SHADERREADABLE);
-		int viewIndexObjectID = GlobalRenderer::gRenderInstance.CreateAttachmentImageView(MSAAShadowMapping, 4, 0, 1, 0, 1, COLOR_IMAGE_ASPECT, ImageLayout::SHADERREADABLE);
+	viewIndex = GlobalRenderer::gRenderInstance.CreateAttachmentImageView(MSAAShadowMapping, 1, 0, 1, 0, 1, DEPTH_IMAGE_ASPECT, ImageLayout::SHADERREADABLE);
 
-		GlobalRenderer::gRenderInstance.UploadFrameAttachmentResource(MSAAShadowMapping, 4, viewIndexObjectID, globalUIIDResourceHandle, 2, 0);
-		GlobalRenderer::gRenderInstance.UploadFrameAttachmentResource(MSAAShadowMapping, 1, viewIndex, globalTexturesDescriptor, 4, 0);
+	GlobalRenderer::gRenderInstance.UploadFrameAttachmentResource(MSAAShadowMapping, 1, viewIndex, globalTexturesDescriptor, 4, 0);
 		
-	}
-
-	/*currentFrameGraphIndex = MSAAShadowMapping;*/
-
 	GlobalRenderer::gRenderInstance.ResetCommandList(mainCommandStreamIndex);
 	GlobalRenderer::gRenderInstance.AddComputeCommandQueue(mainCommandStreamIndex, mainComputeQueueIndex);
 	GlobalRenderer::gRenderInstance.AddAttachmentCommandQueue(mainCommandStreamIndex, currentFrameGraphIndex);
-}
-
-int CreateMSAAPostFullScreen()
-{
-	ShaderResourceSetContext genericMSAARSContext{ &mainAppLogger, false };
-
-	DeviceHandleArrayUpdate samplerUpdate;
-
-	samplerUpdate.updateType = DeviceHandleArrayUpdateType::SAMPLER_UPDATE;
-	samplerUpdate.resourceCount = 1;
-	samplerUpdate.resourceDstBegin = 0;
-	samplerUpdate.resourceHandles = &mainLinearSampler;
-
-	ShaderResourceSetBuilder mainFullScreenB = GlobalRenderer::gRenderInstance.AllocateShaderResourceSet(mainDescriptorManagerIndex, shaderGraphHandles[FULLSCREEN], 0, MAX_FRAMES_IN_FLIGHT);
-
-	mainFullScreen = mainFullScreenB();
-
-	int viewIndex = GlobalRenderer::gRenderInstance.CreateAttachmentImageView(MSAAPost, 1, 0, 1, 0, 1, COLOR_IMAGE_ASPECT, ImageLayout::SHADERREADABLE);
-
-	GlobalRenderer::gRenderInstance.UploadFrameAttachmentResource(MSAAPost, 1, viewIndex, mainFullScreen, 0, 0);
-	GlobalRenderer::gRenderInstance.UpdateShaderResourceArray(mainFullScreen, 1, ShaderResourceType::SAMPLERSTATE, &samplerUpdate);
-
-	mainFullScreenB.UploadConstant(&genericMSAARSContext, &GlobalRenderer::gRenderInstance.GetDeviceHandle(mainLogicalDevice)->container.currentFrame, 0);
-
-	if (genericMSAARSContext.contextFailed)
-	{
-		genericMSAARSContext.contextLogger->ProcessMessage();
-		return -1;
-	}
-
-	std::array<ShaderResourceSetHandle, 1> mainFullScreenDesc = { mainFullScreen };
-
-	GraphicsIntermediaryPipelineInfo fullscreenInfo = {
-		
-		.vertexBufferHandle = ~0,
-		.vertexCount = 4,
-		.pipelinename = pipelineHandles[FULLSCREEN],
-		.descCount = 1,
-		.descriptorsetid = mainFullScreenDesc.data(),
-		.indexBufferHandle = ~0,
-		.indexCount = 0,
-		.instanceCount = 1,
-		.indexSize = 0,
-		.indirectAllocation = ~0,
-		.indirectDrawCount = 0,
-		.indirectCountAllocation = ~0
-	};
-
-	mainFullScreenPipeline = GlobalRenderer::gRenderInstance.CreateGraphicsPipelineObject(&fullscreenInfo);
-
-	if (PipelineHandleIndex() == mainFullScreenPipeline)
-	{
-		mainAppLogger.AddLogMessage(LOGERROR, STRING_VIEW_FROM_LITERAL("Main Full Screen Pipeline failed creation"));
-		return -1;
-	}
-
-	return 0;
 }
 
 int CreateSkyBox()
@@ -4678,7 +4631,7 @@ int ApplicationLoop::InitializeRuntime()
 		return -1;
 	}
 
-	AttachmentGraphLayoutIndex mssaShadowLay = GlobalRenderer::gRenderInstance.CreateAttachmentGraph(mainLayoutAttachments[0]);
+	mssaShadowLay = GlobalRenderer::gRenderInstance.CreateAttachmentGraph(mainLogicalDevice, mainLayoutAttachments[0]);
 
 	if (AttachmentGraphLayoutIndex() == mssaShadowLay)
 	{
@@ -4704,53 +4657,56 @@ int ApplicationLoop::InitializeRuntime()
 		return -1;
 	}
 
-	std::array<AttachmentClear, 2> ShadowMapViewerClears {
-		CLEARCOLOR, {0.0, 0.0, 0.0, 0.0},
-		CLEARDEPTH, {1.0, 0},
-	};
-
-	std::array<AttachmentClear, 5> MSAAShadowMappingClears {
-		NOCLEAR, {0.0, 0.0, 0.0, 0.0},
-		CLEARDEPTH, {1.0, 0},
-		CLEARCOLOR, {0.0, 0.0, 0.0, 0.0},
-		CLEARDEPTH, {1.0, 0},
-		CLEARCOLOR, {0.0, 0.0, 0.0, 0.0},
-	};
-
-	rendererRetCode = GlobalRenderer::gRenderInstance.CreateSwapChainAttachment(BasicShadow, 1, mainPresentationSwapChain, ShadowMapViewerClears.data(), &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
+	rendererRetCode = GlobalRenderer::gRenderInstance.CreateSwapChainAttachment(mssaShadowLay, 0, mainPresentationSwapChain, nullptr, ImageMemoryIndex());
 
 	if (rendererRetCode)
 	{
 		return -1;
 	}
 
-	rendererRetCode = GlobalRenderer::gRenderInstance.CreatePerFrameAttachment(BasicShadow, 0, MAX_FRAMES_IN_FLIGHT, mainShadowWidth, mainShadowHeight, ShadowMapViewerClears.data(), &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
+	rendererRetCode = GlobalRenderer::gRenderInstance.CreatePerFrameAttachment(mssaShadowLay, 1, MAX_FRAMES_IN_FLIGHT, mainShadowWidth, mainShadowHeight, &mainDSVSlab, mainDSVIndex);
 
 	if (rendererRetCode)
 	{
 		return -1;
 	}
 
-	rendererRetCode = GlobalRenderer::gRenderInstance.CreateSwapChainAttachment(MSAAShadowMapping, 2, mainPresentationSwapChain, MSAAShadowMappingClears.data(), &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
-	
-	if (rendererRetCode)
-	{
-		return -1;
-	}
-
-	rendererRetCode = GlobalRenderer::gRenderInstance.CreatePerFrameAttachment(MSAAShadowMapping, 0, MAX_FRAMES_IN_FLIGHT, mainShadowWidth, mainShadowHeight, MSAAShadowMappingClears.data(), &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
-	
-	if (rendererRetCode)
-	{
-		return -1;
-	}
-
-	rendererRetCode = GlobalRenderer::gRenderInstance.CreatePerFrameAttachment(MSAAShadowMapping, 1, MAX_FRAMES_IN_FLIGHT, 800, 600, MSAAShadowMappingClears.data(), &mainRTVSlab, &mainDSVSlab, mainRTVIndex, mainDSVIndex);
+	rendererRetCode = GlobalRenderer::gRenderInstance.CreateSwapChainAttachment(mssaShadowLay, 2, mainPresentationSwapChain, &mainRTVSlab, mainRTVIndex);
 
 	if (rendererRetCode)
 	{
 		return -1;
 	}
+
+	rendererRetCode = GlobalRenderer::gRenderInstance.CreateSwapChainAttachment(mssaShadowLay, 3, mainPresentationSwapChain, &mainDSVSlab, mainDSVIndex);
+
+	if (rendererRetCode)
+	{
+		return -1;
+	}
+
+	rendererRetCode = GlobalRenderer::gRenderInstance.CreatePerFrameAttachment(mssaShadowLay, 4, MAX_FRAMES_IN_FLIGHT, 800, 600, &mainRTVSlab, mainRTVIndex);
+
+	if (rendererRetCode)
+	{
+		return -1;
+	}
+
+	GlobalRenderer::gRenderInstance.BindResourceToAttachmnent(BasicShadow, 0, 1, { CLEARDEPTH, {1.0, 0} });
+	GlobalRenderer::gRenderInstance.BindResourceToAttachmnent(BasicShadow, 1, 0, { CLEARCOLOR, {0.0, 0.0, 0.0, 0.0} });
+
+	GlobalRenderer::gRenderInstance.BindResourceToAttachmnent(MSAAShadowMapping, 0, 1, { CLEARDEPTH, {1.0, 0} });
+	GlobalRenderer::gRenderInstance.BindResourceToAttachmnent(MSAAShadowMapping, 1, 4, { CLEARCOLOR, {0.0, 0.0, 0.0, 0.0} });
+	GlobalRenderer::gRenderInstance.BindResourceToAttachmnent(MSAAShadowMapping, 2, 0, { CLEARCOLOR, {0.0, 0.0, 0.0, 0.0} });
+	GlobalRenderer::gRenderInstance.BindResourceToAttachmnent(MSAAShadowMapping, 2, 2, { CLEARCOLOR, {0.0, 0.0, 0.0, 0.0} });
+	GlobalRenderer::gRenderInstance.BindResourceToAttachmnent(MSAAShadowMapping, 2, 3, { CLEARDEPTH, {1.0, 0} });
+
+	GlobalRenderer::gRenderInstance.CreateFrameBuffer(BasicShadow, 0, RenderPassType::PER_FRAME_IMAGE_COUNT);
+	GlobalRenderer::gRenderInstance.CreateFrameBuffer(BasicShadow, 1, RenderPassType::SWAPCHAIN_IMAGE_COUNT);
+
+	GlobalRenderer::gRenderInstance.CreateFrameBuffer(MSAAShadowMapping, 0, RenderPassType::PER_FRAME_IMAGE_COUNT);
+	GlobalRenderer::gRenderInstance.CreateFrameBuffer(MSAAShadowMapping, 1, RenderPassType::PER_FRAME_IMAGE_COUNT);
+	GlobalRenderer::gRenderInstance.CreateFrameBuffer(MSAAShadowMapping, 2, RenderPassType::SWAPCHAIN_IMAGE_COUNT);
 
 	GlobalRenderer::gRenderInstance.CreateGraphicsQueueForAttachments(MSAAShadowMapping, 0);
 	GlobalRenderer::gRenderInstance.CreateGraphicsQueueForAttachments(MSAAShadowMapping, 1);

@@ -43,6 +43,7 @@ static DeviceSlabAllocator mainDeviceAllocator(mainDeviceSize, STRING_VIEW_FROM_
 
 static ShaderResourceManagerIndex mainDescriptorManagerIndex{};
 static GPUCommandStreamIndex mainCommandStreamIndex{};
+static AttachmentGraphLayoutIndex basicLayout{};
 static AttachmentGraphInstanceIndex basicGraphInstance{};
 static GeneratedPipelineInstanceIndex pipelineHandle{};
 static PipelineHandleIndex basicPipeline{};
@@ -248,7 +249,7 @@ int InitGraphicsRuntime()
         return -1;
     }
 
-    AttachmentGraphLayoutIndex basicLayout = GlobalRenderer::gRenderInstance.CreateAttachmentGraph(STRING_VIEW_FROM_LITERAL("BasicLayout.adf"));
+    basicLayout = GlobalRenderer::gRenderInstance.CreateAttachmentGraph(mainLogicalDevice, STRING_VIEW_FROM_LITERAL("BasicLayout.adf"));
 
     if (AttachmentGraphLayoutIndex() == basicLayout)
     {
@@ -262,17 +263,24 @@ int InitGraphicsRuntime()
         return -1;
     }
 
-    std::array<AttachmentClear, 2> clears {
-        CLEARCOLOR, {0.0, 0.0, 0.0, 0.0},
-        CLEARDEPTH, {1.0, 0}
-    };
 
-    rendererRetCode = GlobalRenderer::gRenderInstance.CreateSwapChainAttachment(basicGraphInstance, 0, mainPresentationSwapChain, clears.data(), nullptr, &mainDSVAllocator, {}, mainDSVIndex);
+    rendererRetCode = GlobalRenderer::gRenderInstance.CreateSwapChainAttachment(basicLayout, 0, mainPresentationSwapChain, nullptr, {});
 
     if (rendererRetCode)
     {
         return -1;
     }
+
+    rendererRetCode = GlobalRenderer::gRenderInstance.CreateSwapChainAttachment(basicLayout, 1, mainPresentationSwapChain, &mainDSVAllocator, mainDSVIndex);
+
+    if (rendererRetCode)
+    {
+        return -1;
+    }
+
+    GlobalRenderer::gRenderInstance.BindResourceToAttachmnent(basicGraphInstance, 0, 1, { CLEARDEPTH, {1.0, 0} });
+    GlobalRenderer::gRenderInstance.BindResourceToAttachmnent(basicGraphInstance, 0, 0, { CLEARCOLOR, {0.0, 0.0, 0.0, 0.0} });
+    GlobalRenderer::gRenderInstance.CreateFrameBuffer(basicGraphInstance, 0, RenderPassType::SWAPCHAIN_IMAGE_COUNT);
 
     GlobalRenderer::gRenderInstance.CreateGraphicsQueueForAttachments(basicGraphInstance, 0);
 
@@ -961,12 +969,23 @@ int main(int argc, const char** argv)
 
             mainDSVAllocator.dataAllocator = 0;
 
-            int rendererRetCode = GlobalRenderer::gRenderInstance.CreateSwapChainAttachment(basicGraphInstance, 0, mainPresentationSwapChain, nullptr, nullptr, &mainDSVAllocator, {}, mainDSVIndex);
+            int rendererRetCode = GlobalRenderer::gRenderInstance.CreateSwapChainAttachment(basicLayout, 0, mainPresentationSwapChain, nullptr, {});
 
             if (rendererRetCode)
             {
-                break;
+                return -1;
             }
+
+            rendererRetCode = GlobalRenderer::gRenderInstance.CreateSwapChainAttachment(basicLayout, 1, mainPresentationSwapChain, &mainDSVAllocator, mainDSVIndex);
+
+            if (rendererRetCode)
+            {
+                return -1;
+            }
+
+            GlobalRenderer::gRenderInstance.BindResourceToAttachmnent(basicGraphInstance, 0, 1, { CLEARDEPTH, {1.0, 0} });
+            GlobalRenderer::gRenderInstance.BindResourceToAttachmnent(basicGraphInstance, 0, 0, { CLEARCOLOR, {0.0, 0.0, 0.0, 0.0} });
+            GlobalRenderer::gRenderInstance.CreateFrameBuffer(basicGraphInstance, 0, RenderPassType::SWAPCHAIN_IMAGE_COUNT);
 
             continue;
         }

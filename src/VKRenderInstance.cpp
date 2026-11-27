@@ -1396,9 +1396,7 @@ int RenderInstance::CreateRenderPass(AttachmentGraphInstance* graphInstance)
 
 			sampLo = RENDER_MAX((int)vkSampleCountLo, sampLo);
 
-			AttachmentResourceInstance* currResource = &graphInstance->resources[desc->resourceIndex];
-
-			currResource->resourceIndex = desc->resourceIndex;
+			AttachmentResourceInstance* currResource = &graphInstance->graphResourceInstances[desc->resourceIndex];
 
 			VkImageLayout referenceLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 

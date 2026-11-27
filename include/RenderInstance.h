@@ -76,13 +76,6 @@ struct RenderInstance
 
 	int RecreateSwapChain(SwapChainIndex swapChainIndex, uint32_t width, uint32_t height);
 
-	int CreateAttachmentResources(AttachmentGraphInstanceIndex graphIndex, int renderPassIndex, int imageCount, TextureIndex* backBufferTextureIds, uint32_t width, uint32_t height,
-		RenderPassType rpType, AttachmentClear* clears, DeviceSlabAllocator* rsvAllocator, DeviceSlabAllocator* dsvAllocator, ImageMemoryIndex rsvPoolIndex, ImageMemoryIndex dsvPoolIndex);
-
-	int CreateSwapChainAttachment(AttachmentGraphInstanceIndex graphIndex, int renderPassIndex, SwapChainIndex swapChainIndex, AttachmentClear* clears, DeviceSlabAllocator* rsvAllocator, DeviceSlabAllocator* dsvAllocator, ImageMemoryIndex rsvPoolIndex, ImageMemoryIndex dsvPoolIndex);
-
-	int CreatePerFrameAttachment(AttachmentGraphInstanceIndex graphIndex, int renderPassIndex, int imageCount, uint32_t width, uint32_t height, AttachmentClear* clears, DeviceSlabAllocator* rsvAllocator, DeviceSlabAllocator* dsvAllocator, ImageMemoryIndex rsvPoolIndex, ImageMemoryIndex dsvPoolIndex);
-
 	AttachmentGraphInstanceIndex CreateAttachmentGraphInstance(RenderDeviceIndex deviceSelection, AttachmentGraph* graph);
 
 	int CreateRenderPass(AttachmentGraphInstance* graph);
@@ -179,7 +172,7 @@ struct RenderInstance
 	ImageFormat FindSupportedBackBufferColorFormat(RenderPhysicalDeviceIndex physicalDeviceIndex, WindowIndex surfaceLevel, ImageFormat* requestedFormats, uint32_t requestSize);
 	ImageFormat FindSupportedDepthFormat(RenderDeviceIndex deviceSelection, ImageFormat* requestedFormats, uint32_t requestSize);
 
-	AttachmentGraphLayoutIndex CreateAttachmentGraph(StringView attachmentLayout);
+	AttachmentGraphLayoutIndex CreateAttachmentGraph(RenderDeviceIndex deviceSelection, StringView attachmentLayout);
 
 	AttachmentGraphInstanceIndex CreateAttachmentGraphInstance(RenderDeviceIndex deviceSelection, AttachmentGraphLayoutIndex attachmentLayout, int graphIndex);
 
@@ -286,7 +279,17 @@ struct RenderInstance
 	void ToggleDeviceQueries(RenderDeviceIndex mainDeviceSelection);
 
 	void DumpLogger();
+
+	int CreateAttachmentGraphsDescriptorResourceDesc(RenderDeviceIndex deviceSelection, AttachmentGraphsDescriptorInstance* descriptor);
 	
+	int CreatePerFrameAttachment(AttachmentGraphLayoutIndex graphIndex, int resourceIndex, int imageCount, uint32_t width, uint32_t height, DeviceSlabAllocator* imageAllocator, ImageMemoryIndex imageMemoryPoolIndex);
+
+	int CreateSwapChainAttachment(AttachmentGraphLayoutIndex graphIndex, int resourceIndex, SwapChainIndex swapChainIndex, DeviceSlabAllocator* imageAllocator, ImageMemoryIndex imageMemoryPoolIndex);
+
+	int BindResourceToAttachmnent(AttachmentGraphInstanceIndex graphIndex, int renderPassIndex, int resourceIndex, AttachmentClear clear);
+
+	int CreateFrameBuffer(AttachmentGraphInstanceIndex graphIndex, int renderPassIndex, RenderPassType rpType);
+
 	void DestroyPhysicalDeviceIndices(RenderPhysicalDeviceIndex handle);
 	void DestroyLogicalDeviceIndices(RenderDeviceIndex handle);
 	void DestroyWindowsSurfaces(WindowIndex handle);
@@ -320,7 +323,7 @@ struct RenderInstance
 	void CleanInitializeBufferHandle(RenderBufferDescription* bufferHandle);
 	void CleanInitializeImagePool(ImagePoolDescription* imagePool);
 	void CleanInitializePipelineHandle(PipelineHandle* pipelineHandle);
-	void CleanInitializeAttachmentGraph(AttachmentGraphsDescriptor* attachmentGraph);
+	void CleanInitializeAttachmentGraph(AttachmentGraphsDescriptorInstance* attachmentGraph);
 	void CleanInitializeAttachmentGraphsInstance(AttachmentGraphInstance* attachmentGraphsInstance);
 	void CleanInitializeRenderTargetQueue(RenderQueue* renderTargetQueue);
 	void CleanInitializeComputeQueue(ComputeQueue* computeQueue);
@@ -354,7 +357,7 @@ struct RenderInstance
 
 	TypedPoolAllocator<PipelineHandle, PipelineHandleIndex> pipelineHandles{};
 	
-	TypedPoolAllocator<AttachmentGraphsDescriptor, AttachmentGraphLayoutIndex> attachmentGraphs{};
+	TypedPoolAllocator<AttachmentGraphsDescriptorInstance, AttachmentGraphLayoutIndex> attachmentGraphs{};
 
 	TypedPoolAllocator<AttachmentGraphInstance, AttachmentGraphInstanceIndex> attachmentGraphsInstances{};
 

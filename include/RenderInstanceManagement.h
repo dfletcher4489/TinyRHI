@@ -1103,7 +1103,8 @@ struct AttachmentResourceInstance
 	int sampLo;
 	int sampHi;
 	int imageCount;
-	int resourceIndex;
+	int width;
+	int height;
 };
 
 struct AttachmentRenderPassInstance
@@ -1120,11 +1121,18 @@ struct AttachmentRenderPassInstance
 
 struct AttachmentGraphInstance
 {
+	AttachmentResourceInstance* graphResourceInstances;
 	AttachmentGraph* graphLayout;
-	AttachmentResourceInstance resources[MAX_GRAPH_RESOURCES];
 	AttachmentRenderPassInstance passes[MAX_GRAPH_RENDER_PASSES];
 	RenderDeviceIndex deviceIndex;
 	int graphIndex;
+};
+
+struct AttachmentGraphsDescriptorInstance
+{
+	AttachmentGraphsDescriptor graphsDescriptor;
+	AttachmentResourceInstance resourceInstances[MAX_GRAPH_RESOURCES];
+	RenderDeviceIndex deviceIndex;
 };
 
 struct RenderShaderResourceTemplateInfo
